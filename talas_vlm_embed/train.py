@@ -95,7 +95,7 @@ def main():
     
     train_dataset.trainer = trainer 
     trainer.train(resume_from_checkpoint=resume_checkpoint_dir)
-    trainer.save_model(training_args.output_dir)  # Saves the tokenizer too for easy upload
+    trainer.save_model(training_args.output_dir)
     
     if trainer.is_world_process_zero(): 
         processor.save_pretrained(training_args.output_dir)
