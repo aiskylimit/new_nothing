@@ -3055,8 +3055,7 @@ def setup_internvideo2(config):
     model = model.to(torch.device(config.device))
     model_without_ddp = model
 
-    if (config.pretrained_path.strip() and (
-    os.path.isfile(config.pretrained_path)) or "s3://" in config.pretrained_path):
+    if (config.pretrained_path.strip() and os.path.isfile(config.pretrained_path)):
         checkpoint = torch.load(config.pretrained_path, map_location="cpu")
         try:
             if "model" in checkpoint.keys():
