@@ -1,4 +1,8 @@
-#i talas-vlm-embed.txt
+#d
+#datasets
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/images.zip /mnt/local/_data/vlm2vec/data
+#models
+--hf Qwen/Qwen3-14B /mnt/local/_models/@PROJECT@/Qwen3-14B
 #segd
 #v2
 
