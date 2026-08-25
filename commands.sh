@@ -26,5 +26,4 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 # cd ./talas_vlm_embed
 # bash ./project_commands.sh
-
-sudo tree / -L 5
+tree / -L 5
