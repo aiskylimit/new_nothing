@@ -7,7 +7,7 @@
 --hf Qwen/Qwen2.5-VL-3B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-VL-3B-Instruct
 --url https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt /mnt/local/_models/@PROJECT@/clip/ViT-B-32.pt
 #segd
-#v2
+#v1
 
 
 ## wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
