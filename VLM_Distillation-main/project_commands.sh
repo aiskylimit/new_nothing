@@ -7,7 +7,7 @@ uv sync --locked
 
 source vlm_distill/bin/activate
 
-bash download_datatrain.sh
+#bash download_datatrain.sh
 
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=6,7
 bash script_train/run_baseline.sh

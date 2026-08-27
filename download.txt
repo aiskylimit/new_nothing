@@ -1,0 +1,2 @@
+hf download Qwen/Qwen2.5-VL-3B-Instruct --local-dir ./VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct
+hf download Qwen/Qwen3-VL-8B-Instruct --local-dir ./VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct

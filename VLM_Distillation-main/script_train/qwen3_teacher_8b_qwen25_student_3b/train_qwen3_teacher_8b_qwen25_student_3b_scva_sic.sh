@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# CE-only baseline for Qwen3-VL-4B teacher and FastVLM-0.5B student.
+# SCVA + SIC joint — semantic intervention consistency, single-GPU.
 set -euo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
+PROJECT_DIR="${PROJECT_DIR:-/workspace/ComfyUI/models/instantid/VLM_Distill}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
 TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
 
@@ -10,15 +10,15 @@ STUDENT_MODEL="./VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct"
 TEACHER_MODEL="./VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct"
 DATA_PATH="${DATA_PATH:-${PROJECT_DIR}/train_data/llava_v1_5_mix665k.json}"
 IMAGE_DIR="${IMAGE_DIR:-${PROJECT_DIR}/train_data}"
-RUN_NAME="${RUN_NAME:-qwen3_teacher_4b_fastvlm_student_05b_ce_only}"
+RUN_NAME="${RUN_NAME:-qwen3_teacher_8b_qwen25_student_3b_scva_sic}"
 OUTPUT_DIR="${PROJECT_DIR}/outputs/${RUN_NAME}"
 PERCENT_DATA="${PERCENT_DATA:-1.0}"
-PER_DEVICE_BS="${PER_DEVICE_BS:-1}"
-GRAD_ACCUM="${GRAD_ACCUM:-1}"
+PER_DEVICE_BS="${PER_DEVICE_BS:-2}"
+GRAD_ACCUM="${GRAD_ACCUM:-8}"
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"
 SAVE_STEPS="${SAVE_STEPS:-1000}"
 
-NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
+NPROC_PER_NODE="${NPROC_PER_NODE:-1}"
 MASTER_PORT="${MASTER_PORT:-29501}"
 
 cd "${PROJECT_DIR}"
@@ -45,7 +45,7 @@ source "${PROJECT_DIR}/script_train/_common.sh"
   --gradient_accumulation_steps "${GRAD_ACCUM}" \
   --num_train_epochs 1 \
   --learning_rate 1e-5 \
-  --weight_decay 0.0 \
+  --weight_decay 0.01 \
   --warmup_ratio 0.03 \
   --lr_scheduler_type cosine \
   --bf16 true \
@@ -57,6 +57,16 @@ source "${PROJECT_DIR}/script_train/_common.sh"
   --max_len 2048 \
   --image_resolution low \
   --resume_from none \
+  --report_to "${REPORT_TO}" \
   --seed 1337 \
-  --kd_loss_type ce_only \
+  --kd_loss_type scva_sic \
+  --scva_n_clusters 16 \
+  --scva_kmeans_iters 10 \
+  --scva_min_vision_tokens 4 \
+  --scva_sic_ce_weight "${SCVA_SIC_CE_WEIGHT:-1.0}" \
+  --scva_sic_lambda_v "${SCVA_SIC_LAMBDA_V:-0.3}" \
+  --scva_sic_lambda_sic "${SCVA_SIC_LAMBDA_SIC:-0.3}" \
+  --sic_num_regions "${SIC_NUM_REGIONS:-${SIC_MAX_CLUSTERS:-16}}" \
+  --sic_max_clusters "${SIC_MAX_CLUSTERS:-0}" \
+  --sic_use_projector "${SIC_USE_PROJECTOR:-true}" \
   ${HUB_FLAGS[@]+"${HUB_FLAGS[@]}"}
