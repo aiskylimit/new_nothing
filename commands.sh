@@ -1,6 +1,6 @@
 #2
 #segd
-#v1
+#v2
 
 
 ## wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
