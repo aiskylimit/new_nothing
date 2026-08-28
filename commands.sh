@@ -1,5 +1,2 @@
-#2
+#i spectral-guided-learning.txt
 #test
-
-ls /mnt/local/_models/aiskylimit_new_nothing
-ls /mnt/local/_data/aiskylimit_new_nothing
