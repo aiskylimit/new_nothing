@@ -9,5 +9,5 @@ source vlm_distill/bin/activate
 
 #bash download_datatrain.sh
 
-export CUDA_VISIBLE_DEVICES=6,7
+export CUDA_VISIBLE_DEVICES=4,5
 bash script_train/run_baseline.sh
