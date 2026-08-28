@@ -24,7 +24,8 @@ OUTPUT_PATH="${BASE_PATH}/data/qwen3-8b/train-prucot.jsonl"
 CANDIDATE_THRESHOLD=0.5
 MEDIAN_GATE_THRESHOLD=1.0
 MAX_MODEL_LEN=40960
-TENSOR_PARALLEL_SIZE=2
+# vLLM tensor-parallel across every GPU in GPUS (must equal the GPU count, or vLLM aborts).
+TENSOR_PARALLEL_SIZE=${#GPUS[@]}
 
 OPTS=""
 OPTS+=" --data-path ${DATA_PATH}"
