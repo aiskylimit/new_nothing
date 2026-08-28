@@ -19,9 +19,10 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
                   --master_port $MASTER_PORT"
 
 BASE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PROJECT_ENV="${PROJECT_ENV:-/mnt/local/uvenvs/spectral-guided-learning}"
 if [[ -z "${VIRTUAL_ENV:-}" ]]; then
-  [[ -f "${BASE_PATH}/.venv/bin/activate" ]] || "${BASE_PATH}/scripts/setup.sh"
-  source "${BASE_PATH}/.venv/bin/activate"
+  [[ -f "${PROJECT_ENV}/bin/activate" ]] || "${BASE_PATH}/scripts/setup.sh"
+  source "${PROJECT_ENV}/bin/activate"
 fi
 export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p "${BASE_PATH}/logs"
