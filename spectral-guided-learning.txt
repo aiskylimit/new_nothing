@@ -1,0 +1,20 @@
+# manager: uv
+# python: 3.12
+# From spectral-guided-learning pyproject [project].dependencies (requires-python >=3.12,<3.13; [tool.uv]).
+torch==2.13.0
+torchvision==0.28.0
+torchaudio==2.11.0
+vllm==0.27.1
+transformers==5.5.3
+peft>=0.13
+deepspeed>=0.15
+datasets>=2.20
+accelerate>=1.0
+numpy>=2.0,<2.5
+pandas>=2.2
+pyarrow
+pyyaml
+tqdm
+math-verify
+json-repair
+pytest
