@@ -1,0 +1,24 @@
+.venv/
+.venv-eval/
+__pycache__/
+*.pyc
+/data/
+/checkpoints/
+/results/
+*.npz
+*.pt
+*.parquet
+.pytest_cache/
+/logs/
+
+# Local agent tooling (ClaudeKit) — not part of the reproduction code
+.claude/
+
+# Reference clones (external code, not part of this repo) -- each has its own .git, so
+# tracking them here would create a broken gitlink instead of their actual files.
+P-ALIGN/
+Pru-CoT/
+ThoughtFold/
+
+# transient run log at repo root (logs/ dir is already ignored)
+logs-data-prep.txt
