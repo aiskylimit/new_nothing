@@ -5,7 +5,7 @@
 #   ./scripts/qwen3/eval/eval_qwen3-4b-instruct.sh checkpoints/vanilla-qwen3-4b-instruct vanilla-qwen3-4b-instruct
 set -euo pipefail
 
-GPUS=(4 5 6 7)
+GPUS=(6 7)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1

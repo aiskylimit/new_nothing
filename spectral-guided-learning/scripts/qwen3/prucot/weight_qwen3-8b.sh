@@ -2,7 +2,7 @@
 # Phase 3 (Pru-CoT baseline): step-importance global optimization for the Qwen3-8B track.
 set -euo pipefail
 
-GPUS=(2 3)
+GPUS=(6 7)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
 BASE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"

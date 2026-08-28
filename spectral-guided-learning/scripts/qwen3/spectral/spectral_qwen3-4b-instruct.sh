@@ -2,7 +2,7 @@
 # Phase 5: masked SFT -- SPECTRAL, Qwen3-4B-Instruct-2507 track (LoRA).
 set -euo pipefail
 
-GPUS=(4 5 6 7)
+GPUS=(6 7)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1

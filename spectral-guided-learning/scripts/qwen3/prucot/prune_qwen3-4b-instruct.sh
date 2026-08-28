@@ -3,7 +3,7 @@
 # Qwen2.5-3B-Instruct, scale-matched to the student per paper Section 4.4 -- an oversized agent prunes steps the student still needs).
 set -euo pipefail
 
-GPUS=(4 5 6 7)
+GPUS=(6 7)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1

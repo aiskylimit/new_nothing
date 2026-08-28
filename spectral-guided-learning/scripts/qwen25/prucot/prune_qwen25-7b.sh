@@ -2,7 +2,7 @@
 # Phase 4 (Pru-CoT baseline): LLM-guided pruning for the Qwen2.5-7B-Instruct track.
 set -euo pipefail
 
-GPUS=(2 3)
+GPUS=(6 7)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1

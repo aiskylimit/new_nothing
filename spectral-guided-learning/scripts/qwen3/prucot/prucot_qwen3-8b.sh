@@ -2,7 +2,7 @@
 # Phase 5: masked SFT -- PRU-COT baseline, Qwen3-8B track (LoRA, same setup as spectral).
 set -euo pipefail
 
-GPUS=(2 3)
+GPUS=(6 7)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1
