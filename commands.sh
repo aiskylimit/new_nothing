@@ -1,12 +1,23 @@
-#d
-#datasets
---hf-dataset VoCuc/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B /mnt/local/_data/@PROJECT@/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B
---hf-dataset math-ai/aime24 /mnt/local/_data/@PROJECT@/aime24
---hf-dataset math-ai/aime25 /mnt/local/_data/@PROJECT@/aime25
---hf-dataset HuggingFaceH4/MATH-500 /mnt/local/_data/@PROJECT@/MATH-500
---hf-dataset AI-MO/aimo-validation-amc /mnt/local/_data/@PROJECT@/aimo-validation-amc
-#models
---hf Qwen/Qwen3-1.7B /mnt/local/_models/@PROJECT@/Qwen3-1.7B
---hf Qwen/Qwen3-4B-Instruct-2507 /mnt/local/_models/@PROJECT@/Qwen3-4B-Instruct-2507
---hf Qwen/Qwen2.5-3B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-3B-Instruct
---hf Qwen/Qwen2.5-1.5B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-1.5B-Instruct
+#1 +30
+#spectral
+#v1
+
+
+# nvidia-smi
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
+
+kill -9 $(nvidia-smi --query-compute-apps=pid --format=csv,noheader)
+sleep 5
+nvidia-smi
+
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+
+
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
+
+
+cd ./spectral-guided-learning
+bash ./project_commands.sh
