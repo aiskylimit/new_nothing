@@ -1,4 +1,5 @@
-#d
-#datasets
---url https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt /mnt/local/_models/@PROJECT@/clip/ViT-B-32.pt
+#1
+#test
 
+ls /mnt/local/_models/aiskylimit_new_nothing
+ls /mnt/local/_data/aiskylimit_new_nothing
