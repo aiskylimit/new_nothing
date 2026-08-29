@@ -3,7 +3,7 @@ vlm_distill/
 __pycache__/
 .env
 .env.local
-*.json
+#*.json
 !configs/**/*.json
 !projector_config*.json
 *.log
