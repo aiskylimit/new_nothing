@@ -40,7 +40,7 @@ NUM_SHARDS=${#GPUS[@]}
 echo ">>> launching ${NUM_SHARDS} shards (one per GPU: ${GPUS[*]}) of ${BASE_PATH}/src/prucot_weight.py"
 pids=()
 for i in "${!GPUS[@]}"; do
-  CUDA_VISIBLE_DEVICES="${GPUS[$i]}" python "${BASE_PATH}/src/prucot_weight.py" ${OPTS} \
+  CUDA_VISIBLE_DEVICES="${GPUS[$i]}" python -u "${BASE_PATH}/src/prucot_weight.py" ${OPTS} \
     --num-shards "${NUM_SHARDS}" --shard-index "${i}" \
     > "logs/qwen3-8b-prucot-weight-shard${i}.log" 2>&1 &
   pids+=($!)
@@ -53,6 +53,6 @@ done
 
 # Merge pass (--num-shards 1, default): all per-sample npz now exist, so every record resumes
 # from disk and this just rebuilds the parquet. Still loads the model, so give it one GPU.
-CMD="python ${BASE_PATH}/src/prucot_weight.py ${OPTS}"
+CMD="python -u ${BASE_PATH}/src/prucot_weight.py ${OPTS}"
 echo "${CMD}"
 CUDA_VISIBLE_DEVICES="${GPUS[0]}" ${CMD} 2>&1 | tee logs/qwen3-8b-prucot-weight.log
