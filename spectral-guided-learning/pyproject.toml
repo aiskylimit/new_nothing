@@ -1,0 +1,39 @@
+[project]
+name = "spectral-guided-learning"
+version = "0.1.0"
+description = "Spectral-guided reasoning distillation pipeline (Qwen3/Qwen2.5, plus a Pru-CoT baseline)."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Keep torch/torchvision/torchaudio/vllm pinned together -- vllm's own kernel/CUDA
+    # requirements and transformers floor (>=5.5.3) are validated against this exact set.
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+    "torchaudio==2.11.0",
+    "vllm==0.27.1",
+    "transformers==5.5.3",
+    "peft>=0.13",
+    "deepspeed>=0.15",
+    "datasets>=2.20",
+    "accelerate>=1.0",
+    "numpy>=2.0,<2.5",
+    "pandas>=2.2",
+    "pyarrow",
+    "pyyaml",
+    "tqdm",
+    "math-verify",
+    "json-repair",
+    "pytest",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch", marker = "sys_platform == 'linux'" }
+torchvision = { index = "pytorch", marker = "sys_platform == 'linux'" }
+torchaudio = { index = "pytorch", marker = "sys_platform == 'linux'" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true

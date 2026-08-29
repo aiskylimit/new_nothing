@@ -19,7 +19,7 @@ set -Eeuo pipefail
 
 EXPORT_DIR="export_results"
 FLUX_COMMON="--num-steps 28 --height 512 --width 512 --cfg-scale 3.5 --snr-factor 5 --num-guidance-steps 5 --guidance-start-step 1 --num-images 20"
-FLUX_GPUS="${FLUX_GPUS:-4,5}"
+FLUX_GPUS="${FLUX_GPUS:-2,3}"
 PROJECT_ENV="${PROJECT_ENV:-/mnt/local/uvenvs/reward-guidance}"
 CHECKERBOARD_BASE_STEPS="${CHECKERBOARD_BASE_STEPS:-500000}"
 CHECKERBOARD_TILT_STEPS="${CHECKERBOARD_TILT_STEPS:-100000}"

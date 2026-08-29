@@ -5,16 +5,16 @@ SUBSETS=(
   # "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-MODEL="training/FastVLM-0.5B_lasd_3layer_0.5_eos_constant_0.05scheduler_cls/checkpoint-epoch-0"
+MODEL="training/FastVLM-0.5B_talas_jepa_cls/checkpoint-epoch-0"
 python eval_mmeb.py \
     --model_name $MODEL \
-    --encode_output_path "./MMEB-eval_outputs/FastVLM-0.5B_lasd_3layer_0.5_eos_constant_0.05scheduler_cls/" \
+    --encode_output_path "./MMEB-eval_outputs/FastVLM-0.5B_talas_jepa_cls/" \
     --lora True --lora_r 64 --lora_alpha 64 \
     --pooling eos \
     --model_backbone llava_qwen2 \
     --normalize True \
     --bf16 \
-    --dataset_name TIGER-Lab/MMEB-eval \
+    --dataset_name vlm2vec_train/MMEB-train \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
     --per_device_eval_batch_size 64 \

@@ -16,7 +16,7 @@ python eval_mmeb.py \
     --model_backbone llava_qwen2 \
     --normalize True \
     --bf16 \
-    --dataset_name TIGER-Lab/MMEB-eval \
+    --dataset_name vlm2vec_train/MMEB-train \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
     --per_device_eval_batch_size 64 \
