@@ -5,24 +5,24 @@ set -e
 # =========================
 # 2. Create Python env and install requirements
 # =========================
-source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
-python fix_lib.py
+# source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
+# python fix_lib.py
 
-#
-# 3. Unzip the dataset
-#
-mkdir -p vlm2vec_train/MMEB-train/images
-mkdir -p eval_images
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ImageNet_1K.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/HatefulMemes.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VOC2007.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
-#
-# 4. Unzip the cache
-#
-tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_cls.tar.gz -C .
+# #
+# # 3. Unzip the dataset
+# #
+# mkdir -p vlm2vec_train/MMEB-train/images
+# mkdir -p eval_images
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ImageNet_1K.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/HatefulMemes.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VOC2007.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
+# #
+# # 4. Unzip the cache
+# #
+# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_cls.tar.gz -C .
 
 
 
