@@ -7,7 +7,6 @@
 --url "https://dl.fbaipublicfiles.com/textvqa/images/train_val_images.zip" /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/textvqa/train_val_images.zip
 --url "https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip" /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/vg/images.zip
 --url "https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip" /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/vg/images2.zip
-
 #models
 --hf Qwen/Qwen2.5-VL-3B-Instruct ./VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct
 --hf Qwen/Qwen3-VL-8B-Instruct ./VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct
