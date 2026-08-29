@@ -3,25 +3,20 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
-TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
 
-STUDENT_MODEL="./VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct"
-TEACHER_MODEL="./VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct"
-DATA_PATH="${PROJECT_DIR}/train_data/llava_v1_5_mix665k.json"
-IMAGE_DIR="${PROJECT_DIR}/train_data"
+STUDENT_MODEL="${STUDENT_MODEL:-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct}"
+TEACHER_MODEL="${TEACHER_MODEL:-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct}"
+DATA_PATH="${DATA_PATH:-train_data/llava_v1_5_mix665k.json}"
+IMAGE_DIR="${IMAGE_DIR:-train_data}"
 OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen3_teacher_8b_qwen25_student_3b_sre"
 
-NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
 MASTER_PORT="${MASTER_PORT:-29501}"
 
 cd "${PROJECT_DIR}"
 
-if [[ ! -x "${TORCHRUN}" ]]; then
-  TORCHRUN="torchrun"
-fi
 
-"${TORCHRUN}" \
-  --nproc_per_node "${NPROC_PER_NODE}" \
+torchrun \
+  --nproc_per_node gpu \
   --master_port "${MASTER_PORT}" \
   "${TRAIN_PY}" \
   --model_name "${STUDENT_MODEL}" \

@@ -38,17 +38,17 @@ This is 12 runs total. The SFT row is per student model, so the Qwen2.5-VL-3B SF
 
 ## Multi-GPU Launch Defaults
 
-Use `torchrun` for all training runs. The repo's `DistillTrainer` is based on Hugging Face `Trainer`, so data-parallel training should be launched by increasing `NPROC_PER_NODE` rather than by changing Python entry points.
+Use `torchrun` for all training runs. Every training script uses `--nproc_per_node gpu`, so the process count is inferred from the GPUs visible through `CUDA_VISIBLE_DEVICES`.
 
 Recommended defaults for the first server:
 
 ```bash
-NPROC_PER_NODE=4 MASTER_PORT=29501 bash <script>.sh
+CUDA_VISIBLE_DEVICES=0,1,2,3 MASTER_PORT=29501 bash <script>.sh
 ```
 
 Keep per-device batch size at `1` for VLM distillation and scale throughput with:
 
-- `NPROC_PER_NODE`
+- the number of GPUs listed in `CUDA_VISIBLE_DEVICES`
 - `gradient_accumulation_steps`
 - `dataloader_num_workers`
 
@@ -64,7 +64,7 @@ For LLaVA-OneVision teacher runs, do not disable the vision-token cap unless the
 The joint launch script is:
 
 ```bash
-NPROC_PER_NODE=4 PERCENT_DATA=0.01 bash script_train/unit_aligned/train_joint.sh
+CUDA_VISIBLE_DEVICES=0,1,2,3 PERCENT_DATA=0.01 bash script_train/unit_aligned/train_joint.sh
 ```
 
 Override models per pair without editing the script:
@@ -73,7 +73,7 @@ Override models per pair without editing the script:
 STUDENT_MODEL="Qwen/Qwen2.5-VL-3B-Instruct" \
 TEACHER_MODEL="Qwen/Qwen3-VL-8B-Instruct" \
 RUN_NAME="qwen3_teacher_8b_qwen25_student_3b_joint" \
-NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 PERCENT_DATA=0.01 \
 bash script_train/unit_aligned/train_joint.sh
 ```

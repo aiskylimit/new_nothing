@@ -3,7 +3,6 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
-TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
 
 STUDENT_MODEL="KamilaMila/FastVLM-0.5B"
 TEACHER_MODEL="Qwen/Qwen3-VL-4B-Instruct"
@@ -11,17 +10,13 @@ DATA_PATH="${PROJECT_DIR}/train_data/llava_v1_5_mix665k.json"
 IMAGE_DIR="${PROJECT_DIR}/train_data"
 OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen3_teacher_4b_fastvlm_student_05b_emkd"
 
-NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
 MASTER_PORT="${MASTER_PORT:-29501}"
 
 cd "${PROJECT_DIR}"
 
-if [[ ! -x "${TORCHRUN}" ]]; then
-  TORCHRUN="torchrun"
-fi
 
-"${TORCHRUN}" \
-  --nproc_per_node "${NPROC_PER_NODE}" \
+torchrun \
+  --nproc_per_node gpu \
   --master_port "${MASTER_PORT}" \
   "${TRAIN_PY}" \
   --model_name "${STUDENT_MODEL}" \

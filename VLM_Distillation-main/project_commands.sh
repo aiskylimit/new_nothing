@@ -1,17 +1,36 @@
 #!/usr/bin/env bash
+set -e
 
-uv python install 3.10
+PROJECT_DIR="$(pwd)"
+DOWNLOAD_ROOT=/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main
+DOWNLOAD_DATA_DIR="${DOWNLOAD_ROOT}/train_data"
+DATA_DIR="${PROJECT_DIR}/train_data"
 
-export UV_PROJECT_ENVIRONMENT=vlm_distill
-uv sync --locked
+source /mnt/local/uvenvs/vlm-distillation-main/bin/activate
 
-source vlm_distill/bin/activate
+# Copy metadata into the relative train_data tree.  cmp also safely handles
+# the case where the download directory and code directory are the same.
+mkdir -p "${DATA_DIR}/ocr_vqa"
+if ! cmp -s "${DOWNLOAD_DATA_DIR}/llava_v1_5_mix665k.json" "${DATA_DIR}/llava_v1_5_mix665k.json"; then
+  cp -f "${DOWNLOAD_DATA_DIR}/llava_v1_5_mix665k.json" "${DATA_DIR}/llava_v1_5_mix665k.json"
+fi
+if ! cmp -s "${DOWNLOAD_DATA_DIR}/ocr_vqa/dataset.json" "${DATA_DIR}/ocr_vqa/dataset.json"; then
+  cp -f "${DOWNLOAD_DATA_DIR}/ocr_vqa/dataset.json" "${DATA_DIR}/ocr_vqa/dataset.json"
+fi
 
-unzip -q -o train_data/coco/train2017.zip -d coco
-unzip -q -o train_data/gqa/images.zip -d gqa
-unzip -q -o train_data/textvqa/train_val_images.zip -d textvqa
-unzip -q -o train_data/vg/images.zip -d vg
-unzip -q -o train_data/vg/images2.zip -d vg
+# Training uses the relative IMAGE_DIR=train_data.  The JSON image values start
+# with coco/, gqa/, ocr_vqa/, textvqa/, and vg/.
+unzip -q -o "${DOWNLOAD_DATA_DIR}/coco/train2017.zip" -d "${DATA_DIR}/coco"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/gqa/images.zip" -d "${DATA_DIR}/gqa"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/textvqa/train_val_images.zip" -d "${DATA_DIR}/textvqa"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/vg/images.zip" -d "${DATA_DIR}/vg"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/vg/images2.zip" -d "${DATA_DIR}/vg"
+
+# OCR-VQA is distributed as metadata plus image URLs rather than a ZIP.
+mkdir -p "${DATA_DIR}/ocr_vqa/images"
+if [[ -z "$(find "${DATA_DIR}/ocr_vqa/images" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+  (cd "${DATA_DIR}/ocr_vqa" && python loadDataset.py)
+fi
 
 #bash download_datatrain.sh
 

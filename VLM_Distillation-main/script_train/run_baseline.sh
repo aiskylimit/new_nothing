@@ -7,11 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
-#VENV_ACTIVATE="${PROJECT_DIR}/.venv/bin/activate"
-#[[ -f "${VENV_ACTIVATE}" ]] || { echo "Missing venv activate script: ${VENV_ACTIVATE}" >&2; exit 1; }
-# shellcheck disable=SC1090
-#source "${VENV_ACTIVATE}"
-
 RUNNERS=(
   # "run_qwen3_teacher_4b_fastvlm_student_05b.sh"
   "run_qwen3_teacher_8b_qwen25_student_3b.sh"
