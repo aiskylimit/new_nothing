@@ -1,88 +1,34 @@
 #!/usr/bin/env bash
 set -e
 
-# Run this file after:
-#   cd talas_vlm_embed
-
-# =========================
-# 1. Optional system setup
-# =========================
-# Uncomment these lines if this is a fresh machine and you have sudo access.
-#
-# sudo apt-get update
-# sudo apt-get upgrade -y
-
 
 # =========================
 # 2. Create Python env and install requirements
 # =========================
-# export UV_PROJECT_ENVIRONMENT=vlm
-# uv sync
-source vlm/bin/activate
+source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
+python fix_lib.py
 
-
-# =========================
-# 3. Optional eval images
-# =========================
-# README says this step is optional.
-# Uncomment if you need eval images.
-
-# wget https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/images.zip
-# unzip -o images.zip -d eval_images/
-# rm -rf images.zip
-
-# =========================
-# 4. Optional train images
-# =========================
-# This can take more than 1 hour.
-# Uncomment if you need train images.
 #
-# bash download_traindata.sh
-# bash download_traindata_2.sh
-
-# python download.py
-
-# =========================
-# 5. Optional teacher output
-# =========================
-# rm -rf caching
-# hf download VoCuc/vlm-teacher-embedding \
-#   B3_Qwen2_2B_cls.zip \
-#   --repo-type dataset \
-#   --local-dir .
-
-# unzip -o B3_Qwen2_2B_cls.zip 
-
-# hf download VoCuc/vlm-teacher-embedding \
-#   B3_Qwen2_2B_vqa.zip \
-#   --repo-type dataset \
-#   --local-dir .
-
-# unzip -o B3_Qwen2_2B_vqa.zip 
-
-
-# =========================
-# 6. Fix transformers code
-# =========================
-# README says this fixes the qwen2_vl image processor issue.
-# python fix_lib.py
-
-
-# =========================
-# 7. Train
-# =========================
-# Before running, check these args in scripts/test_gvendi.sh:
-#   --image_dir
-#   --teacher_cache_dir
+# 3. Unzip the dataset
 #
-# Uncomment to start training.
+mkdir -p vlm2vec_train/MMEB-train/images
+mkdir -p eval_images
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ImageNet_1K.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/HatefulMemes.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VOC2007.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
+#
+# 4. Unzip the cache
+#
+tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_cls.tar.gz -C .
 
-CUDA_VISIBLE_DEVICES=0 bash scripts/train_distill_talas_cls.sh &
-CUDA_VISIBLE_DEVICES=1 bash scripts/train_distill_talas_cls_1.sh &
-CUDA_VISIBLE_DEVICES=2 bash scripts/train_distill_talas_cls_2.sh &
-CUDA_VISIBLE_DEVICES=3 bash scripts/train_distill_talas_cls_3.sh &
+
+
+
+CUDA_VISIBLE_DEVICES=0 bash scripts/train_distill_talas_jepa_cls.sh &
 wait
-
 
 
 # =========================
@@ -91,9 +37,6 @@ wait
 # Run 4 eval scripts in parallel for each batch size, each one on a different GPU.
 
 CUDA_VISIBLE_DEVICES=0 bash eval_0.sh &
-CUDA_VISIBLE_DEVICES=1 bash eval_1.sh &
-CUDA_VISIBLE_DEVICES=2 bash eval_2.sh &
-CUDA_VISIBLE_DEVICES=3 bash eval_3.sh &
 wait
 
 # =========================
