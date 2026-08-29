@@ -2,9 +2,9 @@
 # python: 3.11
 # From vlm-distillation pyproject [project].dependencies (requires-python >=3.11,<3.14; [tool.uv]).
 transformers==5.2.0
-torch==2.8.0+cu128
-torchvision==0.23.0+cu128
-torchaudio==2.8.0+cu128
+torch==2.8.0
+torchvision==0.23.0
+torchaudio==2.8.0
 qwen_vl_utils==0.0.14
 ray
 sentencepiece
