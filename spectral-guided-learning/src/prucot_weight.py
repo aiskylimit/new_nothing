@@ -193,7 +193,14 @@ def main() -> None:
         param.requires_grad = False
     if config["gradient_checkpointing"]:
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-    model.eval()
+        # HF only takes the checkpointed path in training mode ("if self.gradient_checkpointing and
+        # self.training"). This probe backprops through the full frozen model, so leaving it in
+        # eval() silently disables checkpointing and retains every layer's activations -- fine for
+        # the 1.7B model but OOMs the 4B one at 32k tokens. Params are frozen and Qwen dropout is 0,
+        # so train() is numerically identical here; it only re-enables checkpointing.
+        model.train()
+    else:
+        model.eval()
 
     filler_id = tokenizer.convert_tokens_to_ids(config["filler_token"])
     with torch.no_grad():
