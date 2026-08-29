@@ -7,6 +7,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/SUN397.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_cls.tar.gz /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/images.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
+--hf TIGER-Lab/MMEB-train /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train
 #models
 --hf raghavlite/B3_Qwen2_2B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_2B
 --hf raghavlite/B3_Qwen2_7B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_7B
