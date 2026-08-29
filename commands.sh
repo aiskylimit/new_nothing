@@ -1,2 +1,12 @@
-#i spectral-guided-learning.txt
-#talas
+#d
+#datasets
+--hf-dataset VoCuc/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B /mnt/local/_data/@PROJECT@/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B
+--hf-dataset math-ai/aime24 /mnt/local/_data/@PROJECT@/aime24
+--hf-dataset math-ai/aime25 /mnt/local/_data/@PROJECT@/aime25
+--hf-dataset HuggingFaceH4/MATH-500 /mnt/local/_data/@PROJECT@/MATH-500
+--hf-dataset AI-MO/aimo-validation-amc /mnt/local/_data/@PROJECT@/aimo-validation-amc
+#models
+--hf Qwen/Qwen3-1.7B /mnt/local/_models/@PROJECT@/Qwen3-1.7B
+--hf Qwen/Qwen3-4B-Instruct-2507 /mnt/local/_models/@PROJECT@/Qwen3-4B-Instruct-2507
+--hf Qwen/Qwen2.5-3B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-3B-Instruct
+--hf Qwen/Qwen2.5-1.5B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-1.5B-Instruct
