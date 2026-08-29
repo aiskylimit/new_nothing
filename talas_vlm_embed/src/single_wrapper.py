@@ -282,10 +282,18 @@ class SingleDataset(Dataset):
         train_data = []
         
         for subset in data_args.subset_name:
+            # subset_data = load_dataset(
+            #     self.data_args.dataset_name, 
+            #     subset,
+            #     split=f"{self.data_args.dataset_split}"
+            # )
             subset_data = load_dataset(
-                self.data_args.dataset_name, 
-                subset,
-                split=f"{self.data_args.dataset_split}"
+                "parquet",
+                data_files={
+                    self.data_args.dataset_split:
+                        f"{self.data_args.dataset_name}/{subset}/{self.data_args.dataset_split}-00000-of-00001.parquet"
+                },
+                split=self.data_args.dataset_split,
             )
             if subset == "WebQA" and "qry" in subset_data.column_names:
                 subset_data = subset_data.map(
