@@ -24,7 +24,9 @@ PRUNING_AGENT="${LOCAL_MODELS_ROOT}/Qwen2.5-1.5B-Instruct"
 OUTPUT_PATH="${BASE_PATH}/data/qwen3-1.7b/train-prucot.jsonl"
 CANDIDATE_THRESHOLD=0.5
 MEDIAN_GATE_THRESHOLD=1.0
-MAX_MODEL_LEN=40960
+# The pruning agents are all Qwen2.5 (1.5B/3B/7B), whose context is 32768 -- vLLM aborts at
+# startup if max_model_len exceeds that. 32768 is the hard ceiling here, not a tunable.
+MAX_MODEL_LEN=32768
 # vLLM tensor-parallel across every GPU in GPUS (must equal the GPU count, or vLLM aborts).
 TENSOR_PARALLEL_SIZE=${#GPUS[@]}
 
