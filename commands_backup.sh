@@ -24,4 +24,4 @@ bash ./project_commands.sh
 # bash ./project_commands.sh
 
 # cd ./reward-guidance-main
-# bash ./project_commands.sh
+# bash ./project_command.sh
