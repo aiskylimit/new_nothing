@@ -2,10 +2,8 @@
 set -e
 
 
-# =========================
-# 2. Create Python env and install requirements
-# =========================
-# source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
+source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
+
 # python fix_lib.py
 
 # #
