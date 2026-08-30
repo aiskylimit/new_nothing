@@ -1,37 +1,22 @@
-#1 +30
-#VLM_Distillation
-#v1
-
-
-# nvidia-smi
-# CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=1 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=2 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=3 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=4 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=5 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py &
-
-kill -9 $(nvidia-smi -i 4,5 --query-compute-apps=pid --format=csv,noheader)
-sleep 3
-nvidia-smi
-
-export PATH=/usr/local/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-export HF_HUB_OFFLINE=1
-export TRANSFORMERS_OFFLINE=1
-export HF_DATASETS_OFFLINE=1
-
-# cd ./talas_vlm_embed
-# bash ./project_commands.sh
-
-
-# cd ./spectral-guided-learning
-# bash ./project_commands.sh
-
-# cd ./reward-guidance-main
-# bash ./project_command.sh
-
-cd ./VLM_Distillation-main
-bash ./project_commands.sh
+#d
+#datasets
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/ImageNet-1K/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/ImageNet-1K
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/N24News/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/N24News
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/HatefulMemes/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/HatefulMemes
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/VOC2007/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/VOC2007
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/SUN397/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/SUN397
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/Place365/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/Place365
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/ImageNet-A/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/ImageNet-A
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/ImageNet-R/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/ImageNet-R
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/ObjectNet/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/ObjectNet
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/Country211/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/Country211
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/OK-VQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/OK-VQA
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/A-OKVQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/A-OKVQA
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/DocVQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/DocVQA
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/InfographicsVQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/InfographicsVQA
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/ChartQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/ChartQA
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/Visual7W/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/Visual7W
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/ScienceQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/ScienceQA
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/VizWiz/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/VizWiz
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/GQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/GQA
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/TextVQA/test-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_eval/MMEB-eval/TextVQA
