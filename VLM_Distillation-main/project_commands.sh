@@ -6,7 +6,7 @@ DOWNLOAD_ROOT=/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main
 DOWNLOAD_DATA_DIR="${DOWNLOAD_ROOT}/train_data"
 DATA_DIR="${PROJECT_DIR}/train_data"
 
-source /mnt/local/uvenvs/vlm-distillation-main/bin/activate
+source /mnt/local/uvenvs/vlm-distillation/bin/activate
 
 # Copy metadata into the relative train_data tree.  cmp also safely handles
 # the case where the download directory and code directory are the same.
