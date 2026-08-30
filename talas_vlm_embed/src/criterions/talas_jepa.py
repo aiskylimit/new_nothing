@@ -286,6 +286,6 @@ class TalasJepa(nn.Module):
             'loss': loss,
             'contrastive_loss': contrastive_loss,
             'kd_loss': loss_distill,
-            'kd_simcse_loss': kd_simcse,
+            'kd_loss_simcse': kd_simcse,
             'sigreg_loss': SIGReg
         }
