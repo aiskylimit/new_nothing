@@ -277,13 +277,10 @@ class TalasJepa(nn.Module):
             loss_distill += vision_loss 
 
         loss = contrastive_loss 
-        print(f"loss: {loss}")
         if self.args.use_distill_loss:
-            loss += self.kd_weight * loss_distill
-            print(f"use_distill_loss: {loss}")
+            loss = loss + self.kd_weight * loss_distill
         if self.args.use_sigreg_loss:
-            loss += self.args.sigreg_weight * SIGReg
-            print(f"use_sigreg_loss: {loss}")
+            loss = loss + self.args.sigreg_weight * SIGReg
 
         return {
             'loss': loss,

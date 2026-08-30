@@ -226,7 +226,7 @@ class Trainer:
         #         reinit=True
         #     )
 
-        print(f"Training Args:{self.training_args}")
+        # print(f"Training Args:{self.training_args}")
         for epoch in range(self.training_args.num_train_epochs):
             self.run_epoch(epoch)
             if is_main_process() and self.training_args.save_strategy == "epoch":
