@@ -266,7 +266,7 @@ class EvalDataset(Dataset):
             "parquet",
             data_files={
                 self.data_args.dataset_split:
-                    f"vlm2vec_train/MMEB-train/{subset}/{self.data_args.dataset_split}-00000-of-00001.parquet"
+                    f"{self.data_args.dataset_name}/{subset}/{self.data_args.dataset_split}-00000-of-00001.parquet"
             },
             split=self.data_args.dataset_split,
         )
