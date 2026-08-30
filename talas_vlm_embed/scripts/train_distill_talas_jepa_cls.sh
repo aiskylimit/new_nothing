@@ -42,11 +42,16 @@ torchrun --standalone \
     --teacher_normalize True \
     --lr_scheduler_type "constant" \
     --warmup_ratio 0.05 \
-    --kd_weight 1.0 \
     --caching_dir "caching/B3_Qwen2_2B_cls" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "low" \
     --projector_config_path "./config/projector_config_emo.json" \
     --num_self_kd_layers 3 \
     --projector_lr 5e-5 \
-    --report_to None
+    --report_to None \
+    --use_distill_loss True \
+    --use_distill_cse_loss True \
+    --use_distill_vison_loss True \
+    --use_sigreg_loss True \
+    --kd_weight 1.0 \
+    --sigreg_weight 0.05

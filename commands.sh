@@ -1,47 +1,48 @@
-#d
-#datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/ImageNet_1K.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/HatefulMemes.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/VOC2007.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/N24News.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/SUN397.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_cls.tar.gz /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/images.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/OK-VQA/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/OK-VQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/OK-VQA/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/OK-VQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/OK-VQA/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/OK-VQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/A-OKVQA/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/A-OKVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/A-OKVQA/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/A-OKVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/A-OKVQA/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/A-OKVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/DocVQA/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/DocVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/DocVQA/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/DocVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/DocVQA/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/DocVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/InfographicsVQA/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/InfographicsVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/InfographicsVQA/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/InfographicsVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/InfographicsVQA/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/InfographicsVQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/ChartQA/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/ChartQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/ChartQA/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/ChartQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/ChartQA/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/ChartQA
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/Visual7W/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/Visual7W
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/Visual7W/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/Visual7W
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/Visual7W/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/Visual7W
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/ImageNet_1K/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/ImageNet_1K
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/ImageNet_1K/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/ImageNet_1K
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/ImageNet_1K/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/ImageNet_1K
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/N24News/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/N24News
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/N24News/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/N24News
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/N24News/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/N24News
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/HatefulMemes/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/HatefulMemes
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/HatefulMemes/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/HatefulMemes
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/HatefulMemes/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/HatefulMemes
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/VOC2007/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/VOC2007
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/VOC2007/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/VOC2007
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/VOC2007/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/VOC2007
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/SUN397/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/SUN397
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/SUN397/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/SUN397
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/SUN397/train-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/SUN397
-#models
---hf raghavlite/B3_Qwen2_2B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_2B
---hf raghavlite/B3_Qwen2_7B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_7B
---hf apple/FastVLM-0.5B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/FastVLM-0.5B
---hf llava-hf/llava-onevision-qwen2-0.5b-ov-hf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/llava-onevision-qwen2-0.5b-ov-hf
+#2
+#talas
+#v1
+
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json +a
+
+# nvidia-smi
+# CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=1 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=2 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=3 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=4 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=5 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+
+# kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+# sleep 3
+nvidia-smi
+
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
+
+
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
+
+# cd ./spectral-guided-learning
+# bash ./project_commands.sh
+
+# cd ./reward-guidance-main
+# bash ./project_command.sh
+
+# cd ./VLM_Distillation-main
+# bash ./project_commands.sh
+
+
+# CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=1 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=2 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=3 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=4 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=5 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
