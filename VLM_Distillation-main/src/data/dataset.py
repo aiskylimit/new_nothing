@@ -17,7 +17,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 DEFAULT_SYSTEM_PROMPT = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions."
 IMAGE_TOKEN = "<image>"
 SRE_MAX_SPANS = 1024
-MAX_MULTIMODAL_TURNS = 3  # tối đa số cặp Q&A được tách từ 1 sample có ảnh
+MAX_MULTIMODAL_TURNS = 1  # chỉ giữ cặp Q&A đầu tiên từ mỗi sample nhiều turn
 
 
 def _get_arg(args: Any, name: str, default=None):
