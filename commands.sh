@@ -1,7 +1,8 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json +a
+#1 +10
 #talas_vlm_embed
 #v1
 
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json +a
 
 # nvidia-smi
 # CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py &
@@ -22,6 +23,8 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
+
+ls /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen
 
 # cd ./talas_vlm_embed
 # bash ./project_commands.sh
