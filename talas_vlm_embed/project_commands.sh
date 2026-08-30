@@ -34,7 +34,17 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # =========================
 # Run 4 eval scripts in parallel for each batch size, each one on a different GPU.
 
-CUDA_VISIBLE_DEVICES=0 bash eval_0.sh &
+# CUDA_VISIBLE_DEVICES=0 bash eval_0.sh &
+# wait
+
+CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 &
+CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 0 1.0 0.05 &
+CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_cls.sh 1 1 0 1 1.0 0.05 &
+CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_cls.sh 1 0 1 1 1.0 0.05 &
+CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_cls.sh 0 1 1 1 1.0 0.05 &
+CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.01 &
+CUDA_VISIBLE_DEVICES=6 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 2.0 0.05 &
+CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_cls.sh 1 1 0 0 1.0 0.05 &
 wait
 
 # =========================

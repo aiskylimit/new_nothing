@@ -146,7 +146,7 @@ class Trainer:
     def run_epoch(self, epoch):
         self.train_data.sampler.set_epoch(epoch)
         losses, contrastive_losses, kd_losses = [], [], []
-        kd_rkd_losses, ot_losses, kd_dtw_losses = [], [], []
+        kd_simcse_losses, sigreg_losses, kd_dtw_losses = [], [], []
         kd_mse_losses, kd_penultimate_losses = [], []
         
         # Tính tổng số bước (steps) trong epoch để log step
@@ -162,8 +162,8 @@ class Trainer:
             loss = loss_dict['loss'] / self.training_args.gradient_accumulation_steps
             kd_loss = loss_dict.get('kd_loss', torch.tensor(0.0))
             contrastive_loss = loss_dict.get('contrastive_loss', torch.tensor(0.0))
-            kd_rkd_loss = loss_dict.get('kd_loss_rkd', torch.tensor(0.0))
-            ot_loss = loss_dict.get('ot_loss', torch.tensor(0.0))
+            kd_simcse_loss = loss_dict.get('kd_loss_simcse', torch.tensor(0.0))
+            sigreg_loss = loss_dict.get('sigreg_loss', torch.tensor(0.0))
             kd_dtw_loss = loss_dict.get('kd_loss_dtw', torch.tensor(0.0))
             kd_mse_loss = loss_dict.get('kd_mse_loss', torch.tensor(0.0))
             kd_penultimate_loss = loss_dict.get('kd_penultimate_loss', torch.tensor(0.0))
@@ -171,8 +171,8 @@ class Trainer:
             losses.append(loss.detach().item() * self.training_args.gradient_accumulation_steps)
             contrastive_losses.append(contrastive_loss.detach().item())
             kd_losses.append(kd_loss.detach().item())
-            kd_rkd_losses.append(kd_rkd_loss.detach().item())
-            ot_losses.append(ot_loss.detach().item())
+            kd_simcse_losses.append(kd_simcse_loss.detach().item())
+            sigreg_losses.append(sigreg_loss.detach().item())
             kd_dtw_losses.append(kd_dtw_loss.detach().item())
             kd_mse_losses.append(kd_mse_loss.detach().item())
             kd_penultimate_losses.append(kd_penultimate_loss.detach().item())
@@ -180,8 +180,8 @@ class Trainer:
             batch_loss = sum(losses) / len(losses)
             batch_contrastive_loss = sum(contrastive_losses) / len(contrastive_losses)
             batch_kd_loss = sum(kd_losses) / len(kd_losses)
-            batch_kd_rkd_loss = sum(kd_rkd_losses) / len(kd_rkd_losses)
-            batch_ot_loss = sum(ot_losses) / len(ot_losses)
+            batch_kd_simcse_loss = sum(kd_simcse_losses) / len(kd_simcse_losses)
+            batch_sigreg_loss = sum(sigreg_losses) / len(sigreg_losses)
             batch_kd_dtw_loss = sum(kd_dtw_losses) / len(kd_dtw_losses)
             batch_kd_loss_mse = sum(kd_mse_losses) / len(kd_mse_losses)
             batch_kd_penultimate_loss = sum(kd_penultimate_losses) / len(kd_penultimate_losses)
@@ -198,8 +198,8 @@ class Trainer:
                         'loss': f"{batch_loss:.4f}",
                         'kd_loss': f"{batch_kd_loss:.4f}",
                         'contrastive_loss': f"{batch_contrastive_loss:.4f}",
-                        'kd_rkd_loss': f"{batch_kd_rkd_loss:.4f}",
-                        'ot_loss': f"{batch_ot_loss:.4f}",
+                        'kd_simcse_loss': f"{batch_kd_simcse_loss:.4f}",
+                        'sigreg_loss': f"{batch_sigreg_loss:.4f}",
                         'kd_dtw_loss': f"{batch_kd_dtw_loss:.4f}",
                         'kd_loss_mse': f"{batch_kd_loss_mse:.4f}",
                         'kd_penultimate_loss': f"{batch_kd_penultimate_loss:.4f}",
@@ -207,22 +207,6 @@ class Trainer:
                     })
                     progress_bar.update(1)
 
-                    # <--- [THÊM] Log metrics vào wandb
-                    # if self.use_wandb:
-                    #     # Log loss trung bình (cumulative average) hoặc loss tức thời (instant)
-                    #     # Ở đây mình log loss trung bình tích lũy giống như progress bar
-                    #     wandb.log({
-                    #         "train/loss": batch_loss,
-                    #         "train/kd_loss": batch_kd_loss,
-                    #         "train/contrastive_loss": batch_contrastive_loss,
-                    #         "train/kd_rkd_loss": batch_kd_rkd_loss,
-                    #         "train/ot_loss": batch_ot_loss,
-                    #         "train/kd_dtw_loss": batch_kd_dtw_loss,
-                    #         "train/kd_loss_mse": batch_kd_loss_mse,
-                    #         "train/kd_penultimate_loss": batch_kd_penultimate_loss,
-                    #         "train/learning_rate": current_lr,
-                    #         "train/epoch": epoch + ((batch_idx + 1) / self.training_args.gradient_accumulation_steps) / steps_per_epoch
-                    #     })
                 
             torch.cuda.empty_cache()
         progress_bar.close()
