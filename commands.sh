@@ -1,4 +1,4 @@
-#1 +60
+#1 +40
 #talas_vlm_embed
 #v1
 
