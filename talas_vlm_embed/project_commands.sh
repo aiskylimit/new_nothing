@@ -21,6 +21,7 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # # 4. Unzip the cache
 # #
 # tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_cls.tar.gz -C .
+# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_vqa.tar.gz -C .
 
 
 
