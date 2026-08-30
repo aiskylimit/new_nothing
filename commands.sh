@@ -1,4 +1,4 @@
-#1 +120
+#2
 #talas
 #v1
 
@@ -14,8 +14,8 @@
 # CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
 # CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
 
-kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-sleep 3
+# kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+# sleep 3
 nvidia-smi
 
 export PATH=/usr/local/cuda/bin:$PATH
@@ -25,8 +25,8 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
 
-cd ./talas_vlm_embed
-bash ./project_commands.sh
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
 
 # cd ./spectral-guided-learning
 # bash ./project_commands.sh
@@ -37,11 +37,12 @@ bash ./project_commands.sh
 # cd ./VLM_Distillation-main
 # bash ./project_commands.sh
 
-CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-CUDA_VISIBLE_DEVICES=1 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-CUDA_VISIBLE_DEVICES=2 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-CUDA_VISIBLE_DEVICES=3 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-CUDA_VISIBLE_DEVICES=4 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-CUDA_VISIBLE_DEVICES=5 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+
+# CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=1 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=2 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=3 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=4 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=5 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
