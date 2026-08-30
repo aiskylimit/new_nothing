@@ -1,4 +1,4 @@
-#2 -0-10
+#1 +60
 #talas_vlm_embed
 #v1
 
@@ -23,9 +23,8 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-# cd ./talas_vlm_embed
-# bash ./project_commands.sh
-
+cd ./talas_vlm_embed
+bash ./project_commands.sh
 
 # cd ./spectral-guided-learning
 # bash ./project_commands.sh
