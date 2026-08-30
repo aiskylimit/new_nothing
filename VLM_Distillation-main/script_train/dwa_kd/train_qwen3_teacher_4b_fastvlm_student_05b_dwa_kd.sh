@@ -3,7 +3,6 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
-TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
 
 STUDENT_MODEL="KamilaMila/FastVLM-0.5B"
 TEACHER_MODEL="Qwen/Qwen3-VL-4B-Instruct"
@@ -12,19 +11,15 @@ IMAGE_DIR="${PROJECT_DIR}/train_data"
 OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen3_teacher_4b_fastvlm_student_05b_dwa_kd"
 PROJECTOR_CONFIG="${PROJECT_DIR}/config/dwa_kd_projectors.json"
 
-NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
 MASTER_PORT="${MASTER_PORT:-29501}"
 STUDENT_HIDDEN_DIM="${STUDENT_HIDDEN_DIM:-896}"
 TEACHER_HIDDEN_DIM="${TEACHER_HIDDEN_DIM:-2560}"
 
 cd "${PROJECT_DIR}"
 
-if [[ ! -x "${TORCHRUN}" ]]; then
-  TORCHRUN="torchrun"
-fi
 
-"${TORCHRUN}" \
-  --nproc_per_node "${NPROC_PER_NODE}" \
+torchrun \
+  --nproc_per_node gpu \
   --master_port "${MASTER_PORT}" \
   "${TRAIN_PY}" \
   --model_name "${STUDENT_MODEL}" \

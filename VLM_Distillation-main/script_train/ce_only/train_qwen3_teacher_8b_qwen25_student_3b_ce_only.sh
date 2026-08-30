@@ -4,7 +4,6 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
-TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
 
 STUDENT_MODEL="${STUDENT_MODEL:-Qwen/Qwen2.5-VL-3B-Instruct}"
 TEACHER_MODEL="${TEACHER_MODEL:-Qwen/Qwen3-VL-8B-Instruct}"
@@ -16,19 +15,13 @@ PERCENT_DATA="${PERCENT_DATA:-1.0}"
 PER_DEVICE_BS="${PER_DEVICE_BS:-1}"
 GRAD_ACCUM="${GRAD_ACCUM:-1}"
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"
-SAVE_STEPS="${SAVE_STEPS:-1000}"
-
-NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
 MASTER_PORT="${MASTER_PORT:-29501}"
 
 cd "${PROJECT_DIR}"
-[[ -x "${TORCHRUN}" ]] || TORCHRUN="torchrun"
 
-# shellcheck disable=SC1091
-source "${PROJECT_DIR}/script_train/_common.sh"
 
-"${TORCHRUN}" \
-  --nproc_per_node "${NPROC_PER_NODE}" \
+torchrun \
+  --nproc_per_node gpu \
   --master_port "${MASTER_PORT}" \
   "${TRAIN_PY}" \
   --model_name "${STUDENT_MODEL}" \
@@ -49,8 +42,7 @@ source "${PROJECT_DIR}/script_train/_common.sh"
   --warmup_ratio 0.03 \
   --lr_scheduler_type cosine \
   --bf16 true \
-  --save_strategy steps \
-  --save_steps "${SAVE_STEPS}" \
+  --save_strategy epoch \
   --save_total_limit 2 \
   --logging_steps 50 \
   --dataloader_num_workers "${DATALOADER_WORKERS}" \
