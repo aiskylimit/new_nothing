@@ -270,7 +270,7 @@ class TalasJepa(nn.Module):
 
         vision_loss = vision_loss / (len(stu_img_qry_reps) + len(stu_img_pos_reps) + 1e-8)
 
-        loss_distill = torch.tensor(0.0)
+        loss_distill = torch.zeros_like(contrastive_loss)
         if self.args.use_distill_cse_loss:
             loss_distill += kd_simcse
         if self.args.use_distill_vison_loss:
