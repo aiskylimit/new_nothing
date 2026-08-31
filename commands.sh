@@ -1,2 +1,2 @@
 #i talas-vlm-embed.txt
-#talas
+#talas-i
