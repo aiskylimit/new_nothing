@@ -6,10 +6,10 @@
 
 # nvidia-smi
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
+CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
-# kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-# sleep 3
+kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
+sleep 3
 nvidia-smi
 
 export PATH=/usr/local/cuda/bin:$PATH
