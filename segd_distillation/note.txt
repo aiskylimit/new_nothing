@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # SEGD classification command notes
 
-export PROJECT_ROOT="/mnt/local/aiskylimit_new_nothing/segd_distillation"
-export HF_HOME="${PROJECT_ROOT}/.hf_home"
-cd "$PROJECT_ROOT"
-
 # ---------------------------------------------------------------------------
 # 1. Setup once
 # ---------------------------------------------------------------------------
