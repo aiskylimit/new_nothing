@@ -6,6 +6,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/N24News.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/SUN397.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_cls.tar.gz /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
+--url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_vqa.tar.gz /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/images.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/OK-VQA/diverse_instruction-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/OK-VQA
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/OK-VQA/original-00000-of-00001.parquet /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/vlm2vec_train/MMEB-train/OK-VQA
