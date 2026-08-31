@@ -74,7 +74,7 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_cls_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_cls_v2_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
 OUTPUT_DIR="training/FastVLM-0.5B_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"
@@ -97,7 +97,7 @@ echo "============================================================"
 # 1. TRAIN
 # ============================================================
 
-NUM_GPUS_PER_NODE=4
+NUM_GPUS_PER_NODE=1
 TRAIN_SCRIPT="train_ddp.py"
 
 torchrun --standalone \
@@ -119,7 +119,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "$OUTPUT_DIR" \
-    --per_device_train_batch_size 4 \
+    --per_device_train_batch_size 16 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \

@@ -26,24 +26,55 @@ SIGREG_WEIGHT=${6:-0.05}
 # Convert True/False -> 1/0 cho tên folder
 # ============================================================
 
-bool_to_int() {
-    if [[ "$1" == "True" || "$1" == "true" || "$1" == "1" ]]; then
-        echo "1"
-    else
-        echo "0"
-    fi
+bool_to_python() {
+    case "$1" in
+        1|true|True|TRUE)
+            echo "True"
+            ;;
+        0|false|False|FALSE)
+            echo "False"
+            ;;
+        *)
+            echo "ERROR: Boolean argument must be 0/1 or True/False, got '$1'" >&2
+            exit 1
+            ;;
+    esac
 }
 
+bool_to_int() {
+    case "$1" in
+        1|true|True|TRUE)
+        echo "1"
+            ;;
+        0|false|False|FALSE)
+        echo "0"
+            ;;
+        *)
+            echo "ERROR: Boolean argument must be 0/1 or True/False, got '$1'" >&2
+            exit 1
+            ;;
+    esac
+}
+
+
+# Python values
+DISTILL_LOSS_BOOL=$(bool_to_python "$USE_DISTILL_LOSS")
+DISTILL_CSE_BOOL=$(bool_to_python "$USE_DISTILL_CSE_LOSS")
+DISTILL_VISION_BOOL=$(bool_to_python "$USE_DISTILL_VISON_LOSS")
+SIGREG_BOOL=$(bool_to_python "$USE_SIGREG_LOSS")
+
+# Folder values
 D_DISTILL=$(bool_to_int "$USE_DISTILL_LOSS")
 D_CSE=$(bool_to_int "$USE_DISTILL_CSE_LOSS")
 D_VISION=$(bool_to_int "$USE_DISTILL_VISON_LOSS")
 D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 
+
 # ============================================================
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_cls_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_cls_v2_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
 OUTPUT_DIR="training/llava_ov-0.5B_cls_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"
@@ -109,10 +140,10 @@ torchrun --standalone \
     --num_self_kd_layers 3 \
     --projector_lr 5e-5 \
     --report_to None \
-    --use_distill_loss "$USE_DISTILL_LOSS" \
-    --use_distill_cse_loss "$USE_DISTILL_CSE_LOSS" \
-    --use_distill_vison_loss "$USE_DISTILL_VISON_LOSS" \
-    --use_sigreg_loss "$USE_SIGREG_LOSS" \
+    --use_distill_loss "$DISTILL_LOSS_BOOL" \
+    --use_distill_cse_loss "$DISTILL_CSE_BOOL" \
+    --use_distill_vison_loss "$DISTILL_VISION_BOOL" \
+    --use_sigreg_loss "$SIGREG_BOOL" \
     --kd_weight "$KD_WEIGHT" \
     --sigreg_weight "$SIGREG_WEIGHT"
 
@@ -169,7 +200,7 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 32 \
+    --per_device_eval_batch_size 64 \
     --image_dir eval_images/ \
     --image_resolution "tiny" \
     --tgt_prefix_mod \
