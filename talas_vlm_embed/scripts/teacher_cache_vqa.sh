@@ -22,7 +22,7 @@ SUBSETS=(
 # =========================================================================
 torchrun --standalone --nproc_per_node=$NUM_GPUS_PER_NODE \
     $TRAIN_SCRIPT \
-    --model_name models/B3_Qwen2_2B \
+    --model_name models/B3_Qwen2_2B_full \
     --model_backbone "qwen2_vl" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
