@@ -146,6 +146,10 @@ def main() -> None:
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
+        "--max-length", type=int, default=None,
+        help="drop records longer than this many tokens (paper filtered >8192); unset/None keeps every sample",
+    )
+    parser.add_argument(
         "--num-shards", type=int, default=1,
         help="split the corpus across N independent GPU processes, same convention as "
         "gradient_capture.py --num-shards (each shard writes its own .npz files). Rerun with "
@@ -207,6 +211,10 @@ def main() -> None:
         noise_embedding = model.get_input_embeddings()(torch.tensor([filler_id], device=device)).detach()
 
     records = load_records(config["data_path"], args.limit)
+    if args.max_length is not None:
+        kept = [r for r in records if len(r["input_ids"]) <= args.max_length]
+        print(f"length filter (<= {args.max_length} tokens): kept {len(kept)}/{len(records)} records")
+        records = kept
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 

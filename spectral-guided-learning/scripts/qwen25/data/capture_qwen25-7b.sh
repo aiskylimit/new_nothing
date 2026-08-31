@@ -13,7 +13,7 @@ export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p logs
 
 MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
-DATA_PATH="data/qwen25-7b/train-s1k-segmented.jsonl"
+DATA_PATH="data/qwen25-7b/train-segmented.jsonl"
 OUTPUT_DIR="data/qwen25-7b/spectral"
 STRENGTHS_PATH="data/qwen25-7b/spectral-strengths.parquet"
 ENERGY_CUTOFF=0.95

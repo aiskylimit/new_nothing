@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 2: data prep for the Qwen3-4B-Instruct-2507 track.
+# Phase 2: data prep for the Qwen3-4B track.
 set -euo pipefail
 
 BASE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -10,26 +10,28 @@ if [[ -z "${VIRTUAL_ENV:-}" ]]; then
   source "${PROJECT_ENV}/bin/activate"
 fi
 export PYTHONPATH="${BASE_PATH}/src"
-mkdir -p logs "data/qwen3-4b-instruct"
+mkdir -p logs "data/qwen3-4b"
 
 # Offline server: no HF Hub access, load from local mirrors (see download.txt).
 LOCAL_MODELS_ROOT="${LOCAL_MODELS_ROOT:-/mnt/local/_models/aiskylimit_new_nothing}"
 LOCAL_DATA_ROOT="${LOCAL_DATA_ROOT:-/mnt/local/_data/aiskylimit_new_nothing}"
-MODEL_NAME="${LOCAL_MODELS_ROOT}/Qwen3-4B-Instruct-2507"
-DATASET_NAME="${LOCAL_DATA_ROOT}/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B"
-OUTPUT_PATH="data/qwen3-4b-instruct/train-s1k-segmented.jsonl"
-N_SAMPLES=1050
-MAX_TOKENS=32768
+MODEL_NAME="${LOCAL_MODELS_ROOT}/Qwen3-4B"
+DATASET_NAME="${DATASET_NAME:-${LOCAL_DATA_ROOT}/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B}"
+OUTPUT_PATH="data/qwen3-4b/train-segmented.jsonl"
+N_SAMPLES="${N_SAMPLES:-}"
+MAX_TOKENS="${MAX_TOKENS:-32768}"
 
 OPTS=""
 OPTS+=" --dataset-name ${DATASET_NAME}"
-OPTS+=" --n-samples ${N_SAMPLES}"
 OPTS+=" --max-tokens ${MAX_TOKENS}"
 OPTS+=" --tokenizer ${MODEL_NAME}"
 OPTS+=" --output-path ${OUTPUT_PATH}"
 OPTS+=" --chat-template"
-OPTS+=" --no-enable-thinking"
+OPTS+=" --enable-thinking"
+if [[ -n "${N_SAMPLES}" ]]; then
+  OPTS+=" --n-samples ${N_SAMPLES}"
+fi
 
 CMD="python ${BASE_PATH}/src/data_prep.py ${OPTS}"
 echo "${CMD}"
-${CMD} 2>&1 | tee logs/qwen3-4b-instruct-data.log
+${CMD} 2>&1 | tee logs/qwen3-4b-data.log

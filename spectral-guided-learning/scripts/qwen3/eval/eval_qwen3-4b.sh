@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Phase 6: eval a Qwen3-4B-Instruct-2507 LoRA adapter with vLLM, Pass@1. Default checkpoint is
+# Phase 6: eval a Qwen3-4B LoRA adapter with vLLM, Pass@1. Default checkpoint is
 # the spectral run -- pass the vanilla checkpoint path + a tag to eval that one instead.
-#   ./scripts/qwen3/eval/eval_qwen3-4b-instruct.sh
-#   ./scripts/qwen3/eval/eval_qwen3-4b-instruct.sh checkpoints/vanilla-qwen3-4b-instruct vanilla-qwen3-4b-instruct
+#   ./scripts/qwen3/eval/eval_qwen3-4b.sh
+#   ./scripts/qwen3/eval/eval_qwen3-4b.sh checkpoints/vanilla-qwen3-4b vanilla-qwen3-4b
 set -euo pipefail
 
 GPUS=(6 7)
@@ -22,9 +22,9 @@ export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p "${BASE_PATH}/logs"
 
 LOCAL_MODELS_ROOT="${LOCAL_MODELS_ROOT:-/mnt/local/_models/aiskylimit_new_nothing}"
-MODEL="${BASE_PATH}/checkpoints/spectral-qwen3-4b-instruct"
-BASE_MODEL="${LOCAL_MODELS_ROOT}/Qwen3-4B-Instruct-2507"
-TAG="spectral-qwen3-4b-instruct"
+MODEL="${BASE_PATH}/checkpoints/spectral-qwen3-4b"
+BASE_MODEL="${LOCAL_MODELS_ROOT}/Qwen3-4B"
+TAG="spectral-qwen3-4b"
 [[ -n "${1:-}" ]] && MODEL="$1"
 [[ -n "${2:-}" ]] && TAG="$2"
 BENCHMARKS="math500,aime24,aime25,amc12"
@@ -36,7 +36,7 @@ MAX_MODEL_LEN=32768
 GPU_MEM_UTIL=0.9
 SEED=42
 CHAT_TEMPLATE=true
-ENABLE_THINKING=false
+ENABLE_THINKING=true
 ENFORCE_EAGER=true
 LORA_R=16
 RESULTS_DIR="${BASE_PATH}/results"

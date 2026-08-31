@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 3 (Pru-CoT baseline): step-importance global optimization for the Qwen3-4B-Instruct-2507 track.
+# Phase 3 (Pru-CoT baseline): step-importance global optimization for the Qwen3-4B track.
 set -euo pipefail
 
 GPUS=(6 7)
@@ -16,13 +16,15 @@ export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p logs
 
 LOCAL_MODELS_ROOT="${LOCAL_MODELS_ROOT:-/mnt/local/_models/aiskylimit_new_nothing}"
-MODEL_NAME="${LOCAL_MODELS_ROOT}/Qwen3-4B-Instruct-2507"
-DATA_PATH="data/qwen3-4b-instruct/train-s1k-segmented.jsonl"
-OUTPUT_DIR="data/qwen3-4b-instruct/prucot"
-WEIGHTS_PATH="data/qwen3-4b-instruct/prucot-weights.parquet"
+MODEL_NAME="${LOCAL_MODELS_ROOT}/Qwen3-4B"
+DATA_PATH="data/qwen3-4b/train-segmented.jsonl"
+OUTPUT_DIR="data/qwen3-4b/prucot"
+WEIGHTS_PATH="data/qwen3-4b/prucot-weights.parquet"
 EPOCHS=3
 LR=10
 FILLER_TOKEN="."
+# Empty = keep all; set to drop longer records (paper-style). Must match prune_qwen3-4b.sh's value.
+MAX_LENGTH="${PRUCOT_MAX_LENGTH:-}"
 
 OPTS=""
 OPTS+=" --model-name ${MODEL_NAME}"
@@ -32,28 +34,25 @@ OPTS+=" --weights-path ${WEIGHTS_PATH}"
 OPTS+=" --epochs ${EPOCHS}"
 OPTS+=" --lr ${LR}"
 OPTS+=" --filler-token ${FILLER_TOKEN}"
+[[ -n "${MAX_LENGTH}" ]] && OPTS+=" --max-length ${MAX_LENGTH}"
 
 NUM_SHARDS=${#GPUS[@]}
-# prucot_weight.py has no in-process multi-GPU path: one sample runs on one GPU. To actually use every GPU
-# in GPUS we launch one shard per GPU -- --num-shards/--shard-index split the corpus into disjoint
-# subsets, each shard pins itself to a single GPU and writes its own per-sample npz. A
-# final --num-shards 1 pass then hits the resume path for every npz and rebuilds the parquet.
+# One compute shard per GPU (no in-process multi-GPU path); final --num-shards 1 pass merges.
 echo ">>> launching ${NUM_SHARDS} shards (one per GPU: ${GPUS[*]}) of ${BASE_PATH}/src/prucot_weight.py"
 pids=()
 for i in "${!GPUS[@]}"; do
   CUDA_VISIBLE_DEVICES="${GPUS[$i]}" python -u "${BASE_PATH}/src/prucot_weight.py" ${OPTS} \
     --num-shards "${NUM_SHARDS}" --shard-index "${i}" \
-    > "logs/qwen3-4b-instruct-prucot-weight-shard${i}.log" 2>&1 &
+    > "logs/qwen3-4b-prucot-weight-shard${i}.log" 2>&1 &
   pids+=($!)
 done
 shard_fail=0
 for i in "${!pids[@]}"; do
-  wait "${pids[$i]}" || { echo "shard ${i} failed -- see logs/qwen3-4b-instruct-prucot-weight-shard${i}.log" >&2; shard_fail=1; }
+  wait "${pids[$i]}" || { echo "shard ${i} failed -- see logs/qwen3-4b-prucot-weight-shard${i}.log" >&2; shard_fail=1; }
 done
 [[ ${shard_fail} -eq 0 ]] || exit 1
 
-# Merge pass (--num-shards 1, default): all per-sample npz now exist, so every record resumes
-# from disk and this just rebuilds the parquet. Still loads the model, so give it one GPU.
+# Merge pass: every npz exists, so this only rebuilds the parquet (still loads the model).
 CMD="python -u ${BASE_PATH}/src/prucot_weight.py ${OPTS}"
 echo "${CMD}"
-CUDA_VISIBLE_DEVICES="${GPUS[0]}" ${CMD} 2>&1 | tee logs/qwen3-4b-instruct-prucot-weight.log
+CUDA_VISIBLE_DEVICES="${GPUS[0]}" ${CMD} 2>&1 | tee logs/qwen3-4b-prucot-weight.log

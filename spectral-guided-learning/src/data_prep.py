@@ -1,4 +1,4 @@
-"""Phase 2: sample long-CoT trajectories, tokenize, and segment them into steps.
+"""Phase 2: tokenize long-CoT trajectories and segment them into steps.
 
 Output: JSONL per sample with input_ids, the response span, and absolute token spans per
 reasoning step -- step text isn't stored, it's recovered by decoding
@@ -84,7 +84,7 @@ def verify_span_alignment(tokenizer, record: dict) -> bool:
 def iter_samples(config: dict):
     """Stream the source dataset in shuffled order, yielding (problem, response) pairs.
 
-    Shuffling with the configured seed makes the 2k selection a random draw from the
+    Shuffling with the configured seed makes any requested subset a random draw from the
     corpus rather than its first rows, while staying deterministic and streaming.
     """
     dataset = load_dataset(config["dataset_name"], split=config["dataset_split"], streaming=True)
@@ -121,6 +121,9 @@ def percentiles(values: list[int]) -> str:
 
 def log_stats(records: list[dict]) -> None:
     """Token-length, steps/sample and tokens/step distributions (phase 2 step 3)."""
+    if not records:
+        print("no accepted samples; skip token/step statistics")
+        return
     tokens = [record["n_tokens"] for record in records]
     steps = [len(record["steps"]) for record in records]
     step_lengths = [
@@ -132,19 +135,24 @@ def log_stats(records: list[dict]) -> None:
 
 
 def collect_records(tokenizer, config: dict, limit_scan: int) -> tuple[list[dict], dict]:
-    """Scan the shuffled stream until n_samples records pass both filters.
+    """Scan the shuffled stream until the requested records pass both filters.
 
-    The bar tracks accepted records; its postfix carries the rejection counts, since a
-    stalled bar with a climbing `scanned` means the filters are eating the corpus.
+    When n_samples is unset, the full source split is used after filtering. The bar tracks
+    accepted records; its postfix carries the rejection counts, since a stalled bar with a
+    climbing `scanned` means the filters are eating the corpus.
     """
     # Warn before the bar sits at 0: streaming yields nothing until the shuffle buffer fills.
-    print(f"buffering {SHUFFLE_BUFFER:,} rows for the shuffled stream (network-bound)...", flush=True)
+    print(f"buffering {SHUFFLE_BUFFER:,} rows for the shuffled stream (source-bound)...", flush=True)
 
-    records, counts = [], {"scanned": 0, "skipped_long": 0, "skipped_few_steps": 0}
-    progress = tqdm(total=config["n_samples"], unit="sample", desc="segmenting")
+    records, counts = [], {"scanned": 0, "skipped_long": 0}
+    target = config.get("n_samples")
+    scan_cap = None if limit_scan <= 0 else limit_scan
+    progress = tqdm(total=target, unit="sample", desc="segmenting")
     for problem, response in iter_samples(config):
         counts["scanned"] += 1
-        if counts["scanned"] > limit_scan or len(records) >= config["n_samples"]:
+        if scan_cap is not None and counts["scanned"] > scan_cap:
+            break
+        if target is not None and len(records) >= target:
             break
 
         record = build_record(
@@ -154,8 +162,6 @@ def collect_records(tokenizer, config: dict, limit_scan: int) -> tuple[list[dict
         )
         if record is None:
             counts["skipped_long"] += 1
-        # elif len(record["steps"]) < 2:  # nothing to select between
-        #     counts["skipped_few_steps"] += 1
         else:
             record["id"] = len(records)
             records.append(record)
@@ -183,7 +189,7 @@ def main() -> None:
     parser.add_argument("--output-path")
     parser.add_argument("--chat-template", action=argparse.BooleanOptionalAction)
     parser.add_argument("--enable-thinking", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--limit-scan", type=int, default=50000, help="max source rows to scan")
+    parser.add_argument("--limit-scan", type=int, default=0, help="max source rows to scan; 0 means no scan cap")
     args = parser.parse_args()
 
     config = yaml.safe_load(Path(args.config).read_text()) if args.config else {}
@@ -202,6 +208,8 @@ def main() -> None:
     config.update({key: value for key, value in overrides.items() if value is not None})
     config.setdefault("dataset_split", "train")
     config.setdefault("seed", 42)
+    if config.get("n_samples") is not None and config["n_samples"] <= 0:
+        raise ValueError("--n-samples must be positive when set; omit it to use the full dataset")
 
     tokenizer = AutoTokenizer.from_pretrained(config["tokenizer"])
     records, counts = collect_records(tokenizer, config, args.limit_scan)

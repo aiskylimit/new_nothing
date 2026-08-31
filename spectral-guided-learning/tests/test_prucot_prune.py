@@ -4,6 +4,7 @@ from prucot_prune import (
     emit_prucot_record,
     format_step_table,
     median_gate,
+    missing_weight_ids,
     parse_prune_response,
     reconstruct_pruned_text,
 )
@@ -86,6 +87,13 @@ def test_parse_prune_response_ignores_non_integer_keys():
     text = '{"note": "ignore me", "1": {"prune": true}}'
     pruned, _ = parse_prune_response(text)
     assert pruned == [1]
+
+
+def test_missing_weight_ids_reports_only_absent_records():
+    records = [{"id": 0}, {"id": "1"}, {"id": 2}]
+    weights_by_id = {0: [0.1], 2: []}
+
+    assert missing_weight_ids(records, weights_by_id) == [1]
 
 
 def test_reconstruct_pruned_text_keeps_order_and_drops_pruned_indices():

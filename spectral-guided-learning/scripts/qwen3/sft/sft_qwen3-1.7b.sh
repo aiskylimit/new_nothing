@@ -49,7 +49,7 @@ LORA_DROPOUT=0.05
 LORA_TARGET_MODULES="q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj"
 # ZeRO-2 offload for long-sequence headroom on VRAM-limited GPUs.
 DS_CONFIG="${BASE_PATH}/configs/deepspeed/ds_config_zero2_offload.json"
-# Spectral paper's own Cutoff Length (Table 3); no-op on this track's data (max ~27k).
+# Spectral paper's own Cutoff Length (Table 3).
 MAX_SEQ_LEN=32768
 
 OPTS=""

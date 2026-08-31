@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 5: masked SFT -- SPECTRAL, Qwen3-4B-Instruct-2507 track (LoRA).
+# Phase 5: masked SFT -- VANILLA baseline, Qwen3-4B track (LoRA).
 set -euo pipefail
 
 GPUS=(6 7)
@@ -28,9 +28,9 @@ export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p "${BASE_PATH}/logs"
 
 LOCAL_MODELS_ROOT="${LOCAL_MODELS_ROOT:-/mnt/local/_models/aiskylimit_new_nothing}"
-MODEL_NAME="${LOCAL_MODELS_ROOT}/Qwen3-4B-Instruct-2507"
-DATA_PATH="${BASE_PATH}/data/qwen3-4b-instruct/train-spectral.jsonl"
-OUTPUT_DIR="${BASE_PATH}/checkpoints/spectral-qwen3-4b-instruct"
+MODEL_NAME="${LOCAL_MODELS_ROOT}/Qwen3-4B"
+DATA_PATH="${BASE_PATH}/data/qwen3-4b/train-vanilla.jsonl"
+OUTPUT_DIR="${BASE_PATH}/checkpoints/vanilla-qwen3-4b"
 EPOCHS=3
 LR=5.0e-5
 MIN_LR=1.0e-5
@@ -79,4 +79,4 @@ OPTS+=" --max-seq-len ${MAX_SEQ_LEN}"
 
 CMD="torchrun ${DISTRIBUTED_ARGS} ${BASE_PATH}/src/train_sft.py ${OPTS}"
 echo "${CMD}"
-${CMD} 2>&1 | tee "${BASE_PATH}/logs/spectral-qwen3-4b-instruct.log"
+${CMD} 2>&1 | tee "${BASE_PATH}/logs/sft-qwen3-4b.log"

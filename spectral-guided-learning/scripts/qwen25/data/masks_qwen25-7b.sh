@@ -13,7 +13,7 @@ fi
 export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p logs
 
-DATA_PATH="data/qwen25-7b/train-s1k-segmented.jsonl"
+DATA_PATH="data/qwen25-7b/train-segmented.jsonl"
 STRENGTHS_PATH="data/qwen25-7b/spectral-strengths.parquet"
 ENERGY_THRESHOLD_P=0.95
 

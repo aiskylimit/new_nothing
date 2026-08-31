@@ -1,67 +1,106 @@
 #!/usr/bin/env bash
-# Full pipeline (data -> capture -> masks -> train -> eval) for all 4 tracks, unattended.
-# Each track fails fast internally (set -e) but a failed track doesn't stop the other one.
+# Pipeline driver. Two phases: TRAIN everything, then EVAL everything.
+#   TRAIN: data (shared) -> spectral -> vanilla -> prucot   (per method, per model)
+#   EVAL : only after all training is done; only checkpoints that trained OK.
+# Isolation: a failed block is recorded and the driver keeps going. A `data` failure skips that
+# model's later blocks; a training failure skips only that (method, model)'s eval.
 set -uo pipefail
 
 BASE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODELS=(qwen3-1.7b qwen3-4b)
+METHODS=(spectral vanilla prucot)
 FAILED_TRACKS=()
+declare -A BROKEN      # model -> data prep failed
+declare -A TRAINED     # "<method>-<model>" -> checkpoint trained OK (eligible for eval)
 
-run_track() {
-  local name="$1"
+run_step() {
+  local label="$1"
   shift
-  # Not a direct && / || / if operand -- that would suppress the function's `set -e`.
   ( "$@" )
   local status=$?
   if [[ ${status} -eq 0 ]]; then
-    echo ">>> track ${name}: OK"
+    echo ">>> ${label}: OK"
+    return 0
+  fi
+  echo ">>> ${label}: FAILED (exit ${status}) -- continuing" >&2
+  FAILED_TRACKS+=("${label}")
+  return 1
+}
+
+# ---- training blocks (NO eval; each phase in order) ----
+prep() {
+  set -e
+  "${BASE_PATH}/scripts/qwen3/data/data_$1.sh"
+}
+
+spectral_train() {
+  set -e
+  "${BASE_PATH}/scripts/qwen3/data/capture_$1.sh"
+  "${BASE_PATH}/scripts/qwen3/data/masks_$1.sh"
+  "${BASE_PATH}/scripts/qwen3/spectral/spectral_$1.sh"
+}
+
+vanilla_train() {
+  set -e
+  "${BASE_PATH}/scripts/qwen3/sft/sft_$1.sh"
+}
+
+prucot_train() {
+  set -e
+  "${BASE_PATH}/scripts/qwen3/prucot/weight_$1.sh"
+  "${BASE_PATH}/scripts/qwen3/prucot/prune_$1.sh"
+  "${BASE_PATH}/scripts/qwen3/prucot/prucot_$1.sh"
+}
+
+# eval one (method, model). Default (no args) evaluates the spectral checkpoint.
+eval_ckpt() {
+  local method="$1" m="$2"
+  if [[ "${method}" == spectral ]]; then
+    "${BASE_PATH}/scripts/qwen3/eval/eval_$m.sh"
   else
-    echo ">>> track ${name}: FAILED (exit ${status}) -- continuing to the next track" >&2
-    FAILED_TRACKS+=("${name}")
+    "${BASE_PATH}/scripts/qwen3/eval/eval_$m.sh" "${BASE_PATH}/checkpoints/${method}-$m" "${method}-$m"
   fi
 }
 
-track_qwen3_1_7b() {
-  set -e
-  "${BASE_PATH}/scripts/qwen3/data/data_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/data/capture_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/data/masks_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/weight_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/prune_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/sft/sft_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/spectral/spectral_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/prucot_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/eval/eval_qwen3-1.7b.sh"
-  "${BASE_PATH}/scripts/qwen3/eval/eval_qwen3-1.7b.sh" \
-    "${BASE_PATH}/checkpoints/vanilla-qwen3-1.7b" vanilla-qwen3-1.7b
-  "${BASE_PATH}/scripts/qwen3/eval/eval_qwen3-1.7b.sh" \
-    "${BASE_PATH}/checkpoints/prucot-qwen3-1.7b" prucot-qwen3-1.7b
-}
+# ================= TRAIN PHASE =================
+echo "===== TRAIN PHASE ====="
 
-track_qwen3_4b_instruct() {
-  set -e
-  "${BASE_PATH}/scripts/qwen3/data/data_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/data/capture_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/data/masks_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/weight_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/prune_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/sft/sft_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/spectral/spectral_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/prucot_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/eval/eval_qwen3-4b-instruct.sh"
-  "${BASE_PATH}/scripts/qwen3/eval/eval_qwen3-4b-instruct.sh" \
-    "${BASE_PATH}/checkpoints/vanilla-qwen3-4b-instruct" vanilla-qwen3-4b-instruct
-  "${BASE_PATH}/scripts/qwen3/eval/eval_qwen3-4b-instruct.sh" \
-    "${BASE_PATH}/checkpoints/prucot-qwen3-4b-instruct" prucot-qwen3-4b-instruct
-}
+for m in "${MODELS[@]}"; do
+  run_step "data-${m}" prep "${m}" || BROKEN[$m]=1
+done
 
-run_track qwen3-1.7b track_qwen3_1_7b
-run_track qwen3-4b-instruct track_qwen3_4b_instruct
+for m in "${MODELS[@]}"; do
+  [[ -n "${BROKEN[$m]:-}" ]] && { echo ">>> spectral-train-${m}: SKIPPED (data failed)" >&2; continue; }
+  run_step "spectral-train-${m}" spectral_train "${m}" && TRAINED[spectral-$m]=1
+done
 
-# qwen3-8b and qwen25-7b: out of scope for now.
+for m in "${MODELS[@]}"; do
+  [[ -n "${BROKEN[$m]:-}" ]] && { echo ">>> vanilla-train-${m}: SKIPPED (data failed)" >&2; continue; }
+  run_step "vanilla-train-${m}" vanilla_train "${m}" && TRAINED[vanilla-$m]=1
+done
 
-python "${BASE_PATH}/src/compare_results.py"
+# Pru-CoT baseline disabled for now -- uncomment this loop to re-enable (eval auto-includes it).
+# for m in "${MODELS[@]}"; do
+#   [[ -n "${BROKEN[$m]:-}" ]] && { echo ">>> prucot-train-${m}: SKIPPED (data failed)" >&2; continue; }
+#   run_step "prucot-train-${m}" prucot_train "${m}" && TRAINED[prucot-$m]=1
+# done
+
+# ================= EVAL PHASE =================
+echo "===== EVAL PHASE (all training complete) ====="
+
+for m in "${MODELS[@]}"; do
+  for method in "${METHODS[@]}"; do
+    if [[ -z "${TRAINED[${method}-$m]:-}" ]]; then
+      echo ">>> eval-${method}-${m}: SKIPPED (${method}-${m} did not train)" >&2
+      continue
+    fi
+    run_step "eval-${method}-${m}" eval_ckpt "${method}" "${m}"
+  done
+done
+
+python "${BASE_PATH}/src/compare_results.py" || echo ">>> compare_results.py failed" >&2
 
 if [[ ${#FAILED_TRACKS[@]} -gt 0 ]]; then
-  echo ">>> failed tracks: ${FAILED_TRACKS[*]} -- see logs/ above for each track's failing step" >&2
+  echo ">>> failed blocks: ${FAILED_TRACKS[*]}" >&2
   exit 1
 fi

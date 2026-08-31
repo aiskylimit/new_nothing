@@ -134,6 +134,11 @@ def parse_prune_response(text: str) -> tuple[list[int] | None, str]:
     return sorted(set(pruned)), "ok"
 
 
+def missing_weight_ids(records: list[dict], weights_by_id: dict[int, list[float]]) -> list[int]:
+    """Record ids that would be silently dropped if Pru-CoT weights are incomplete."""
+    return [int(record["id"]) for record in records if int(record["id"]) not in weights_by_id]
+
+
 def reconstruct_pruned_text(step_texts: list[str], prune_indices: set[int]) -> str:
     """Concatenating the kept steps reproduces the exact original substring (minus the pruned
     ones): split_into_step_texts (segmentation.py) guarantees the pieces concatenate losslessly."""
@@ -181,6 +186,8 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, help="paper: 0.9")
     parser.add_argument("--top-p", type=float, help="paper: 0.95")
     parser.add_argument("--max-tokens", type=int, help="max tokens for the agent's JSON reply")
+    parser.add_argument("--max-length", type=int, default=None,
+                        help="drop records longer than this many tokens (paper filtered >8192); unset/None keeps every sample")
     parser.add_argument("--max-model-len", type=int, help="vLLM context window for the pruning agent")
     parser.add_argument("--gpu-memory-utilization", type=float)
     parser.add_argument("--tensor-parallel-size", type=int)
@@ -210,8 +217,8 @@ def main() -> None:
     config.setdefault("median_gate_threshold", 1.0)
     config.setdefault("temperature", 0.9)
     config.setdefault("top_p", 0.95)
-    config.setdefault("max_tokens", 4096)
-    config.setdefault("max_model_len", 40960)
+    config.setdefault("max_tokens", 8192)
+    config.setdefault("max_model_len", 32768)
     config.setdefault("gpu_memory_utilization", 0.9)
     config.setdefault("tensor_parallel_size", 1)
     config.setdefault("seed", 42)
@@ -223,15 +230,23 @@ def main() -> None:
 
     with open(config["data_path"]) as handle:
         records = [json.loads(line) for line in handle]
+    if args.max_length is not None:
+        kept = [r for r in records if len(r["input_ids"]) <= args.max_length]
+        print(f"length filter (<= {args.max_length} tokens): kept {len(kept)}/{len(records)} records")
+        records = kept
     weights_frame = pd.read_parquet(config["weights_path"])
     weights_by_id = {int(row.id): list(row.step_weights) for row in weights_frame.itertuples()}
-    # `in`, not a truthy check on the list -- an empty step_weights (no CoT steps to score) is a
-    # legitimate result that must still flow into kept_as_is below, not be dropped here.
-    records = [record for record in records if record["id"] in weights_by_id]
+    missing_weights = missing_weight_ids(records, weights_by_id)
+    if missing_weights:
+        preview = ", ".join(str(record_id) for record_id in missing_weights[:10])
+        raise RuntimeError(
+            f"missing Pru-CoT weights for {len(missing_weights)}/{len(records)} records "
+            f"(first ids: {preview}); refusing to drop training samples"
+        )
 
     kept_as_is, queue = [], []
     for record in records:
-        weights = weights_by_id[record["id"]]
+        weights = weights_by_id[int(record["id"])]
         if median_gate(weights, config["median_gate_threshold"]):
             kept_as_is.append(record)
             continue

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 4: build masks for the Qwen3-4B-Instruct-2507 track (--vanilla: no P-ALIGN row for this
+# Phase 4: build masks for the Qwen3-4B track (--vanilla: no P-ALIGN row for this
 # model, needs a locally-trained vanilla baseline).
 set -euo pipefail
 
@@ -13,8 +13,8 @@ fi
 export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p logs
 
-DATA_PATH="data/qwen3-4b-instruct/train-s1k-segmented.jsonl"
-STRENGTHS_PATH="data/qwen3-4b-instruct/spectral-strengths.parquet"
+DATA_PATH="data/qwen3-4b/train-segmented.jsonl"
+STRENGTHS_PATH="data/qwen3-4b/spectral-strengths.parquet"
 ENERGY_THRESHOLD_P=0.95
 
 OPTS=""
@@ -25,6 +25,6 @@ OPTS+=" --vanilla"
 
 CMD="python ${BASE_PATH}/src/build_masks.py ${OPTS}"
 echo "${CMD}"
-${CMD} 2>&1 | tee logs/qwen3-4b-instruct-masks.log
+${CMD} 2>&1 | tee logs/qwen3-4b-masks.log
 
 echo ">>> STOP AND READ: check the step/token drop table above -- ~0% means spectral == vanilla."

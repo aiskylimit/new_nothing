@@ -7,7 +7,7 @@
 --hf-dataset AI-MO/aimo-validation-amc /mnt/local/_data/@PROJECT@/aimo-validation-amc
 #models
 --hf Qwen/Qwen3-1.7B /mnt/local/_models/@PROJECT@/Qwen3-1.7B
---hf Qwen/Qwen3-4B-Instruct-2507 /mnt/local/_models/@PROJECT@/Qwen3-4B-Instruct-2507
+--hf Qwen/Qwen3-4B /mnt/local/_models/@PROJECT@/Qwen3-4B
 --hf Qwen/Qwen2.5-3B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-3B-Instruct
 --hf Qwen/Qwen2.5-1.5B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-1.5B-Instruct
 

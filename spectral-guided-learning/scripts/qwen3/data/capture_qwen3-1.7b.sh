@@ -17,7 +17,7 @@ mkdir -p logs
 
 LOCAL_MODELS_ROOT="${LOCAL_MODELS_ROOT:-/mnt/local/_models/aiskylimit_new_nothing}"
 MODEL_NAME="${LOCAL_MODELS_ROOT}/Qwen3-1.7B"
-DATA_PATH="data/qwen3-1.7b/train-s1k-segmented.jsonl"
+DATA_PATH="data/qwen3-1.7b/train-segmented.jsonl"
 OUTPUT_DIR="data/qwen3-1.7b/spectral"
 STRENGTHS_PATH="data/qwen3-1.7b/spectral-strengths.parquet"
 ENERGY_CUTOFF=0.95
@@ -32,10 +32,7 @@ OPTS+=" --energy-cutoff ${ENERGY_CUTOFF}"
 OPTS+=" --chunk-size ${CHUNK_SIZE}"
 
 NUM_SHARDS=${#GPUS[@]}
-# gradient_capture.py has no in-process multi-GPU path: one sample runs on one GPU. To actually use every GPU
-# in GPUS we launch one shard per GPU -- --num-shards/--shard-index split the corpus into disjoint
-# subsets, each shard pins itself to a single GPU and writes its own per-sample npz (--verify runs on shard 0 only, per gradient_capture.py's shard-index guard). A
-# final --num-shards 1 pass then hits the resume path for every npz and rebuilds the parquet.
+# One compute shard per GPU (no in-process multi-GPU path); final --num-shards 1 pass merges.
 echo ">>> launching ${NUM_SHARDS} shards (one per GPU: ${GPUS[*]}) of ${BASE_PATH}/src/gradient_capture.py"
 pids=()
 for i in "${!GPUS[@]}"; do
@@ -50,8 +47,7 @@ for i in "${!pids[@]}"; do
 done
 [[ ${shard_fail} -eq 0 ]] || exit 1
 
-# Merge pass (--num-shards 1, default): all per-sample npz now exist, so every record resumes
-# from disk and this just rebuilds the parquet. Still loads the model, so give it one GPU.
+# Merge pass: every npz exists, so this only rebuilds the parquet (still loads the model).
 CMD="python -u ${BASE_PATH}/src/gradient_capture.py ${OPTS}"
 echo "${CMD}"
 CUDA_VISIBLE_DEVICES="${GPUS[0]}" ${CMD} 2>&1 | tee logs/qwen3-1.7b-capture.log

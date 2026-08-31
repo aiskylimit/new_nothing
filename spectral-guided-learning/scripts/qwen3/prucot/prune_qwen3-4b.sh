@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Phase 4 (Pru-CoT baseline): LLM-guided pruning for the Qwen3-4B-Instruct-2507 track (agent:
-# Qwen2.5-3B-Instruct, scale-matched to the student per paper Section 4.4 -- an oversized agent prunes steps the student still needs).
+# Pru-CoT LLM-guided pruning, Qwen3-4B track (agent: Qwen2.5-3B-Instruct, scale-matched).
 set -euo pipefail
 
 GPUS=(6 7)
@@ -17,19 +16,20 @@ fi
 export PYTHONPATH="${BASE_PATH}/src"
 mkdir -p "${BASE_PATH}/logs"
 
-DATA_PATH="${BASE_PATH}/data/qwen3-4b-instruct/train-s1k-segmented.jsonl"
-WEIGHTS_PATH="${BASE_PATH}/data/qwen3-4b-instruct/prucot-weights.parquet"
+DATA_PATH="${BASE_PATH}/data/qwen3-4b/train-segmented.jsonl"
+WEIGHTS_PATH="${BASE_PATH}/data/qwen3-4b/prucot-weights.parquet"
 LOCAL_MODELS_ROOT="${LOCAL_MODELS_ROOT:-/mnt/local/_models/aiskylimit_new_nothing}"
-TOKENIZER="${LOCAL_MODELS_ROOT}/Qwen3-4B-Instruct-2507"
+TOKENIZER="${LOCAL_MODELS_ROOT}/Qwen3-4B"
 PRUNING_AGENT="${LOCAL_MODELS_ROOT}/Qwen2.5-3B-Instruct"
-OUTPUT_PATH="${BASE_PATH}/data/qwen3-4b-instruct/train-prucot.jsonl"
+OUTPUT_PATH="${BASE_PATH}/data/qwen3-4b/train-prucot.jsonl"
+# Paper-faithful; no <8k-token sample filter -- we keep the full dataset.
 CANDIDATE_THRESHOLD=0.5
 MEDIAN_GATE_THRESHOLD=1.0
-# The pruning agents are all Qwen2.5 (1.5B/3B/7B), whose context is 32768 -- vLLM aborts at
-# startup if max_model_len exceeds that. 32768 is the hard ceiling here, not a tunable.
-MAX_MODEL_LEN=32768
-# vLLM tensor-parallel across every GPU in GPUS (must equal the GPU count, or vLLM aborts).
+MAX_TOKENS=8192
+MAX_MODEL_LEN=32768   # Qwen2.5 agent context ceiling; raised from paper's 16384 to fit long samples.
 TENSOR_PARALLEL_SIZE=${#GPUS[@]}
+# Empty = keep every sample. Must match weight_qwen3-4b.sh's PRUCOT_MAX_LENGTH.
+MAX_LENGTH="${PRUCOT_MAX_LENGTH:-}"
 
 OPTS=""
 OPTS+=" --data-path ${DATA_PATH}"
@@ -39,11 +39,13 @@ OPTS+=" --pruning-agent ${PRUNING_AGENT}"
 OPTS+=" --output-path ${OUTPUT_PATH}"
 OPTS+=" --candidate-threshold ${CANDIDATE_THRESHOLD}"
 OPTS+=" --median-gate-threshold ${MEDIAN_GATE_THRESHOLD}"
+OPTS+=" --max-tokens ${MAX_TOKENS}"
 OPTS+=" --max-model-len ${MAX_MODEL_LEN}"
 OPTS+=" --tensor-parallel-size ${TENSOR_PARALLEL_SIZE}"
+[[ -n "${MAX_LENGTH}" ]] && OPTS+=" --max-length ${MAX_LENGTH}"
 
-CMD="python ${BASE_PATH}/src/prucot_prune.py ${OPTS}"
+CMD="python -u ${BASE_PATH}/src/prucot_prune.py ${OPTS}"
 echo "${CMD}"
-${CMD} 2>&1 | tee "${BASE_PATH}/logs/qwen3-4b-instruct-prucot-prune.log"
+${CMD} 2>&1 | tee "${BASE_PATH}/logs/qwen3-4b-prucot-prune.log"
 
 echo ">>> STOP AND READ: check the step/token drop table above -- ~0% means prucot == vanilla."
