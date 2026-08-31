@@ -20,7 +20,7 @@ SUBSETS=(
 # =========================================================================
 # Dùng torchrun để khởi chạy
 # =========================================================================
-torchrun --nproc_per_node=$NUM_GPUS_PER_NODE \
+torchrun --standalone --nproc_per_node=$NUM_GPUS_PER_NODE \
     $TRAIN_SCRIPT \
     --model_name models/B3_Qwen2_2B \
     --lora True \
