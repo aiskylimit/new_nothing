@@ -1,4 +1,4 @@
-#1 +60
+#2 -0-10
 #talas
 #v1
 
@@ -19,9 +19,9 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
 
-cd ./talas_vlm_embed
-bash ./project_commands.sh
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 /tmp/llm_pretrain_burn.py &
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
+# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 /tmp/llm_pretrain_burn.py &
 
 # cd ./spectral-guided-learning
 # bash ./project_commands.sh
