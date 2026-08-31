@@ -1,68 +1,61 @@
-# ---------------------------------------------------------------------------
-# 0. Go to repo root
-# ---------------------------------------------------------------------------
-cd segd_distillation
+#!/usr/bin/env bash
+# SEGD classification command notes
+
+export PROJECT_ROOT="/mnt/local/aiskylimit_new_nothing/segd_distillation"
+export HF_HOME="${PROJECT_ROOT}/.hf_home"
+cd "$PROJECT_ROOT"
 
 # ---------------------------------------------------------------------------
-# 1. Setup env
+# 1. Setup once
 # ---------------------------------------------------------------------------
-apt-get update
-apt-get upgrade -y
-python -m venv vlm
-source vlm/bin/activate
-pip install -r requirements.txt
-python fix_lib.py
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 
 # ---------------------------------------------------------------------------
-# 2. Download train images (MMEB-train, cls subsets only)
-#    ImageNet_1K, N24News, HatefulMemes, VOC2007, SUN397
+# 2. Download once; skip this section when data/models already exist
 # ---------------------------------------------------------------------------
-pip install -U huggingface_hub hf_transfer
-export HF_HUB_ENABLE_HF_TRANSFER=1
-python download.py
+while read -r mode source destination; do
+    [[ -z "${mode:-}" || "$mode" == \#* ]] && continue
+    mkdir -p "$destination"
+    case "$mode" in
+        --url) wget --continue --directory-prefix="$destination" "$source" ;;
+        --hf)  hf download "$source" --local-dir "$destination" ;;
+    esac
+done < download.txt
+
+# B3_Qwen2_2B is an adapter; cache its base model too.
+hf download Qwen/Qwen2-VL-2B-Instruct
 
 # ---------------------------------------------------------------------------
-# 3. Download eval images (MMEB-eval)
+# 3. Recommended: run the complete pipeline
 # ---------------------------------------------------------------------------
-hf download TIGER-Lab/MMEB-eval images.zip --repo-type dataset --local-dir .
-mkdir -p eval_images
-unzip -o images.zip -d eval_images/
-rm -f images.zip
-# ImageNet-1K only (optional):
-# unzip images.zip "ImageNet-1K/*" -d eval_images/
+bash project_commands.sh
+
+# Outputs:
+# training/FastVLM-0.5B_segd_eos_cls_full/checkpoint-final/
+# MMEB-evaloutputs-json/FastVLM-0.5B_segd_eos_cls_full/
 
 # ---------------------------------------------------------------------------
-# 4. Train SEGD (classification metatask)
-#    Edit hyperparams in scripts/cls/run_segd_cls.sh (do not edit the interface).
+# 4. Run individual stages only when needed
 # ---------------------------------------------------------------------------
+
+# Train only:
+CUDA_VISIBLE_DEVICES=1 \
+MODEL_NAME="${PROJECT_ROOT}/models/FastVLM-0.5B" \
+TEACHER_MODEL_NAME="${PROJECT_ROOT}/models/B3_Qwen2_2B" \
+EXP_NAME="FastVLM-0.5B_segd_eos_cls_full" \
+PERCENT_DATA=1.0 \
 bash scripts/cls/run_segd_cls.sh
 
-# Or override without editing:
-# EXP_NAME=my_segd_run LEARNING_RATE=2e-4 SEGD_LAMBDA_SPECTRAL=0.5 bash scripts/cls/run_segd_cls.sh
-# bash scripts/cls/run_segd_cls.sh --learning_rate 2e-4
-
-# Checkpoints written to:
-#   training/FastVLM-0.5B_segd_eos_cls/checkpoint-epoch-0
-#   training/FastVLM-0.5B_segd_eos_cls/checkpoint-final
-
-# Useful SEGD flags (already set in the script):
-#   --kd_loss_type segd_loss
-#   --segd_lambda_sim 1.0
-#   --segd_lambda_spectral 1.0
-#   --segd_tau_graph 1.0
-#   --segd_num_align_layers 4
-#   --segd_k_eigen_min 8
-#   --num_projectors 1          # required for FastVLM 896 → Qwen2 1536 (L_sim)
-#   --pooling eos
-#   --teacher_pooling eos
-
-# ---------------------------------------------------------------------------
-# 5. Eval on MMEB (classification subsets)
-# ---------------------------------------------------------------------------
+# Eval only:
+CUDA_VISIBLE_DEVICES=1 \
+EXP_NAME="FastVLM-0.5B_segd_eos_cls_full" \
+MODEL="training/FastVLM-0.5B_segd_eos_cls_full/checkpoint-final" \
 bash scripts/cls/eval_segd_cls.sh
 
-# Override checkpoint / exp name:
-# EXP_NAME=my_segd_run MODEL=training/my_segd_run/checkpoint-final bash scripts/cls/eval_segd_cls.sh
-
-# Results / embeddings under:
-#   ./MMEB-eval_outputs/FastVLM-0.5B_segd_eos_cls/
+# Keep JSON scores only:
+python json_filter.py \
+    ./MMEB-eval_outputs \
+    ./MMEB-evaloutputs-json \
+    --overwrite
