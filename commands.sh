@@ -1,5 +1,5 @@
-#2 -0-10
-#talas
+#1 +10
+#test
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json +a
