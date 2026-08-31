@@ -5,14 +5,7 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json +a
 
 # nvidia-smi
-# CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=1 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=2 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=3 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=4 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=5 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
 # sleep 3
@@ -38,11 +31,4 @@ export HF_DATASETS_OFFLINE=1
 # bash ./project_commands.sh
 
 
-# CUDA_VISIBLE_DEVICES=0 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=1 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=2 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=3 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=4 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=5 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=6 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
-# CUDA_VISIBLE_DEVICES=7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
