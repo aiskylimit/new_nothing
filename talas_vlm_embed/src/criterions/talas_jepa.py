@@ -43,10 +43,7 @@ class TalasJepa(nn.Module):
 
         return loss
 
-    def distillcse_kd_loss(
-            self, S1, S2,
-                T1, T2,
-                tau=0.05,):
+    def distillcse_kd_loss(self, S1, S2, T1, T2, tau=0.05,):
         """
         Distill teacher similarity distribution over in-batch negatives.
 
@@ -278,14 +275,14 @@ class TalasJepa(nn.Module):
 
         loss = contrastive_loss 
         if self.args.use_distill_loss:
-            loss += self.kd_weight * loss_distill
+            loss = loss + self.kd_weight * loss_distill
         if self.args.use_sigreg_loss:
-            loss += self.args.sigreg_weight * SIGReg
+            loss = loss + self.args.sigreg_weight * SIGReg
 
         return {
             'loss': loss,
             'contrastive_loss': contrastive_loss,
             'kd_loss': loss_distill,
-            'kd_simcse_loss': kd_simcse,
+            'kd_loss_simcse': kd_simcse,
             'sigreg_loss': SIGReg
         }
