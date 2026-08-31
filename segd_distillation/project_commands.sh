@@ -1,55 +1,51 @@
 #!/usr/bin/env bash
-# End-to-end SEGD cls pipeline for offline server (aiskylimit).
-# Prerequisite: prefetch data + models via segd_distillation/download.txt
-# (no wget/hf download in this script).
 
-set -e
+set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-/mnt/local/aiskylimit_new_nothing/segd_distillation}"
-UVENV="${UVENV:-/mnt/local/uvenvs/segd-distillation}"
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Override for offline aiskylimit: PROJECT_ROOT=/mnt/local/aiskylimit_new_nothing/segd_distillation
+PROJECT_ROOT="${PROJECT_ROOT:-${_SCRIPT_DIR}}"
+UVENV="${UVENV:-${PROJECT_ROOT}/.venv}"
+export CUDA_VISIBLE_DEVICES=1
 MODELS_ROOT="${MODELS_ROOT:-${PROJECT_ROOT}/models}"
 DATASETS_ROOT="${DATASETS_ROOT:-${PROJECT_ROOT}/datasets}"
 
 cd "$PROJECT_ROOT"
 source "${UVENV}/bin/activate"
 
-# Offline server: local mirrors from download.txt
+# Local models/images prefetched by download.txt.
 export MODEL_NAME="${MODEL_NAME:-${MODELS_ROOT}/FastVLM-0.5B}"
 export TEACHER_MODEL_NAME="${TEACHER_MODEL_NAME:-${MODELS_ROOT}/B3_Qwen2_2B}"
-export DATASET_NAME="${DATASET_NAME:-vlm2vec_train/MMEB-train}"
-export IMAGE_DIR="${IMAGE_DIR:-vlm2vec_train/MMEB-train}"
+export EXP_NAME="${EXP_NAME:-FastVLM-0.5B_segd_eos_cls_full}"
+export PERCENT_DATA="${PERCENT_DATA:-1.0}"
 
 python fix_lib.py
 
-# #
-# # 3. Unzip the dataset (zips prefetched to ${DATASETS_ROOT}/ by download.txt)
-# #
-mkdir -p vlm2vec_train/MMEB-train/images
-mkdir -p eval_images
-unzip -o "${DATASETS_ROOT}/ImageNet_1K.zip" -d ./vlm2vec_train/MMEB-train/images/
-unzip -o "${DATASETS_ROOT}/HatefulMemes.zip" -d ./vlm2vec_train/MMEB-train/images/
-unzip -o "${DATASETS_ROOT}/VOC2007.zip" -d ./vlm2vec_train/MMEB-train/images/
-unzip -o "${DATASETS_ROOT}/N24News.zip" -d ./vlm2vec_train/MMEB-train/images/
-unzip -o "${DATASETS_ROOT}/SUN397.zip" -d ./vlm2vec_train/MMEB-train/images/
-unzip -o "${DATASETS_ROOT}/images.zip" -d ./eval_images/
+# Extract prefetched images once.
+TRAIN_IMAGES_DIR="${PROJECT_ROOT}/vlm2vec_train/MMEB-train/images"
+EVAL_IMAGES_DIR="${PROJECT_ROOT}/eval_images"
+mkdir -p "$TRAIN_IMAGES_DIR" "$EVAL_IMAGES_DIR"
 
+for subset in ImageNet_1K HatefulMemes VOC2007 N24News SUN397; do
+    if [[ ! -d "${TRAIN_IMAGES_DIR}/${subset}" ]]; then
+        unzip -q -o "${DATASETS_ROOT}/${subset}.zip" -d "$TRAIN_IMAGES_DIR"
+    fi
+done
 
+if ! compgen -G "${EVAL_IMAGES_DIR}/*" > /dev/null; then
+    unzip -q -o "${DATASETS_ROOT}/images.zip" -d "$EVAL_IMAGES_DIR"
+fi
 
+# Run sequentially so a train/eval failure stops the pipeline.
+bash scripts/cls/run_segd_cls.sh
 
-CUDA_VISIBLE_DEVICES=1 bash scripts/cls/run_segd_cls.sh &
-wait
+EVAL_MODEL="${MODEL:-training/${EXP_NAME}/checkpoint-final}"
+if [[ ! -f "${EVAL_MODEL}/config.json" ]]; then
+    echo "ERROR: training checkpoint not found: ${EVAL_MODEL}" >&2
+    exit 1
+fi
 
-
-# =========================
-# 8. Eval
-# =========================
-
-CUDA_VISIBLE_DEVICES=1 bash scripts/cls/eval_segd_cls.sh &
-wait
-
-# =========================
-# 9. Copy JSON eval outputs
-# =========================
+MODEL="$EVAL_MODEL" bash scripts/cls/eval_segd_cls.sh
 
 JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
 

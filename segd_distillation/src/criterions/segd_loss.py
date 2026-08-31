@@ -32,6 +32,7 @@ from src.criterions.sgd_loss import (
 logger = logging.getLogger(__name__)
 
 _EPS = 1e-8
+_EIGEN_JITTER = 1e-6
 _NODE_TYPES = ("txt", "vis", "all")
 _CLUSTERS = ("qry", "pos")
 
@@ -176,8 +177,32 @@ def build_normalized_laplacian(w: torch.Tensor) -> torch.Tensor:
 
 
 def get_eigenspace(lap: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    eigvals, eigvecs = torch.linalg.eigh(lap)
-    return eigvals, eigvecs
+    output_dtype = lap.dtype
+    stable_lap = lap.double()
+    stable_lap = 0.5 * (stable_lap + stable_lap.mT)
+
+    # Repeated eigenvalues make CUDA eigh unstable and its backward undefined.
+    # A tiny deterministic diagonal split keeps the eigenspace differentiable.
+    n = int(stable_lap.size(-1))
+    scale = stable_lap.detach().abs().amax().clamp_min(1.0)
+    diagonal = torch.linspace(
+        0.0, _EIGEN_JITTER, n,
+        device=stable_lap.device,
+        dtype=stable_lap.dtype,
+    )
+    stable_lap = stable_lap + torch.diag(diagonal * scale)
+
+    try:
+        eigvals, eigvecs = torch.linalg.eigh(stable_lap)
+    except RuntimeError as error:
+        if "linalg.eigh" not in str(error):
+            raise
+        logger.warning("CUDA eigh failed; retrying this graph on CPU")
+        eigvals, eigvecs = torch.linalg.eigh(stable_lap.cpu())
+        eigvals = eigvals.to(lap.device)
+        eigvecs = eigvecs.to(lap.device)
+
+    return eigvals.to(output_dtype), eigvecs.to(output_dtype)
 
 
 def select_k_by_eigengap(
