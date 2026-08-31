@@ -56,8 +56,8 @@ unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d .
 # wait
 
 CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.5 &
-CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 0 1.0 0.05 &
-CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 0 1 1.0 0.01 &
+CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.05 &
+CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.01 &
 CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 2.0 0.05 &
 wait
 
