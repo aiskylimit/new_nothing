@@ -1,14 +1,14 @@
-#1 +60
-#talas
+#1 +30
+#test
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json +a
 
-# nvidia-smi
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
+nvidia-smi
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py > /dev/null 2>&1 &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-# sleep 3
+sleep 3
 nvidia-smi
 
 export PATH=/usr/local/cuda/bin:$PATH
