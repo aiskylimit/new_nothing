@@ -17,13 +17,13 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
 # unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
 # unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/OK-VQA.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/A-OKVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/DocVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/InfographicsVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/OK-VQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/A-OKVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/DocVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/InfographicsVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
 
 # #
 # # 4. Unzip the cache
@@ -55,10 +55,16 @@ unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d .
 # CUDA_VISIBLE_DEVICES=0,1,2,3 bash script_full/train_distill_sigreg_cls.sh 1 1 0 0 1.0 0.05 &
 # wait
 
-CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.5 &
-CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.05 &
-CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.01 &
-CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 2.0 0.05 &
+# CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.5 &
+# CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.05 &
+# CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.01 &
+# CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 2.0 0.05 &
+# wait
+
+CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
+CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.05 &
+CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
+CUDA_VISIBLE_DEVICES=6,7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 2.0 0.05 &
 wait
 
 
