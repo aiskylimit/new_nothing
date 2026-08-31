@@ -17,6 +17,14 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
 # unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
 # unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/OK-VQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/A-OKVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/DocVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/InfographicsVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
+
 # #
 # # 4. Unzip the cache
 # #

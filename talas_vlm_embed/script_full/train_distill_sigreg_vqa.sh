@@ -142,19 +142,11 @@ echo "============================================================"
 # ============================================================
 
 SUBSETS=(
-    "ImageNet-1K"
-    "N24News"
-    "HatefulMemes"
-    "VOC2007"
-    "SUN397"
-    "Place365"
-    "ImageNet-A"
-    "ImageNet-R"
-    "ObjectNet"
-    "Country211"
+  "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W"
+  "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_vqa_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
