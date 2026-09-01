@@ -210,18 +210,27 @@ class Trainer:
             
                 if is_main_process():
                     current_lr = self.lr_scheduler.get_last_lr()[0]
-                    progress_bar.set_postfix({
-                        'loss': f"{batch_loss:.4f}",
-                        'kd_loss': f"{batch_kd_loss:.4f}",
-                        'contrastive_loss': f"{batch_contrastive_loss:.4f}",
-                        'kd_rkd_loss': f"{batch_kd_rkd_loss:.4f}",
-                        'cross_modal_loss': f"{batch_cross_modal_loss:.4f}",
-                        'ot_loss': f"{batch_ot_loss:.4f}",
-                        'kd_dtw_loss': f"{batch_kd_dtw_loss:.4f}",
-                        'kd_loss_mse': f"{batch_kd_loss_mse:.4f}",
-                        'kd_penultimate_loss': f"{batch_kd_penultimate_loss:.4f}",
-                        'lr': f"{self.lr_scheduler.get_last_lr()[0]:.6f}",
-                    })
+                    if 'segd_loss' in loss_dict:
+                        progress_bar.set_postfix({
+                            'loss': f"{batch_loss:.4f}",
+                            'contrastive_loss': f"{loss_dict['contrastive_loss'].detach().item():.4f}",
+                            'sim_loss': f"{loss_dict['sim_loss'].detach().item():.4f}",
+                            'segd_loss': f"{loss_dict['segd_loss'].detach().item():.4f}",
+                            'lr': f"{current_lr:.6f}",
+                        })
+                    else:
+                        progress_bar.set_postfix({
+                            'loss': f"{batch_loss:.4f}",
+                            'kd_loss': f"{batch_kd_loss:.4f}",
+                            'contrastive_loss': f"{batch_contrastive_loss:.4f}",
+                            'kd_rkd_loss': f"{batch_kd_rkd_loss:.4f}",
+                            'cross_modal_loss': f"{batch_cross_modal_loss:.4f}",
+                            'ot_loss': f"{batch_ot_loss:.4f}",
+                            'kd_dtw_loss': f"{batch_kd_dtw_loss:.4f}",
+                            'kd_loss_mse': f"{batch_kd_loss_mse:.4f}",
+                            'kd_penultimate_loss': f"{batch_kd_penultimate_loss:.4f}",
+                            'lr': f"{current_lr:.6f}",
+                        })
                     progress_bar.update(1)
 
                     # <--- [THÊM] Log metrics vào wandb
