@@ -5,8 +5,8 @@ set -euo pipefail
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
 
-STUDENT_MODEL="${STUDENT_MODEL:-/workspace/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct}"
-TEACHER_MODEL="${TEACHER_MODEL:-/workspace/VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct}"
+STUDENT_MODEL="${STUDENT_MODEL:-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct}"
+TEACHER_MODEL="${TEACHER_MODEL:-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct}"
 DATA_PATH="${DATA_PATH:-train_data/llava_v1_5_mix665k.json}"
 IMAGE_DIR="${IMAGE_DIR:-train_data}"
 RUN_NAME="${RUN_NAME:-qwen3_teacher_8b_qwen25_student_3b_ce_only}"

@@ -239,8 +239,10 @@ class TalasJepa(nn.Module):
             if len(stu_img_qry_reps) > 0:
                 stu_img_qry_reps = torch.stack(stu_img_qry_reps, dim=0)
                 SIGReg = SIGReg + self.sigreg(stu_img_qry_reps, num_slices=128)
-                vision_loss += nn.MSELoss()(stu_img_qry_reps, 
-                                            projectors['t2s'](tea_img_qry_reps))
+                # vision_loss += nn.MSELoss()(stu_img_qry_reps, 
+                #                             projectors['t2s'](tea_img_qry_reps))
+
+                vision_loss += self.structure_loss(stu_img_qry_reps, tea_img_qry_reps)
 
         if teacher_pos_reps is not None:
             stu_img_pos_reps = []
@@ -262,10 +264,12 @@ class TalasJepa(nn.Module):
             if len(stu_img_pos_reps) > 0:
                 stu_img_pos_reps = torch.stack(stu_img_pos_reps, dim=0)
                 SIGReg = SIGReg + self.sigreg(stu_img_pos_reps, num_slices=128)
-                vision_loss += nn.MSELoss()(stu_img_pos_reps, 
-                                            projectors['t2s'](tea_img_pos_reps))
+                # vision_loss += nn.MSELoss()(stu_img_pos_reps, 
+                #                             projectors['t2s'](tea_img_pos_reps))
+                vision_loss += self.structure_loss(stu_img_qry_reps, tea_img_qry_reps)
 
-        vision_loss = vision_loss / (len(stu_img_qry_reps) + len(stu_img_pos_reps) + 1e-8)
+        if len(stu_img_qry_reps) > 0 and len(stu_img_pos_reps) > 0:
+            vision_loss = vision_loss / 2
 
         loss_distill = torch.zeros_like(contrastive_loss)
         if self.args.use_distill_cse_loss:

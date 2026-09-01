@@ -44,10 +44,10 @@ bool_to_python() {
 bool_to_int() {
     case "$1" in
         1|true|True|TRUE)
-            echo "1"
+        echo "1"
             ;;
         0|false|False|FALSE)
-            echo "0"
+        echo "0"
             ;;
         *)
             echo "ERROR: Boolean argument must be 0/1 or True/False, got '$1'" >&2
@@ -74,9 +74,9 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_cls_v3_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_cls_v2_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
-OUTPUT_DIR="training/FastVLM-0.5B_${EXP_NAME}"
+OUTPUT_DIR="training/llava_ov-0.5B_cls_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"
 
 echo "============================================================"
@@ -102,7 +102,7 @@ TRAIN_SCRIPT="train_ddp.py"
 
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name models/FastVLM-0.5B \
+    --model_name models/llava-onevision-qwen2-0.5b-ov-hf \
     --teacher_model_name "raghavlite/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
@@ -111,7 +111,7 @@ torchrun --standalone \
     --teacher_lora_r 8 \
     --teacher_pooling "eos" \
     --teacher_backbone "qwen2_vl" \
-    --model_backbone "llava_qwen2" \
+    --model_backbone "llava_onevision" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
@@ -119,7 +119,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "$OUTPUT_DIR" \
-    --per_device_train_batch_size 16 \
+    --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -135,7 +135,7 @@ torchrun --standalone \
     --warmup_ratio 0.05 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
-    --image_resolution "low" \
+    --image_resolution "tiny" \
     --projector_config_path "./config/projector_config_emo.json" \
     --num_self_kd_layers 3 \
     --projector_lr 5e-5 \
@@ -185,7 +185,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_cls_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -194,7 +194,7 @@ python eval_mmeb.py \
     --lora_r 64 \
     --lora_alpha 64 \
     --pooling eos \
-    --model_backbone llava_qwen2 \
+    --model_backbone llava_onevision \
     --normalize True \
     --bf16 \
     --dataset_name vlm2vec_eval/MMEB-eval \
@@ -202,6 +202,7 @@ python eval_mmeb.py \
     --dataset_split test \
     --per_device_eval_batch_size 64 \
     --image_dir eval_images/ \
+    --image_resolution "tiny" \
     --tgt_prefix_mod \
     --load_pretrained_lora True \
     --report_to none

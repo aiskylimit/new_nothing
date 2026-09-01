@@ -44,10 +44,10 @@ bool_to_python() {
 bool_to_int() {
     case "$1" in
         1|true|True|TRUE)
-            echo "1"
+        echo "1"
             ;;
         0|false|False|FALSE)
-            echo "0"
+        echo "0"
             ;;
         *)
             echo "ERROR: Boolean argument must be 0/1 or True/False, got '$1'" >&2
@@ -74,10 +74,10 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_cls_v3_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_cls_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
-OUTPUT_DIR="training/FastVLM-0.5B_${EXP_NAME}"
-CACHE_DIR="caching/B3_Qwen2_2B_cls"
+OUTPUT_DIR="training/FastVLM-0.5B_vqa_${EXP_NAME}"
+CACHE_DIR="caching/B3_Qwen2_2B_vqa"
 
 echo "============================================================"
 echo "Experiment:"
@@ -114,7 +114,7 @@ torchrun --standalone \
     --model_backbone "llava_qwen2" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
-    --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
+    --subset_name "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
@@ -173,19 +173,11 @@ echo "============================================================"
 # ============================================================
 
 SUBSETS=(
-    "ImageNet-1K"
-    "N24News"
-    "HatefulMemes"
-    "VOC2007"
-    "SUN397"
-    "Place365"
-    "ImageNet-A"
-    "ImageNet-R"
-    "ObjectNet"
-    "Country211"
+  "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W"
+  "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_vqa_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
