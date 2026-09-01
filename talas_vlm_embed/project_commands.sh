@@ -70,10 +70,10 @@ CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 
 # wait
 
 CUDA_VISIBLE_DEVICES=6 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.1 &
-CUDA_VISIBLE_DEVICES=6 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.05 &
-CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
-CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.2 &
-CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
+# CUDA_VISIBLE_DEVICES=6 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.05 &
+# CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
+# CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.2 &
+# CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
 wait
 
 
