@@ -33,8 +33,8 @@ def worker(rank, world_size, master_port):
     torch.cuda.set_device(rank)
     device = torch.device(f"cuda:{rank}")
 
-    x = torch.randn(1024, 1024, device=device)
-    y = torch.randn(1024, 1024, device=device)
+    x = torch.randn(1524, 1524, device=device)
+    y = torch.randn(1524, 1524, device=device)
 
     while True:
         # GPU tính toán
