@@ -29,5 +29,5 @@ fi
 
 #bash download_datatrain.sh
 
-export CUDA_VISIBLE_DEVICES=4,5
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 bash script_train/run_baseline.sh
