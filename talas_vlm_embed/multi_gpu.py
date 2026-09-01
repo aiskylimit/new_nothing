@@ -7,7 +7,7 @@ import torch.multiprocessing as mp
 
 def worker(rank, world_size):
     os.environ["MASTER_ADDR"] = "127.0.0.1"
-    os.environ["MASTER_PORT"] = "29505"
+    os.environ["MASTER_PORT"] = "29507"
 
     dist.init_process_group(
         backend="nccl",
@@ -18,8 +18,8 @@ def worker(rank, world_size):
     torch.cuda.set_device(rank)
     device = torch.device(f"cuda:{rank}")
 
-    x = torch.randn(512, 512, device=device)
-    y = torch.randn(512, 512, device=device)
+    x = torch.randn(1024, 1024, device=device)
+    y = torch.randn(1024, 1024, device=device)
 
     while True:
         # GPU tính toán
