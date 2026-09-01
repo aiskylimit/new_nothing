@@ -24,13 +24,28 @@ done < download.txt
 hf download Qwen/Qwen2-VL-2B-Instruct
 
 # ---------------------------------------------------------------------------
-# 3. Recommended: run the complete pipeline
+# 3. Run the complete pipeline
 # ---------------------------------------------------------------------------
 bash project_commands.sh
 
 # Outputs:
 # training/FastVLM-0.5B_segd_eos_cls_full/checkpoint-final/
 # MMEB-evaloutputs-json/FastVLM-0.5B_segd_eos_cls_full/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ---------------------------------------------------------------------------
 # 4. Run individual stages only when needed
