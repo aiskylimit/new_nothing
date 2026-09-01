@@ -19,7 +19,7 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-ls mnt/local/uvenvs
+ls /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 
 # cd ./talas_vlm_embed
 # CUDA_VISIBLE_DEVICES=0,1,2,3,6,7 python3 multi_gpu.py &
