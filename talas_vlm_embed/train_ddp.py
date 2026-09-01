@@ -236,7 +236,10 @@ class Trainer:
                 
                 model = self.model_wrapper.module.model
                 model.encoder.save_pretrained(ckpt_dir)
-                torch.save(model.encoder.model.model.mm_projector.state_dict(), projector_dir)
+                if self.model_args.model_backbone in ["llava_onevision", "llava_two_vision"]:
+                    torch.save(model.encoder.model.multi_modal_projector.state_dict(), projector_dir)
+                else:
+                    torch.save(model.encoder.model.model.mm_projector.state_dict(), projector_dir)
                 model_config = AutoConfig.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
                 tokenizer = AutoTokenizer.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
                 if model_config:

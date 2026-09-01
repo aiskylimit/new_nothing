@@ -1,8 +1,12 @@
+#d
+#datasets
+--url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_vqa.tar.gz /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
+
+
+
 #1 +10
 #test
 #v1
-
-rm -rf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_vqa.tar.gz
 
 # #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
 
