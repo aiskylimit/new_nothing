@@ -1,4 +1,4 @@
-#d list
+#d stop all
 #test
 #v1
 
