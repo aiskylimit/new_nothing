@@ -74,7 +74,7 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_cls_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_v4_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
 OUTPUT_DIR="training/llava_ov-0.5B_vqa_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_vqa"
@@ -192,7 +192,7 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 64 \
+    --per_device_eval_batch_size 32 \
     --image_dir eval_images/ \
     --image_resolution "tiny" \
     --tgt_prefix_mod \
