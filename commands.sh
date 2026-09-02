@@ -1,48 +1,13 @@
-#1 +10
-#talas
-#v2
-
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
-
-# nvidia-smi
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
-kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-# sleep 3
-CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-nvidia-smi
-
-export PATH=/usr/local/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-export HF_HUB_OFFLINE=1
-export TRANSFORMERS_OFFLINE=1
-export HF_DATASETS_OFFLINE=1
-
-cd ./talas_vlm_embed
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=6,7 python3 multi_gpu.py &
-bash ./project_commands.sh
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
-# cd ./spectral-guided-learning
-# bash ./project_commands.sh
-
-# cd ./reward-guidance-main
-# bash ./project_command.sh
-
-# cd ./VLM_Distillation-main
-# bash ./project_commands.sh
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-
+#d
+#datasets
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/llava_v1_5_mix665k.json /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/train_val_images.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/textvqa
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/coco/train2017.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/coco
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/gqa/images.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/gqa
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/ocr_vqa/ocr_vqa_images.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/ocr_vqa
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/ocr_vqa/dataset.json /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/ocr_vqa
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/vg/images.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/vg
+--url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/vg/images2.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/vg
+#models
+--hf Qwen/Qwen2.5-VL-3B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct
+--hf Qwen/Qwen3-VL-8B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen3-VL-8B-Instruct
