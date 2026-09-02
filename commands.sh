@@ -1,2 +1,2 @@
-#i talas-vlm-embed.txt
+#i vlm-distillation.txt
 #talas-test
