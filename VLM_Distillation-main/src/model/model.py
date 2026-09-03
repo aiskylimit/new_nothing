@@ -37,10 +37,11 @@ class VLMModel(nn.Module):
 
     TRANSFORMER_CLS = AutoModelForCausalLM
 
-    def __init__(self, encoder: PreTrainedModel):
+    def __init__(self, encoder: PreTrainedModel, output_attentions: bool = True):
         super().__init__()
         self.encoder = encoder
         self.config = encoder.config
+        self.output_attentions = output_attentions
 
     @staticmethod
     def _distributed_context():
@@ -62,24 +63,32 @@ class VLMModel(nn.Module):
             setattr(config, name, value)
 
     @classmethod
-    def _force_eager_attention(cls, config, vision_output_attentions=True):
+    def _force_eager_attention(cls, config, vision_output_attentions=True, output_attentions=True):
         config.use_cache = False
-        config._attn_implementation = "eager"
-        config.attn_implementation = "eager"
-        config.output_attentions = True
+        if output_attentions:
+            # Transformers generally needs eager attention when callers request
+            # the full attention matrices.  Keep that behaviour for criteria
+            # such as SCVA/SRE, but leave the configured efficient backend alone
+            # when a criterion (for example DWA-KD) does not consume attentions.
+            config._attn_implementation = "eager"
+            config.attn_implementation = "eager"
+        config.output_attentions = output_attentions
         config.output_hidden_states = True
 
         for sub_config_name in ("text_config", "vision_config", "vision_config_2", "audio_config"):
             sub_config = getattr(config, sub_config_name, None)
             if sub_config is None:
                 continue
-            sub_config._attn_implementation = "eager"
-            sub_config.attn_implementation = "eager"
-            output_attentions = False if sub_config_name.startswith("vision_config") else True
+            if output_attentions:
+                sub_config._attn_implementation = "eager"
+                sub_config.attn_implementation = "eager"
+            sub_output_attentions = (
+                vision_output_attentions if sub_config_name.startswith("vision_config") else output_attentions
+            )
             cls._set_config_attr_if_present(
                 sub_config,
                 "output_attentions",
-                vision_output_attentions if sub_config_name.startswith("vision_config") else output_attentions,
+                sub_output_attentions,
             )
             cls._set_config_attr_if_present(sub_config, "output_hidden_states", True)
             cls._set_config_attr_if_present(sub_config, "use_cache", False)
@@ -147,12 +156,11 @@ class VLMModel(nn.Module):
             model_inputs[key] = self._cast_floating_tensors(value, dtype)
         return model_inputs
 
-    @staticmethod
-    def _forward_defaults():
+    def _forward_defaults(self):
         return {
             "return_dict": True,
             "output_hidden_states": True,
-            "output_attentions": True,
+            "output_attentions": self.output_attentions,
             "use_cache": False,
         }
 
@@ -166,7 +174,7 @@ class VLMModel(nn.Module):
         forward_kwargs.update(model_inputs)
         forward_kwargs["return_dict"] = True
         forward_kwargs["output_hidden_states"] = True
-        forward_kwargs["output_attentions"] = True
+        forward_kwargs["output_attentions"] = self.output_attentions
         forward_kwargs["use_cache"] = False
 
         return self.encoder(**forward_kwargs)
@@ -220,7 +228,13 @@ class VLMModel(nn.Module):
         return model
 
     @classmethod
-    def _load_base_model(cls, model_args: ModelArguments, model_name_or_path: str, **kwargs):
+    def _load_base_model(
+        cls,
+        model_args: ModelArguments,
+        model_name_or_path: str,
+        output_attentions: bool = True,
+        **kwargs,
+    ):
         config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
         model_backbone = get_backbone_name(
             hf_config=config,
@@ -228,7 +242,11 @@ class VLMModel(nn.Module):
         )
         setattr(model_args, "model_backbone", model_backbone)
 
-        config = cls._force_eager_attention(config, vision_output_attentions=model_backbone != FAST_VLM)
+        config = cls._force_eager_attention(
+            config,
+            vision_output_attentions=output_attentions and model_backbone != FAST_VLM,
+            output_attentions=output_attentions,
+        )
         config.padding_side = "left"
 
         print_master(f"Loading generation backbone [{model_backbone}] from {model_name_or_path}")
@@ -300,23 +318,33 @@ class VLMModel(nn.Module):
         return base_model
 
     @classmethod
-    def build(cls, model_args: ModelArguments, **kwargs):
-        base_model, model_backbone = cls._load_base_model(model_args, model_args.model_name, **kwargs)
+    def build(cls, model_args: ModelArguments, output_attentions: bool = True, **kwargs):
+        base_model, model_backbone = cls._load_base_model(
+            model_args,
+            model_args.model_name,
+            output_attentions=output_attentions,
+            **kwargs,
+        )
         encoder = cls._wrap_lora_if_needed(base_model, model_args, cls._model_path(model_args), is_trainable=True)
-        model = cls(encoder=encoder)
+        model = cls(encoder=encoder, output_attentions=output_attentions)
         model.model_backbone = model_backbone
         return cls._place_model_for_distributed(model)
 
     @classmethod
-    def load(cls, model_args: ModelArguments, is_trainable=True, **kwargs):
+    def load(cls, model_args: ModelArguments, is_trainable=True, output_attentions: bool = True, **kwargs):
         model_name_or_path = cls._model_path(model_args)
 
         is_adapter_load = bool(model_args.load_pretrained_lora or (model_args.lora and model_args.checkpoint_path))
         base_load_path = model_args.model_name if is_adapter_load else model_name_or_path
-        base_model, model_backbone = cls._load_base_model(model_args, base_load_path, **kwargs)
+        base_model, model_backbone = cls._load_base_model(
+            model_args,
+            base_load_path,
+            output_attentions=output_attentions,
+            **kwargs,
+        )
         encoder = cls._wrap_lora_if_needed(base_model, model_args, model_name_or_path, is_trainable=is_trainable)
 
-        model = cls(encoder=encoder)
+        model = cls(encoder=encoder, output_attentions=output_attentions)
         model.model_backbone = model_backbone
         return cls._place_model_for_distributed(model)
 

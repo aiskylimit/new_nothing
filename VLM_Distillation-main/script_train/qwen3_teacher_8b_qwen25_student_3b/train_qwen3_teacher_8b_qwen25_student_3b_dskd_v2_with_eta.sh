@@ -26,7 +26,6 @@ torchrun \
   --teacher_model_name "${TEACHER_MODEL}" \
   --student_hidden_dim "${STUDENT_HIDDEN_DIM}" \
   --teacher_hidden_dim "${TEACHER_HIDDEN_DIM}" \
-  --projector_config_path "${PROJECTOR_CONFIG}" \
   --data_path "${DATA_PATH}" \
   --image_dir "${IMAGE_DIR}" \
   --output_dir "${OUTPUT_DIR}" \
@@ -34,7 +33,7 @@ torchrun \
   --lora true \
   --lora_r 128 \
   --lora_alpha 256 \
-  --per_device_train_batch_size 4 \
+  --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 1 \
   --num_train_epochs 1 \
   --learning_rate 1e-5 \

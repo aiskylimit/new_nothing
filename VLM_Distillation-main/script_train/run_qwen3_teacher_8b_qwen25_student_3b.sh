@@ -9,7 +9,7 @@ export PROJECT_DIR
 
 SCRIPTS=(
   # "train_qwen3_teacher_8b_qwen25_student_3b_ce_only.sh"
-  # "train_qwen3_teacher_8b_qwen25_student_3b_dskd_v2_with_eta.sh"
+  "train_qwen3_teacher_8b_qwen25_student_3b_dskd_v2_with_eta.sh"
   "train_qwen3_teacher_8b_qwen25_student_3b_dwa_kd.sh"
   "train_qwen3_teacher_8b_qwen25_student_3b_emkd.sh"
   "train_qwen3_teacher_8b_qwen25_student_3b_mcw_kd.sh"

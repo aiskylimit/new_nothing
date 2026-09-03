@@ -18,7 +18,7 @@ This repository is used to fine-tune and distill Vision-Language Models (VLMs) w
 | --- | --- |
 | `train.py` | Main training entry point. Initializes model, processor, criterion, dataset, trainer, and resume checkpoint handling. |
 | `requirements.txt` | Python dependencies for the repository. |
-| `config/` | Projector configs for specific KD methods, such as `dskd_v2_projectors.json`, `dwa_kd_projectors.json`, and `mcw_kd_projectors.json`. |
+| `config/` | Projector configs for methods that need explicit structures, such as DWA-KD and MCW-KD. DSKDv2 creates its dual-space mappings automatically from LM-head pseudo-inverses. |
 | `configs/` | Runtime configs, including DeepSpeed ZeRO-2 and evaluation configs. |
 | `docs/` | Technical notes and plans, for example the unit-aligned distillation training plan. |
 | `experiments/` | Experiment tracking files, such as `experiment_tracker.xlsx`. |
@@ -57,7 +57,7 @@ This repository is used to fine-tune and distill Vision-Language Models (VLMs) w
 | `cgkd.py` | CGKD: confidence-gated generative KD. |
 | `scva_cgkd.py` | Joint SCVA + CGKD criterion. Also available through the `draft` alias. |
 | `dwa_kd.py` | DWA-KD with KL, hidden/logit losses, SoftDTW, and projectors. |
-| `dskd_v2.py` | DSKD v2 with teacher-to-student/student-to-teacher projectors and top-k vocabulary config. |
+| `dskd_v2.py` | DSKD v2 with automatically created teacher-to-student/student-to-teacher mappings initialized from LM-head pseudo-inverses. |
 | `mcw_kd.py` | MCW-KD with OT/Sinkhorn losses for logits and hidden context. |
 | `cross_entropy_loss.py`, `various_divergence.py`, `soft_dtw_cuda.py`, `etp.py` | Shared loss helpers used by multiple criteria. |
 
@@ -82,7 +82,7 @@ Mapped `--kd_loss_type` values include: `ce_only`, `default`, `default_distillat
 | `script_train/mcw_kd/` | MCW-KD recipes. |
 
 
-For example, `script_train/dskd_v2/train_qwen3_teacher_4b_fastvlm_student_05b_dskd_v2_with_eta.sh` uses `FastVLM-0.5B` as the student and `Qwen3-VL-4B-Instruct` as the teacher. It uses `config/dskd_v2_projectors.json`, trains on `train_data/llava_v1_5_mix665k.json`, and writes outputs to `outputs/qwen3_teacher_4b_fastvlm_student_05b_dskd_v2_with_eta`.
+For example, `script_train/dskd_v2/train_qwen3_teacher_4b_fastvlm_student_05b_dskd_v2_with_eta.sh` uses `FastVLM-0.5B` as the student and `Qwen3-VL-4B-Instruct` as the teacher. DSKDv2 derives its projector shapes and pseudo-inverse initialization without a JSON projector config, trains on `train_data/llava_v1_5_mix665k.json`, and writes outputs to `outputs/qwen3_teacher_4b_fastvlm_student_05b_dskd_v2_with_eta`.
 
 ## Training Data
 
