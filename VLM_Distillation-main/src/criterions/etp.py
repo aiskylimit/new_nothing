@@ -31,15 +31,18 @@ class ETP(nn.Module):
         u = cost.new_full((rows, 1), 1.0 / rows)
 
         kernel = torch.exp(-cost * self.sinkhorn_alpha).clamp_min(self.epsilon)
-        err = cost.new_tensor(float("inf"))
         step = 0
-        while err > self.stop_threshold and step < self.max_iter:
+        while step < self.max_iter:
             v = b / (kernel.t().matmul(u) + self.epsilon)
             u = a / (kernel.matmul(v) + self.epsilon)
             step += 1
             if step % 50 == 1:
                 marginal = v * kernel.t().matmul(u)
                 err = torch.norm(torch.sum(torch.abs(marginal - b), dim=0), p=float("inf"))
+                # The old while condition copied this unchanged CUDA scalar to
+                # the CPU on every iteration.  It only changes at checkpoints.
+                if not bool(err > self.stop_threshold):
+                    break
 
         transport = u * (kernel * v.t())
         loss = torch.sum(transport * cost)

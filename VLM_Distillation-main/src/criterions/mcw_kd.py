@@ -7,6 +7,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from src.criterions.etp import ETP
 from src.criterions.various_divergence import VariousDivergence
@@ -87,32 +88,60 @@ def dist_fn_edit(left: str, right: str) -> int:
     return edit_distance(left, right)
 
 
-def dtw_alignment(series_1: List[str], series_2: List[str]) -> List[Tuple[int, int]]:
+def dtw_alignment(
+    series_1: List[str],
+    series_2: List[str],
+    edit_cache: Dict[Tuple[str, str], int] | None = None,
+) -> List[Tuple[int, int]]:
     if len(series_1) == 0 or len(series_2) == 0:
         return []
 
-    matrix = [[float("inf")] * (len(series_2) + 1) for _ in range(len(series_1) + 1)]
-    matrix[0][0] = 0.0
-    for i, value_1 in enumerate(series_1):
-        for j, value_2 in enumerate(series_2):
-            cost = float(dist_fn_edit(value_1, value_2))
-            matrix[i + 1][j + 1] = cost + min(
-                matrix[i][j + 1],
-                matrix[i + 1][j],
-                matrix[i][j],
-            )
+    # DTW only needs the previous row while filling the table.  Keep one byte
+    # per cell for backtracking instead of a Python float/object matrix, which
+    # is especially expensive for max-length responses.
+    rows, cols = len(series_1), len(series_2)
+    previous = [float("inf")] * (cols + 1)
+    previous[0] = 0.0
+    directions = bytearray(rows * cols)  # 0: diagonal, 1: up, 2: left
+    cache = edit_cache if edit_cache is not None else {}
 
-    matrix = [row[1:] for row in matrix[1:]]
-    i, j = len(series_1) - 1, len(series_2) - 1
+    for i, value_1 in enumerate(series_1):
+        current = [float("inf")] * (cols + 1)
+        for j, value_2 in enumerate(series_2):
+            # Levenshtein distance is symmetric.  A canonical key lets the
+            # reverse DTW pass reuse all token-pair distances as well.
+            key = (value_1, value_2) if value_1 <= value_2 else (value_2, value_1)
+            cost = cache.get(key)
+            if cost is None:
+                cost = dist_fn_edit(value_1, value_2)
+                cache[key] = cost
+
+            up = previous[j + 1]
+            left = current[j]
+            diagonal = previous[j]
+            current[j + 1] = float(cost) + min(up, left, diagonal)
+
+            # Match the original backtracking tie order: diagonal, up, left.
+            if i == 0 and j == 0:
+                direction = 0
+            elif i == 0:
+                direction = 2
+            elif j == 0:
+                direction = 1
+            elif diagonal <= up and diagonal <= left:
+                direction = 0
+            elif up <= left:
+                direction = 1
+            else:
+                direction = 2
+            directions[i * cols + j] = direction
+        previous = current
+
+    i, j = rows - 1, cols - 1
     aligned: List[Tuple[int, int]] = []
     while i > 0 or j > 0:
         aligned.append((i, j))
-        options = [
-            matrix[i - 1][j - 1] if i > 0 and j > 0 else float("inf"),
-            matrix[i - 1][j] if i > 0 else float("inf"),
-            matrix[i][j - 1] if j > 0 else float("inf"),
-        ]
-        move = min(range(3), key=lambda idx: options[idx])
+        move = directions[i * cols + j]
         if move == 0:
             i -= 1
             j -= 1
@@ -133,6 +162,95 @@ def _optional_projector(projectors: Any, name: str) -> nn.Module | None:
 def _crop_pair(left: torch.Tensor, right: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     dim = min(left.shape[-1], right.shape[-1])
     return left[..., :dim], right[..., :dim]
+
+
+def _pairwise_kl_cost_block(teacher_probs: torch.Tensor, student_probs: torch.Tensor) -> torch.Tensor:
+    """Original MCW pairwise KL expression for one teacher-token block."""
+    return (
+        teacher_probs.unsqueeze(1)
+        * torch.log(
+            (
+                teacher_probs.unsqueeze(1)
+                / student_probs.unsqueeze(0).clamp_min(1e-9)
+            ).clamp_min(1e-9)
+        )
+    ).sum(dim=-1)
+
+
+def pairwise_kl_cost(
+    teacher_probs: torch.Tensor,
+    student_probs: torch.Tensor,
+    teacher_chunk: int = 32,
+) -> torch.Tensor:
+    """Exact pairwise KL with bounded forward/backward temporary memory."""
+    teacher_probs = teacher_probs.float()
+    student_probs = student_probs.float()
+    blocks = []
+    use_checkpoint = torch.is_grad_enabled() and (teacher_probs.requires_grad or student_probs.requires_grad)
+    for start in range(0, teacher_probs.shape[0], teacher_chunk):
+        teacher_block = teacher_probs[start : start + teacher_chunk]
+        if use_checkpoint:
+            block = checkpoint(
+                _pairwise_kl_cost_block,
+                teacher_block,
+                student_probs,
+                use_reentrant=False,
+            )
+        else:
+            block = _pairwise_kl_cost_block(teacher_block, student_probs)
+        blocks.append(block)
+    return torch.cat(blocks, dim=0)
+
+
+def pairwise_cosine_cost(teacher: torch.Tensor, student: torch.Tensor) -> torch.Tensor:
+    """Pairwise cosine cost without broadcasting the hidden dimension."""
+    teacher = F.normalize(teacher.float(), dim=-1, eps=1e-8)
+    student = F.normalize(student.float(), dim=-1, eps=1e-8)
+    return 1.0 - teacher.matmul(student.transpose(0, 1))
+
+
+def context_window_mean(seq: torch.Tensor, window: int) -> torch.Tensor:
+    """Vectorized variable-width mean used at sequence boundaries."""
+    if seq.shape[0] == 0:
+        return seq
+    positions = torch.arange(seq.shape[0], device=seq.device)
+    starts = (positions - window).clamp_min(0)
+    ends = (positions + window + 1).clamp_max(seq.shape[0])
+    accumulation_dtype = torch.float32 if seq.dtype in (torch.float16, torch.bfloat16) else seq.dtype
+    prefix = torch.cat(
+        [
+            torch.zeros((1, seq.shape[1]), dtype=accumulation_dtype, device=seq.device),
+            seq.cumsum(dim=0, dtype=accumulation_dtype),
+        ],
+        dim=0,
+    )
+    counts = (ends - starts).to(dtype=accumulation_dtype).unsqueeze(-1)
+    means = (prefix.index_select(0, ends) - prefix.index_select(0, starts)) / counts
+    return means.to(dtype=seq.dtype)
+
+
+def topk_values_chunked(logits: torch.Tensor, k: int, sequence_chunk: int = 128) -> torch.Tensor:
+    """Top-k in FP32 without copying the entire sequence-vocabulary tensor."""
+    chunks = [
+        torch.topk(logits[:, start : start + sequence_chunk].float(), k, dim=-1).values
+        for start in range(0, logits.shape[1], sequence_chunk)
+    ]
+    return torch.cat(chunks, dim=1)
+
+
+def max_softmax_probability_sum(
+    logits: torch.Tensor,
+    mask: torch.Tensor,
+    sequence_chunk: int = 128,
+) -> torch.Tensor:
+    """Sum masked max probabilities while bounding the temporary FP32 logits."""
+    total = logits.new_zeros((), dtype=torch.float32)
+    detached = logits.detach()
+    for start in range(0, logits.shape[1], sequence_chunk):
+        chunk = detached[:, start : start + sequence_chunk].float()
+        max_probability = torch.exp(chunk.amax(dim=-1) - torch.logsumexp(chunk, dim=-1))
+        total = total + (max_probability * mask[:, start : start + sequence_chunk].float()).sum()
+    return total
 
 
 class MCWKDCriterion(VariousDivergence):
@@ -324,7 +442,7 @@ class MCWKDCriterion(VariousDivergence):
 
         t2s_acc_mask = t2s_logits.argmax(dim=-1).eq(target) & student_mask
         t2s_acc = t2s_acc_mask.sum()
-        max_t2s_prob = (torch.softmax(t2s_logits.detach().float(), dim=-1).max(dim=-1)[0] * student_mask.float()).sum()
+        max_t2s_prob = max_softmax_probability_sum(t2s_logits, student_mask)
 
         if self.only_save_projector:
             return t2s_ce_loss, {
@@ -382,8 +500,8 @@ class MCWKDCriterion(VariousDivergence):
         student_hidden, teacher_hidden = _crop_pair(student_hidden, teacher_hidden)
 
         k = max(1, min(self.top_k_vocab, student_logits.shape[-1], teacher_logits.shape[-1]))
-        student_topk = torch.topk(student_logits.float(), k, dim=-1).values
-        teacher_topk = torch.topk(teacher_logits.float(), k, dim=-1).values
+        student_topk = topk_values_chunked(student_logits, k)
+        teacher_topk = topk_values_chunked(teacher_logits, k)
         tau = max(self.tau_seq, 1e-6)
         frac = 1.0 if self.total_steps <= 0 else min(float(self._global_step + 1) / float(self.total_steps), 1.0)
         interpolation_t = 0.1 + 0.9 * frac
@@ -407,7 +525,7 @@ class MCWKDCriterion(VariousDivergence):
             sp = student_probs[index].index_select(0, s_pos)
             tp = teacher_probs[index].index_select(0, t_pos)
             c_l2 = torch.cdist(tp, sp, p=2)
-            c_kl = (tp.unsqueeze(1) * torch.log((tp.unsqueeze(1) / sp.unsqueeze(0).clamp_min(1e-9)).clamp_min(1e-9))).sum(dim=-1)
+            c_kl = pairwise_kl_cost(tp, sp)
             s_seq = student_hidden[index].index_select(0, s_pos)
             t_seq = teacher_hidden[index].index_select(0, t_pos)
             sal_s, sal_t = self._salience_scores(distiller, s_seq, t_seq)
@@ -468,7 +586,7 @@ class MCWKDCriterion(VariousDivergence):
             c_edit = self._dtw_edit_cost(student_tokens, teacher_tokens, t_pos.numel(), s_pos.numel(), student_hidden.device)
             c_l2 = torch.cdist(ctx_t.float(), ctx_s.float(), p=2)
             c_l2 = c_l2 / c_l2.detach().amax().clamp_min(1e-6)
-            c_cos = 1.0 - F.cosine_similarity(ctx_t.float().unsqueeze(1), ctx_s.float().unsqueeze(0), dim=-1)
+            c_cos = pairwise_cosine_cost(ctx_t, ctx_s)
             total = total + self.etp(self._weighted_cost([c_edit, c_l2, c_cos], self.cost_weights_hidden, student_hidden.device))[0].float()
             stats["mcw_avg_ot_hidden_edit"].append(c_edit.mean())
             stats["mcw_avg_ot_hidden_l2"].append(c_l2.mean())
@@ -513,14 +631,7 @@ class MCWKDCriterion(VariousDivergence):
         return weighted.masked_fill(weighted.isnan() | weighted.isinf(), 0.0)
 
     def _context_repr(self, seq: torch.Tensor, window: int) -> torch.Tensor:
-        if seq.shape[0] == 0:
-            return seq
-        rows = []
-        for index in range(seq.shape[0]):
-            start = max(index - window, 0)
-            end = min(index + window + 1, seq.shape[0])
-            rows.append(seq[start:end].mean(dim=0))
-        return torch.stack(rows, dim=0)
+        return context_window_mean(seq, window)
 
     def _dtw_edit_cost(
         self,
@@ -530,17 +641,24 @@ class MCWKDCriterion(VariousDivergence):
         student_len: int,
         device: torch.device,
     ) -> torch.Tensor:
-        c_s2t = torch.zeros((student_len, teacher_len), dtype=torch.float32, device=device)
-        for i, j in dtw_alignment(student_tokens, teacher_tokens):
+        edit_cache: Dict[Tuple[str, str], int] = {}
+        # DTW itself runs on CPU.  Populate its sparse path there as well and
+        # perform one device transfer instead of thousands of scalar CUDA writes.
+        c_s2t = torch.zeros((student_len, teacher_len), dtype=torch.float32)
+        for i, j in dtw_alignment(student_tokens, teacher_tokens, edit_cache):
             if i < student_len and j < teacher_len:
-                c_s2t[i, j] = float(dist_fn_edit(student_tokens[i], teacher_tokens[j]))
+                left, right = student_tokens[i], teacher_tokens[j]
+                key = (left, right) if left <= right else (right, left)
+                c_s2t[i, j] = float(edit_cache[key])
 
-        c_t2s = torch.zeros((teacher_len, student_len), dtype=torch.float32, device=device)
-        for j, i in dtw_alignment(teacher_tokens, student_tokens):
+        c_t2s = torch.zeros((teacher_len, student_len), dtype=torch.float32)
+        for j, i in dtw_alignment(teacher_tokens, student_tokens, edit_cache):
             if j < teacher_len and i < student_len:
-                c_t2s[j, i] = float(dist_fn_edit(teacher_tokens[j], student_tokens[i]))
+                left, right = teacher_tokens[j], student_tokens[i]
+                key = (left, right) if left <= right else (right, left)
+                c_t2s[j, i] = float(edit_cache[key])
 
-        return (c_s2t.t() + c_t2s) / 2.0
+        return ((c_s2t.t() + c_t2s) / 2.0).to(device=device)
 
     def _tokens_for_positions(
         self,
