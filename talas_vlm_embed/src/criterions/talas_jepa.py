@@ -299,11 +299,11 @@ class TalasJepa(nn.Module):
             stu_img_qry_reps = []
 
             num_layers = len(student_qry_hidden_states)
-            start_layer = int(num_layers * 0.3)
+            start_layer = int(num_layers * 0.4)
             end_layer = num_layers
             
             # Thu thập thêm end_layer để làm target align cho layer (end_layer - 1)
-            collect_end_layer = min(end_layer + 1, num_layers + 1)
+            collect_end_layer = min(end_layer + 1, num_layers)
             stu_img_qry_tokens_mid = {l: [] for l in range(start_layer, collect_end_layer)}
             
             for i in range(batch_size):
@@ -362,10 +362,10 @@ class TalasJepa(nn.Module):
             stu_img_pos_reps = []
 
             num_layers = len(student_pos_hidden_states)
-            start_layer = int(num_layers * 0.3)
+            start_layer = int(num_layers * 0.4)
             end_layer = num_layers
             
-            collect_end_layer = min(end_layer + 1, num_layers + 1)
+            collect_end_layer = min(end_layer + 1, num_layers)
             stu_img_pos_tokens_mid = {l: [] for l in range(start_layer, collect_end_layer)}
 
             for i in range(batch_size):
