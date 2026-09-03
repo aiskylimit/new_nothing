@@ -185,7 +185,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_cls_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_cls_new_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \

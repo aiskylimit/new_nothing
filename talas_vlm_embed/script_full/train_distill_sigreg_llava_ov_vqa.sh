@@ -177,7 +177,7 @@ SUBSETS=(
   "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_vqa_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_vqa_new_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
