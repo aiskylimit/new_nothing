@@ -192,7 +192,7 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 32 \
+    --per_device_eval_batch_size 16 \
     --image_dir eval_images/ \
     --image_resolution "low" \
     --tgt_prefix_mod \
