@@ -1,4 +1,4 @@
-#1 +10
+#2 -0-3
 #VLM_Distillation
 #v2
 
@@ -43,6 +43,6 @@ export NCCL_DEBUG=WARN
 # cd ./reward-guidance-main
 # bash ./project_command.sh
 
-cd ./VLM_Distillation-main
-bash ./project_commands.sh
-CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
+# cd ./VLM_Distillation-main
+# bash ./project_commands.sh
+# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
