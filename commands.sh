@@ -1,4 +1,4 @@
-#2 -0-5 +8000
+#2 -0-5 +7000
 #VLM_Distillation
 #v2
 
@@ -18,6 +18,7 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
+export NCCL_DEBUG=WARN
 
 # cd ./talas_vlm_embed
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
