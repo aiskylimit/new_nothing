@@ -51,28 +51,18 @@ POS_MOD_DICT = {
 def process_image(image, resolution, max_dim=1344):
     if image is None:
         return None
-
-    width, height = image.size
-    max_side = max(width, height)
-
     if resolution == "high":
-        target_max = 1344
+        image = image.resize((1344, 1344))
     elif resolution == "mid":
-        target_max = 672
-    elif resolution == "low":
-        target_max = 448
+        image = image.resize((672, 672))
     elif resolution == "tiny":
-        target_max = 336
+        image = image.resize((336, 336))
+    elif resolution == "low":
+        image = image.resize((448, 448))
     else:
-        target_max = max_dim
-
-    # Tính tỉ lệ scale sao cho cạnh lớn nhất = target_max
-    if max_side > target_max:
-        scale = target_max / max_side
-        new_width = int(width * scale)
-        new_height = int(height * scale)
-        image = image.resize((new_width, new_height))
-
+        cur_max_dim = max(image.size)
+        if cur_max_dim > max_dim:
+            image = image.resize((max_dim, max_dim))
     return image
 
 def create_semi_orthogonal_matrix(tensor):

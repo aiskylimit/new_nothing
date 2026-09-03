@@ -223,8 +223,8 @@ class TalasJepa(nn.Module):
             stu_img_qry_reps = []
 
             num_layers = len(student_qry_hidden_states)
-            start_layer = int(num_layers * 0.2)
-            end_layer = int(num_layers * 0.8) + 1
+            start_layer = int(num_layers * 0.3)
+            end_layer = int(num_layers * 0.6) + 1
             stu_img_qry_reps_mid = {l: [] for l in range(start_layer, end_layer)}
             
             for i in range(batch_size):
@@ -261,17 +261,17 @@ class TalasJepa(nn.Module):
                 num_mid_layers = max(end_layer - start_layer, 1)
                 SIGReg = SIGReg + SIGReg_qry / num_mid_layers
 
-                # vision_loss += nn.MSELoss()(stu_img_qry_reps, 
-                #                             projectors['t2s'](tea_img_qry_reps))
+                vision_loss += nn.MSELoss()(stu_img_qry_reps, 
+                                            projectors['t2s'](tea_img_qry_reps))
 
-                vision_loss += self.structure_loss(stu_img_qry_reps, tea_img_qry_reps)
+                # vision_loss += self.structure_loss(stu_img_qry_reps, tea_img_qry_reps)
 
         if teacher_pos_reps is not None:
             stu_img_pos_reps = []
 
             num_layers = len(student_pos_hidden_states)
-            start_layer = int(num_layers * 0.2)
-            end_layer = int(num_layers * 0.8) + 1
+            start_layer = int(num_layers * 0.3)
+            end_layer = int(num_layers * 0.6) + 1
             stu_img_pos_reps_mid = {l: [] for l in range(start_layer, end_layer)}
 
             for i in range(batch_size):
@@ -308,9 +308,9 @@ class TalasJepa(nn.Module):
                 num_mid_layers = max(end_layer - start_layer, 1)
                 SIGReg = SIGReg + SIGReg_pos / num_mid_layers
 
-                # vision_loss += nn.MSELoss()(stu_img_pos_reps, 
-                #                             projectors['t2s'](tea_img_pos_reps))
-                vision_loss += self.structure_loss(stu_img_pos_reps, tea_img_pos_reps)
+                vision_loss += nn.MSELoss()(stu_img_pos_reps, 
+                                            projectors['t2s'](tea_img_pos_reps))
+                # vision_loss += self.structure_loss(stu_img_pos_reps, tea_img_pos_reps)
 
         if len(stu_img_qry_reps) > 0 and len(stu_img_pos_reps) > 0:
             vision_loss = vision_loss / 2
