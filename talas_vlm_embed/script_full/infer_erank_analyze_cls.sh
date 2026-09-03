@@ -97,7 +97,7 @@ python $INFER_SCRIPT \
     --normalize True \
     --bf16 \
     --dataset_name "TIGER-Lab/MMEB-eval" \
-    --subset_name "${SUBSETS[@]}" \
+    --subset_name "${INFER_SUBSETS[0]}" \
     --dataset_split "test" \
     --image_dir "eval_images/" \
     --tgt_prefix_mod \
@@ -107,7 +107,7 @@ python $INFER_SCRIPT \
     --report_to None
 
 # analyze erank
-python talas_vlm_embed/er_statistic.py \
+python ./er_statistic.py \
     --pt_dir "infer/FastVLM-0.5B_${EXP_NAME}"/${INFER_SUBSETS[0]}/query \
     --start_idx 0 \
     --end_idx 49 \
