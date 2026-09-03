@@ -221,6 +221,11 @@ class TalasJepa(nn.Module):
 
         if tea_img_qry_reps is not None:
             stu_img_qry_reps = []
+
+            num_layers = len(student_qry_hidden_states)
+            start_layer = int(num_layers * 0.3)
+            end_layer = int(num_layers * 0.6) + 1
+            stu_img_qry_reps_mid = {l: [] for l in range(start_layer, end_layer)}
             
             for i in range(batch_size):
                 if student_qry_image_features is not None and \
@@ -234,18 +239,40 @@ class TalasJepa(nn.Module):
                         student_qry_input['attention_mask'][i]
                     )
                     stu_img_qry_reps.append(last_stu_img_hidden_state.mean(dim=0))
+
+                    for l in range(start_layer, end_layer):
+                        _, mid_stu_img_hidden_state = get_hidden_text_vision(
+                            student_qry_hidden_states[l][i],
+                            num_student_text_qry_tokens[i].item(),
+                            num_vision_token,
+                            student_qry_input['attention_mask'][i]
+                        )
+                        stu_img_qry_reps_mid[l].append(mid_stu_img_hidden_state.mean(dim=0))
+
                     cur_idx_qry_img += 1
 
             if len(stu_img_qry_reps) > 0:
                 stu_img_qry_reps = torch.stack(stu_img_qry_reps, dim=0)
-                SIGReg = SIGReg + self.sigreg(stu_img_qry_reps, num_slices=128)
-                # vision_loss += nn.MSELoss()(stu_img_qry_reps, 
-                #                             projectors['t2s'](tea_img_qry_reps))
 
-                vision_loss += self.structure_loss(stu_img_qry_reps, tea_img_qry_reps)
+                SIGReg_qry = 0.0
+                for l in range(start_layer, end_layer):
+                    layer_reps = torch.stack(stu_img_qry_reps_mid[l], dim=0)
+                    SIGReg_qry = SIGReg_qry + self.sigreg(layer_reps, num_slices=128)
+                num_mid_layers = max(end_layer - start_layer, 1)
+                SIGReg = SIGReg + SIGReg_qry / num_mid_layers
+
+                vision_loss += nn.MSELoss()(stu_img_qry_reps, 
+                                            projectors['t2s'](tea_img_qry_reps))
+
+                # vision_loss += self.structure_loss(stu_img_qry_reps, tea_img_qry_reps)
 
         if teacher_pos_reps is not None:
             stu_img_pos_reps = []
+
+            num_layers = len(student_pos_hidden_states)
+            start_layer = int(num_layers * 0.3)
+            end_layer = int(num_layers * 0.6) + 1
+            stu_img_pos_reps_mid = {l: [] for l in range(start_layer, end_layer)}
 
             for i in range(batch_size):
                 if student_pos_image_features is not None and \
@@ -259,17 +286,35 @@ class TalasJepa(nn.Module):
                         student_pos_input['attention_mask'][i]
                     )
                     stu_img_pos_reps.append(last_stu_img_hidden_state.mean(dim=0))
+
+                    for l in range(start_layer, end_layer):
+                        _, mid_stu_img_hidden_state = get_hidden_text_vision(
+                            student_pos_hidden_states[l][i],
+                            num_student_text_pos_tokens[i].item(),
+                            num_vision_token,
+                            student_pos_input['attention_mask'][i]
+                        )
+                        stu_img_pos_reps_mid[l].append(mid_stu_img_hidden_state.mean(dim=0))
+
                     cur_idx_pos_img += 1
 
             if len(stu_img_pos_reps) > 0:
                 stu_img_pos_reps = torch.stack(stu_img_pos_reps, dim=0)
-                SIGReg = SIGReg + self.sigreg(stu_img_pos_reps, num_slices=128)
-                # vision_loss += nn.MSELoss()(stu_img_pos_reps, 
-                #                             projectors['t2s'](tea_img_pos_reps))
-                vision_loss += self.structure_loss(stu_img_qry_reps, tea_img_qry_reps)
+
+                SIGReg_pos = 0.0
+                for l in range(start_layer, end_layer):
+                    layer_reps = torch.stack(stu_img_pos_reps_mid[l], dim=0)
+                    SIGReg_pos = SIGReg_pos + self.sigreg(layer_reps, num_slices=128)
+                num_mid_layers = max(end_layer - start_layer, 1)
+                SIGReg = SIGReg + SIGReg_pos / num_mid_layers
+
+                vision_loss += nn.MSELoss()(stu_img_pos_reps, 
+                                            projectors['t2s'](tea_img_pos_reps))
+                # vision_loss += self.structure_loss(stu_img_pos_reps, tea_img_pos_reps)
 
         if len(stu_img_qry_reps) > 0 and len(stu_img_pos_reps) > 0:
             vision_loss = vision_loss / 2
+            SIGReg = SIGReg / 2
 
         loss_distill = torch.zeros_like(contrastive_loss)
         if self.args.use_distill_cse_loss:

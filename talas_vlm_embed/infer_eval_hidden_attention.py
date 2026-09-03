@@ -298,9 +298,17 @@ def append_unique(values, value):
 
 
 def load_eval_rows_for_mapping(data_args, model_args, subset):
+    # eval_data = load_dataset(
+    #     data_args.dataset_name,
+    #     subset,
+    #     split=data_args.dataset_split,
+    # )
     eval_data = load_dataset(
-        data_args.dataset_name,
-        subset,
+        "parquet",
+        data_files={
+            data_args.dataset_split:
+                f"{data_args.dataset_name}/{subset}/{data_args.dataset_split}-00000-of-00001.parquet"
+        },
         split=data_args.dataset_split,
     )
     if (subset == "WebQA" or subset == "EDIS") and "qry_text" in eval_data.column_names and model_args.model_backbone == "llava_qwen2":

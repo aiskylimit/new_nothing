@@ -70,9 +70,9 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_cls_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_v4_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
-MODEL="training/FastVLM-0.5B_${EXP_NAME}/checkpoint-epoch-0"
+MODEL="training/FastVLM-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
 
 
 
@@ -96,8 +96,8 @@ python $INFER_SCRIPT \
     --model_backbone llava_qwen2 \
     --normalize True \
     --bf16 \
-    --dataset_name "TIGER-Lab/MMEB-eval" \
-    --subset_name "${SUBSETS[@]}" \
+    --dataset_name vlm2vec_eval/MMEB-eval \
+    --subset_name "${INFER_SUBSETS[0]}" \
     --dataset_split "test" \
     --image_dir "eval_images/" \
     --tgt_prefix_mod \
@@ -107,7 +107,7 @@ python $INFER_SCRIPT \
     --report_to None
 
 # analyze erank
-python talas_vlm_embed/er_statistic.py \
+python ./er_statistic.py \
     --pt_dir "infer/FastVLM-0.5B_${EXP_NAME}"/${INFER_SUBSETS[0]}/query \
     --start_idx 0 \
     --end_idx 49 \
