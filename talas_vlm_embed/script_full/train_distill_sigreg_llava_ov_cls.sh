@@ -202,7 +202,7 @@ python eval_mmeb.py \
     --dataset_split test \
     --per_device_eval_batch_size 16 \
     --image_dir eval_images/ \
-    --image_resolution "low" \
+    --image_resolution "tiny" \
     --tgt_prefix_mod \
     --load_pretrained_lora True \
     --report_to none
