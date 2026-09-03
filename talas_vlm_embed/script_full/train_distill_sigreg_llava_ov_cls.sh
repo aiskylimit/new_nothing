@@ -100,52 +100,52 @@ echo "============================================================"
 NUM_GPUS_PER_NODE=1
 TRAIN_SCRIPT="train_ddp.py"
 
-torchrun --standalone \
-    --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name models/llava-onevision-qwen2-0.5b-ov-hf \
-    --teacher_model_name "raghavlite/B3_Qwen2_2B" \
-    --lora True \
-    --teacher_lora True \
-    --lora_r 64 \
-    --lora_alpha 64 \
-    --teacher_lora_r 8 \
-    --teacher_pooling "eos" \
-    --teacher_backbone "qwen2_vl" \
-    --model_backbone "llava_onevision" \
-    --pooling "eos" \
-    --dataset_name "vlm2vec_train/MMEB-train" \
-    --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
-    --dataset_split "original" \
-    --image_dir "vlm2vec_train/MMEB-train" \
-    --percent_data 1.0 \
-    --output_dir "$OUTPUT_DIR" \
-    --per_device_train_batch_size 8 \
-    --gradient_accumulation_steps 1 \
-    --learning_rate 1e-4 \
-    --num_train_epochs 1 \
-    --bf16 \
-    --save_total_limit 5 \
-    --logging_steps 1 \
-    --save_strategy "epoch" \
-    --seed 42 \
-    --weight_decay 0.01 \
-    --normalize True \
-    --teacher_normalize True \
-    --lr_scheduler_type "constant" \
-    --warmup_ratio 0.05 \
-    --caching_dir "$CACHE_DIR" \
-    --kd_loss_type "talas_jepa" \
-    --image_resolution "tiny" \
-    --projector_config_path "./config/projector_config_emo.json" \
-    --num_self_kd_layers 3 \
-    --projector_lr 5e-5 \
-    --report_to None \
-    --use_distill_loss "$DISTILL_LOSS_BOOL" \
-    --use_distill_cse_loss "$DISTILL_CSE_BOOL" \
-    --use_distill_vison_loss "$DISTILL_VISION_BOOL" \
-    --use_sigreg_loss "$SIGREG_BOOL" \
-    --kd_weight "$KD_WEIGHT" \
-    --sigreg_weight "$SIGREG_WEIGHT"
+# torchrun --standalone \
+#     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
+#     --model_name models/llava-onevision-qwen2-0.5b-ov-hf \
+#     --teacher_model_name "raghavlite/B3_Qwen2_2B" \
+#     --lora True \
+#     --teacher_lora True \
+#     --lora_r 64 \
+#     --lora_alpha 64 \
+#     --teacher_lora_r 8 \
+#     --teacher_pooling "eos" \
+#     --teacher_backbone "qwen2_vl" \
+#     --model_backbone "llava_onevision" \
+#     --pooling "eos" \
+#     --dataset_name "vlm2vec_train/MMEB-train" \
+#     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
+#     --dataset_split "original" \
+#     --image_dir "vlm2vec_train/MMEB-train" \
+#     --percent_data 1.0 \
+#     --output_dir "$OUTPUT_DIR" \
+#     --per_device_train_batch_size 8 \
+#     --gradient_accumulation_steps 1 \
+#     --learning_rate 1e-4 \
+#     --num_train_epochs 1 \
+#     --bf16 \
+#     --save_total_limit 5 \
+#     --logging_steps 1 \
+#     --save_strategy "epoch" \
+#     --seed 42 \
+#     --weight_decay 0.01 \
+#     --normalize True \
+#     --teacher_normalize True \
+#     --lr_scheduler_type "constant" \
+#     --warmup_ratio 0.05 \
+#     --caching_dir "$CACHE_DIR" \
+#     --kd_loss_type "talas_jepa" \
+#     --image_resolution "tiny" \
+#     --projector_config_path "./config/projector_config_emo.json" \
+#     --num_self_kd_layers 3 \
+#     --projector_lr 5e-5 \
+#     --report_to None \
+#     --use_distill_loss "$DISTILL_LOSS_BOOL" \
+#     --use_distill_cse_loss "$DISTILL_CSE_BOOL" \
+#     --use_distill_vison_loss "$DISTILL_VISION_BOOL" \
+#     --use_sigreg_loss "$SIGREG_BOOL" \
+#     --kd_weight "$KD_WEIGHT" \
+#     --sigreg_weight "$SIGREG_WEIGHT"
 
 
 # ============================================================
@@ -202,7 +202,7 @@ python eval_mmeb.py \
     --dataset_split test \
     --per_device_eval_batch_size 32 \
     --image_dir eval_images/ \
-    --image_resolution "tiny" \
+    --image_resolution "low" \
     --tgt_prefix_mod \
     --load_pretrained_lora True \
     --report_to none
