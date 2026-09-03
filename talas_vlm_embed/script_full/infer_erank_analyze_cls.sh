@@ -96,7 +96,7 @@ python $INFER_SCRIPT \
     --model_backbone llava_qwen2 \
     --normalize True \
     --bf16 \
-    --dataset_name "TIGER-Lab/MMEB-eval" \
+    --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${INFER_SUBSETS[0]}" \
     --dataset_split "test" \
     --image_dir "eval_images/" \
