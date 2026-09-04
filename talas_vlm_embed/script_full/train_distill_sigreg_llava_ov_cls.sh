@@ -74,7 +74,7 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v7_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_v8_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
 OUTPUT_DIR="training/llava_ov-0.5B_cls_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"

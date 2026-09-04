@@ -18,8 +18,6 @@ class TalasJepa(nn.Module):
             self.world_size = 1
             self.process_rank = 0
         self.kd_weight = args.kd_weight
-        self.step = 0
-        self.warm_up_projector = 500
     
     def _dist_gather_tensor(self, t: torch.Tensor):
         t = t.contiguous()
@@ -140,46 +138,35 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
-    def sigreg_orthogonal_per_sample(self, current_tokens: torch.Tensor, 
-                                     next_layer_tokens: torch.Tensor, 
-                                     u_anchor: torch.Tensor,
-                                     num_slices: int = 128) -> tuple:
+    def sigreg_orthogonal_per_sample(self, tokens: torch.Tensor, num_slices: int = 128) -> torch.Tensor:
         """
-        Tính Cascade KD Alignment và Orthogonal SIGReg per sample.
-        current_tokens: [B, N_tokens, Dim]
-        next_layer_tokens: [B, N_tokens, Dim]
+        Tính Orthogonal SIGReg per sample.
+        (Đã được tối giản: Chỉ tính đa dạng trực giao, bỏ Cascade Alignment ra ngoài)
+        tokens: [B, N_tokens, Dim] - Thường là tokens của layer cuối cùng.
         """
-        device = current_tokens.device
-        dtype = current_tokens.dtype
-        B, N_tokens, D = current_tokens.shape
+        device = tokens.device
+        dtype = tokens.dtype
+        B, N_tokens, D = tokens.shape
 
         # =====================================================
-        # 1. Cascade Alignment (Layer l aligns to Layer l+1)
+        # 1. Xác định trục ngữ nghĩa & Phân rã không gian
         # =====================================================
-        # current_mean = current_tokens.mean(dim=1)     # [B, D]
-        # next_layer_mean = next_layer_tokens.mean(dim=1) # [B, D]
+        token_mean = tokens.mean(dim=1) # [B, D]
         
-        # Loss KD nối tiếp (Mean Token Alignment)
-        # align_loss = F.mse_loss(current_mean, next_layer_mean.detach())
-        # align_loss = self.structure_loss(current_mean, next_layer_mean.detach())
-        align_loss = 0.0
-
-        # =====================================================
-        # 2. Phân rã không gian (Orthogonal Projection)
-        # =====================================================
-        # u = F.normalize(u_anchor.detach(), p=2, dim=-1, eps=1e-8) # [B, D]
-        u = u_anchor
+        # Bắt buộc detach() để gradient của SIGReg không làm hỏng trục ngữ nghĩa chính
+        u = F.normalize(token_mean.detach(), p=2, dim=-1, eps=1e-8) # [B, D]
         u_expanded = u.unsqueeze(1) # [B, 1, D]
 
-        dot_product = torch.sum(current_tokens * u_expanded, dim=-1, keepdim=True) # [B, N_tokens, 1]
+        # Lấy phần song song và phần dư trực giao
+        dot_product = torch.sum(tokens * u_expanded, dim=-1, keepdim=True) # [B, N_tokens, 1]
         z_parallel = dot_product * u_expanded # [B, N_tokens, D]
-        z_perp = current_tokens - z_parallel  # [B, N_tokens, D]
+        z_perp = tokens - z_parallel  # [B, N_tokens, D]
 
         # Khôi phục variance về ~1 cho phần dư để phù hợp với hàm mũ của SIGReg
         z_perp_normalized = F.layer_norm(z_perp, (D,))
 
         # =====================================================
-        # 3. Tính SIGReg trên phần dư (Instance-wise / Không cần all_reduce)
+        # 2. Tính SIGReg trên phần dư (Instance-wise)
         # =====================================================
         if getattr(self, 'process_rank', 0) == 0:
             projection_seed = random.randint(0, 2**63 - 1)
@@ -206,7 +193,7 @@ class TalasJepa(nn.Module):
         # [B, N_tokens, num_slices, 1] * [17] -> [B, N_tokens, num_slices, 17]
         x_t = x_proj.unsqueeze(-1) * t
 
-        # Tính Characteristic Function cho TỪNG SAMPLE (mean theo dim=1 tương ứng N_tokens)
+        # Tính Characteristic Function cho TỪNG SAMPLE
         ecf = torch.exp(1j * x_t).mean(dim=1) # [B, num_slices, 17]
 
         # Khoảng cách L2
@@ -215,97 +202,90 @@ class TalasJepa(nn.Module):
         # Tích phân Epps-Pulley
         T_stat = torch.trapezoid(err, t, dim=-1) * N_tokens # [B, num_slices]
 
-        # Lấy trung bình qua các lát cắt và toàn batch
+        # Lấy trung bình toàn batch
         sigreg_loss = T_stat.mean()
 
-        return align_loss, sigreg_loss
+        return sigreg_loss
+
 
     def _compute_vision_distill(self, student_hidden_states, image_features, 
                                 teacher_img_reps, text_token_counts, 
                                 attention_mask, t2s_projector):
-
+        """
+        Tính toán 3 thành phần:
+        1. Align layer cuối với Teacher bên ngoài.
+        2. Tính SIGReg trực giao CHỈ cho layer cuối.
+        3. Cascade cấu trúc: layer l học từ layer l+1 (truyền dẫn đa dạng từ trên xuống).
+        """
         if teacher_img_reps is None or image_features is None:
             return 0.0, 0.0, 0.0
 
         batch_size = attention_mask.size(0)
         num_layers = len(student_hidden_states)
         start_layer = int(num_layers * 0.4)
-        end_layer = num_layers
         
-        collect_end_layer = min(end_layer + 1, num_layers)
-        stu_img_tokens_mid = {l: [] for l in range(start_layer, collect_end_layer)}
-        stu_img_reps = []
+        # Khởi tạo dict để hứng token từ start_layer đến tận layer cuối cùng (num_layers - 1)
+        stu_img_tokens = {l: [] for l in range(start_layer, num_layers)}
         
         cur_idx_img = 0
-        
         for i in range(batch_size):
             if cur_idx_img < len(image_features):
                 img_feat = image_features[cur_idx_img]
                 num_vision_token = img_feat.size(0)
                 
-                # Trích xuất biểu diễn layer cuối cùng
-                _, last_stu_img_hidden_state = get_hidden_text_vision(
-                    student_hidden_states[-1][i],
-                    text_token_counts[i].item(),
-                    num_vision_token,
-                    attention_mask[i]
-                )
-                stu_img_reps.append(last_stu_img_hidden_state.mean(dim=0))
-
-                # Trích xuất các layer giữa
-                for l in range(start_layer, collect_end_layer):
+                # Trích xuất toàn bộ các layer một cách đồng nhất
+                for l in range(start_layer, num_layers):
                     _, mid_stu_img_hidden_state = get_hidden_text_vision(
                         student_hidden_states[l][i],
                         text_token_counts[i].item(),
                         num_vision_token,
                         attention_mask[i]
                     )
-                    stu_img_tokens_mid[l].append(mid_stu_img_hidden_state)
+                    stu_img_tokens[l].append(mid_stu_img_hidden_state)
 
                 cur_idx_img += 1
 
-        if len(stu_img_reps) == 0:
+        last_layer_idx = num_layers - 1
+        if len(stu_img_tokens[last_layer_idx]) == 0:
             return 0.0, 0.0, 0.0
 
-        stu_img_reps = torch.stack(stu_img_reps, dim=0)
+        # ===============================================================
+        # PHẦN 1: TẦNG CUỐI (LAYER L) - Tinh hoa của kiến trúc
+        # ===============================================================
+        last_layer_tokens = torch.stack(stu_img_tokens[last_layer_idx], dim=0) # [B, N, D]
+        stu_img_reps = last_layer_tokens.mean(dim=1) # [B, D]
 
-        sigreg_total = 0.0
+        # 1.1. Loss Align với Teacher bên ngoài (Dùng hàm cosine_loss)
+        vision_align_loss = self.cosine_loss(stu_img_reps, t2s_projector(teacher_img_reps))
+
+        # 1.2. Tính SIGReg Đa dạng Trực giao (CHỈ GỌI 1 LẦN DÀNH CHO LAYER CUỐI)
+        sigreg_final = self.sigreg_orthogonal_per_sample(last_layer_tokens)
+
+
+        # ===============================================================
+        # PHẦN 2: CÁC TẦNG GIỮA - Tự chưng cất nối tiếp (Cascade Struct)
+        # ===============================================================
         cascade_align_loss = 0.0
-        sigreg_final = 0.0
-        cascade_align_final = 0.0
-        actual_end_layer = min(end_layer, collect_end_layer - 1)
-
-        if self.step > self.warm_up_projector:
-            # Lấy Anchor từ layer cuối cùng (chứa ngữ nghĩa cao nhất)
-            u_top = F.normalize(stu_img_reps.detach(), p=2, dim=-1) 
-
-            for l in range(start_layer, actual_end_layer):
-                current_layer_tokens = torch.stack(stu_img_tokens_mid[l], dim=0) # [B, N, D]
-                next_layer_tokens = torch.stack(stu_img_tokens_mid[l+1], dim=0)  # [B, N, D]
-                
-                l_align, l_sigreg = self.sigreg_orthogonal_per_sample(
-                    current_layer_tokens, 
-                    next_layer_tokens, 
-                    u_anchor=u_top
-                )
-                cascade_align_loss += l_align
-                sigreg_total += l_sigreg
         
-            num_mid_layers = max(actual_end_layer - start_layer, 1)
+        # Lặp từ start_layer đến (L - 1). Tầng l sẽ bám vào tầng l+1.
+        for l in range(start_layer, last_layer_idx):
+            current_layer_tokens = torch.stack(stu_img_tokens[l], dim=0)   # [B, N, D]
+            next_layer_tokens = torch.stack(stu_img_tokens[l+1], dim=0)    # [B, N, D]
             
-            sigreg_final = sigreg_total / num_mid_layers
-            cascade_align_final = cascade_align_loss / num_mid_layers
-
-            vision_align_loss = self.cosine_loss(stu_img_reps, t2s_projector(teacher_img_reps))
-
-        else:
-            vision_align_loss = self.cosine_loss(stu_img_reps.detach(), t2s_projector(teacher_img_reps))
+            # Lấy mean token để truyền vào structure_loss giống logic cũ của bạn
+            current_mean = current_layer_tokens.mean(dim=1)
+            next_layer_mean = next_layer_tokens.mean(dim=1)
+            
+            # Layer hiện tại học theo layer ngay trên nó (next_layer_mean PHẢI ĐƯỢC DETACH)
+            l_align = self.structure_loss(current_mean, next_layer_mean.detach())
+            cascade_align_loss += l_align
+    
+        num_mid_layers = max(last_layer_idx - start_layer, 1)
+        cascade_align_final = cascade_align_loss / num_mid_layers
 
         return vision_align_loss, cascade_align_final, sigreg_final
-
+    
     def forward(self, model_wrapper, input_data):
-        self.step += 1
-
         student_model = model_wrapper.model
         student_processor = model_wrapper.get_processor()
         student_tokenizer = student_processor.tokenizer
@@ -387,7 +367,7 @@ class TalasJepa(nn.Module):
                 attention_mask=student_qry_input['attention_mask'],
                 t2s_projector=projectors['t2s']
             )
-            vision_loss += qry_align
+            vision_loss += (qry_align + qry_cascade) / 2
             SIGReg += qry_sigreg
 
         if tea_img_pos_reps is not None:
@@ -399,7 +379,7 @@ class TalasJepa(nn.Module):
                 attention_mask=student_pos_input['attention_mask'],
                 t2s_projector=projectors['t2s']
             )
-            vision_loss += pos_align
+            vision_loss += (pos_align + pos_cascade) / 2
             SIGReg += pos_sigreg
 
         if tea_img_qry_reps is not None and tea_img_pos_reps is not None:
