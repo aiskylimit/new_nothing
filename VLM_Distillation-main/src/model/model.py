@@ -3,7 +3,7 @@ import os
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
 from torch import nn
-from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedModel
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
 
 from src.arguments import ModelArguments
 from src.model.processor import (
@@ -15,6 +15,9 @@ from src.model.processor import (
     QWEN3_VL,
     backbone2model,
     get_backbone_name,
+    normalize_fast_vlm_config,
+    normalize_fast_vlm_model,
+    normalize_fast_vlm_tokenizer,
 )
 from src.model.vlm_backbone.llava_next import LlavaNextForConditionalGeneration
 from src.model.vlm_backbone.llava_onevision import LlavaOnevisionForConditionalGeneration
@@ -242,6 +245,19 @@ class VLMModel(nn.Module):
         )
         setattr(model_args, "model_backbone", model_backbone)
 
+        fast_vlm_tokenizer = None
+        if model_backbone == FAST_VLM:
+            fast_vlm_tokenizer = AutoTokenizer.from_pretrained(
+                model_name_or_path,
+                trust_remote_code=True,
+            )
+            normalize_fast_vlm_tokenizer(fast_vlm_tokenizer)
+            normalize_fast_vlm_config(
+                config,
+                fast_vlm_tokenizer.eos_token_id,
+                fast_vlm_tokenizer.pad_token_id,
+            )
+
         config = cls._force_eager_attention(
             config,
             vision_output_attentions=output_attentions and model_backbone != FAST_VLM,
@@ -267,7 +283,10 @@ class VLMModel(nn.Module):
 
         if model_backbone in {FAST_VLM, QWEN2_VL, QWEN2_5_VL, QWEN3_VL}:
             # print(f"Using custom loading for backbone {model_backbone} with config {config}")
-            return backbone2model[model_backbone].from_pretrained(model_name_or_path, **load_kwargs), model_backbone
+            model = backbone2model[model_backbone].from_pretrained(model_name_or_path, **load_kwargs)
+            if model_backbone == FAST_VLM:
+                normalize_fast_vlm_model(model, fast_vlm_tokenizer)
+            return model, model_backbone
 
         return cls.TRANSFORMER_CLS.from_pretrained(
             model_name_or_path,

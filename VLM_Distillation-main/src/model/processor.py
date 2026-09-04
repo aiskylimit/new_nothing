@@ -1,4 +1,6 @@
 import logging
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -18,6 +20,8 @@ from .vlm_backbone.qwen3_vl import Qwen3VLForConditionalGeneration
 logger = logging.getLogger(__name__)
 
 FAST_VLM = "fast_vlm"
+FAST_VLM_EOS_TOKEN = "<|im_end|>"
+FAST_VLM_PAD_TOKEN = "<|endoftext|>"
 LLAVA_NEXT = "llava_next"
 LLAVA_ONEVISION = "llava_onevision"
 QWEN2_VL = "qwen2_vl"
@@ -70,6 +74,80 @@ def _get_arg(args: Any, name: str, default=None):
 
 def _get_model_name_or_path(model_args):
     return _get_arg(model_args, "checkpoint_path") or _get_arg(model_args, "processor_name") or _get_arg(model_args, "model_name")
+
+
+def _require_token_id(tokenizer, token):
+    token_id = tokenizer.convert_tokens_to_ids(token)
+    unk_token_id = getattr(tokenizer, "unk_token_id", None)
+    if token_id is None or token_id < 0 or (unk_token_id is not None and token_id == unk_token_id):
+        raise ValueError(f"FastVLM tokenizer does not contain required special token {token!r}")
+    return int(token_id)
+
+
+def normalize_fast_vlm_tokenizer(tokenizer):
+    """Match Apple's FastVLM chat semantics without modifying the HF cache."""
+    eos_token_id = _require_token_id(tokenizer, FAST_VLM_EOS_TOKEN)
+    pad_token_id = _require_token_id(tokenizer, FAST_VLM_PAD_TOKEN)
+    tokenizer.eos_token = FAST_VLM_EOS_TOKEN
+    tokenizer.pad_token = FAST_VLM_PAD_TOKEN
+    if tokenizer.eos_token_id != eos_token_id or tokenizer.pad_token_id != pad_token_id:
+        raise ValueError("FastVLM tokenizer rejected the normalized EOS/PAD tokens")
+    return tokenizer
+
+
+def normalize_fast_vlm_processor(processor):
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is None:
+        raise ValueError("FastVLM processor has no tokenizer")
+    normalize_fast_vlm_tokenizer(tokenizer)
+    return processor
+
+
+def normalize_fast_vlm_config(config, eos_token_id, pad_token_id):
+    """Apply the FastVLM EOS/PAD invariant to model and generation configs."""
+    for target in (config, getattr(config, "text_config", None)):
+        if target is not None:
+            target.eos_token_id = int(eos_token_id)
+            target.pad_token_id = int(pad_token_id)
+    return config
+
+
+def normalize_fast_vlm_model(model, tokenizer):
+    eos_token_id = _require_token_id(tokenizer, FAST_VLM_EOS_TOKEN)
+    pad_token_id = _require_token_id(tokenizer, FAST_VLM_PAD_TOKEN)
+    normalize_fast_vlm_config(model.config, eos_token_id, pad_token_id)
+    generation_config = getattr(model, "generation_config", None)
+    if generation_config is not None:
+        generation_config.eos_token_id = eos_token_id
+        generation_config.pad_token_id = pad_token_id
+    return model
+
+
+def save_processor(processor, output_dir, model_backbone=None):
+    """Save a processor and persist the normalized FastVLM token contract."""
+    if model_backbone == FAST_VLM:
+        normalize_fast_vlm_processor(processor)
+    processor.save_pretrained(output_dir)
+    if model_backbone == FAST_VLM:
+        special = {
+            "additional_special_tokens": ["<|im_start|>", FAST_VLM_EOS_TOKEN],
+            "eos_token": {
+                "content": FAST_VLM_EOS_TOKEN,
+                "lstrip": False,
+                "normalized": False,
+                "rstrip": False,
+                "single_word": False,
+            },
+            "pad_token": {
+                "content": FAST_VLM_PAD_TOKEN,
+                "lstrip": False,
+                "normalized": False,
+                "rstrip": False,
+                "single_word": False,
+            },
+        }
+        path = Path(output_dir) / "special_tokens_map.json"
+        path.write_text(json.dumps(special, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _apply_resize_config(processor, data_args=None):
@@ -181,6 +259,7 @@ def load_processor(model_args, data_args=None):
             trust_remote_code=True,
             padding_side="left",
         )
+        processor = normalize_fast_vlm_processor(processor)
 
     else:
         raise NotImplementedError(f"Unsupported VLM backbone: {model_backbone}")

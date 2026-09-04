@@ -1,10 +1,73 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch
 
 
 class KDPlumbingTests(unittest.TestCase):
+    def test_fastvlm_special_tokens_match_apple_convention_everywhere(self):
+        from src.model.processor import (
+            normalize_fast_vlm_model,
+            normalize_fast_vlm_processor,
+            save_processor,
+        )
+
+        class FakeTokenizer:
+            token_ids = {"<|endoftext|>": 151643, "<|im_end|>": 151645}
+            unk_token_id = None
+
+            def __init__(self):
+                self.eos_token = "<|endoftext|>"
+                self.pad_token = "<|endoftext|>"
+
+            @property
+            def eos_token_id(self):
+                return self.token_ids[self.eos_token]
+
+            @property
+            def pad_token_id(self):
+                return self.token_ids[self.pad_token]
+
+            def convert_tokens_to_ids(self, token):
+                return self.token_ids.get(token)
+
+        tokenizer = FakeTokenizer()
+        class FakeProcessor:
+            def __init__(self, tokenizer):
+                self.tokenizer = tokenizer
+
+            def save_pretrained(self, output_dir):
+                Path(output_dir, "tokenizer_config.json").write_text(
+                    json.dumps({"eos_token": self.tokenizer.eos_token,
+                                "pad_token": self.tokenizer.pad_token}),
+                    encoding="utf-8",
+                )
+
+        processor = FakeProcessor(tokenizer)
+        normalize_fast_vlm_processor(processor)
+        self.assertEqual(tokenizer.eos_token, "<|im_end|>")
+        self.assertEqual(tokenizer.eos_token_id, 151645)
+        self.assertEqual(tokenizer.pad_token, "<|endoftext|>")
+        self.assertEqual(tokenizer.pad_token_id, 151643)
+
+        text_config = SimpleNamespace(eos_token_id=151643, pad_token_id=None)
+        config = SimpleNamespace(eos_token_id=151643, pad_token_id=None, text_config=text_config)
+        generation_config = SimpleNamespace(eos_token_id=151643, pad_token_id=None)
+        model = SimpleNamespace(config=config, generation_config=generation_config)
+        normalize_fast_vlm_model(model, tokenizer)
+        for target in (config, text_config, generation_config):
+            self.assertEqual(target.eos_token_id, 151645)
+            self.assertEqual(target.pad_token_id, 151643)
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            save_processor(processor, output_dir, "fast_vlm")
+            special = json.loads(Path(output_dir, "special_tokens_map.json").read_text())
+            self.assertEqual(special["eos_token"]["content"], "<|im_end|>")
+            self.assertEqual(special["pad_token"]["content"], "<|endoftext|>")
+
     def test_mcw_pairwise_costs_match_broadcast_implementations_and_gradients(self):
         from src.criterions.mcw_kd import pairwise_cosine_cost, pairwise_kl_cost
 
