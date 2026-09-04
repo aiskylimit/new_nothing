@@ -138,7 +138,7 @@ torchrun --standalone \
     --image_resolution "low" \
     --projector_config_path "./config/projector_config_emo.json" \
     --num_self_kd_layers 3 \
-    --projector_lr 5e-5 \
+    --projector_lr 5e-4 \
     --report_to None \
     --use_distill_loss "$DISTILL_LOSS_BOOL" \
     --use_distill_cse_loss "$DISTILL_CSE_BOOL" \

@@ -19,7 +19,7 @@ class TalasJepa(nn.Module):
             self.process_rank = 0
         self.kd_weight = args.kd_weight
         self.step = 0
-        self.warm_up_projector = 1000
+        self.warm_up_projector = 500
     
     def _dist_gather_tensor(self, t: torch.Tensor):
         t = t.contiguous()
@@ -98,9 +98,6 @@ class TalasJepa(nn.Module):
 
         # =====================================================
         # 2. Local generator
-        #
-        # Không làm thay đổi global torch RNG state.
-        # Tất cả GPU có cùng projection_seed -> cùng A.
         # =====================================================
         g = torch.Generator(device=device)
         g.manual_seed(projection_seed)
@@ -405,7 +402,6 @@ class TalasJepa(nn.Module):
             vision_loss += pos_align
             SIGReg += pos_sigreg
 
-        # --- TRUNG BÌNH CHUNG ---
         if tea_img_qry_reps is not None and tea_img_pos_reps is not None:
             vision_loss = vision_loss / 2
             SIGReg = SIGReg / 2

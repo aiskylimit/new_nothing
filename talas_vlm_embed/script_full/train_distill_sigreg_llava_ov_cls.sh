@@ -131,14 +131,14 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --teacher_normalize True \
-    --lr_scheduler_type "constant" \
-    --warmup_ratio 0.05 \
+    --lr_scheduler_type "cosine" \
+    --warmup_ratio 0.03 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \
     --projector_config_path "./config/projector_config_emo.json" \
     --num_self_kd_layers 3 \
-    --projector_lr 5e-5 \
+    --projector_lr 5e-4 \
     --report_to None \
     --use_distill_loss "$DISTILL_LOSS_BOOL" \
     --use_distill_cse_loss "$DISTILL_CSE_BOOL" \
