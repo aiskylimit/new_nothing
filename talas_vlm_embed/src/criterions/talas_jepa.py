@@ -18,6 +18,9 @@ class TalasJepa(nn.Module):
             self.world_size = 1
             self.process_rank = 0
         self.kd_weight = args.kd_weight
+
+        self.counter = 0
+        self.warm_up_sigreg = 25000
     
     def _dist_gather_tensor(self, t: torch.Tensor):
         t = t.contiguous()
@@ -216,7 +219,7 @@ class TalasJepa(nn.Module):
 
         batch_size = attention_mask.size(0)
         num_layers = len(student_hidden_states)
-        start_layer = int(num_layers * 0.4)
+        start_layer = int(num_layers * 0.5)
         
         stu_img_tokens = {l: [] for l in range(start_layer, num_layers)}
         
@@ -249,8 +252,9 @@ class TalasJepa(nn.Module):
         # 1.1. Loss Align với Teacher
         vision_align_loss = self.cosine_loss(stu_img_reps, t2s_projector(teacher_img_reps))
 
-        # 1.2. Tính SIGReg Đa dạng Trực giao (Truyền thẳng List các tensor vào)
-        sigreg_final = self.sigreg_orthogonal_per_sample(stu_img_tokens[last_layer_idx])
+        # 1.2. Tính SIGReg Đa dạng Trực giao
+        warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
+        sigreg_final = warmup_factor * self.sigreg_orthogonal_per_sample(stu_img_tokens[last_layer_idx])
 
         # ===============================================================
         # PHẦN 2: CÁC TẦNG GIỮA - Tự chưng cất nối tiếp (Cascade Struct)
@@ -280,6 +284,7 @@ class TalasJepa(nn.Module):
         student_pos_input = input_data['pos']
         
         batch_size = student_qry_input['input_ids'].size(0)
+        self.counter += batch_size
 
         student_qry_output = student_model.encode_input(student_qry_input)
         student_pos_output = student_model.encode_input(student_pos_input)
