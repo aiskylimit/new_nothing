@@ -286,7 +286,7 @@ class TalasJepa(nn.Module):
                 # Gọi SIGReg với mỏ neo truyền vào
                 layer_sigreg = self.sigreg_orthogonal_per_sample(
                     tokens_list=stu_img_tokens[l],
-                    anchors_list=anchors_l_plus_1
+                    # anchors_list=anchors_l_plus_1
                 )
                 total_sigreg += layer_sigreg
                 
