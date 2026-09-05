@@ -141,10 +141,11 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
-    def sigreg_orthogonal_per_sample(self, tokens_list: list[torch.Tensor], num_slices: int = 128) -> torch.Tensor:
+    def sigreg_orthogonal_per_sample(self, tokens_list: list[torch.Tensor], anchors_list: list[torch.Tensor] = None, num_slices: int = 128) -> torch.Tensor:
         """
         Tính Orthogonal SIGReg per sample xử lý độ dài token động (variable length).
         tokens_list: Một list gồm B tensors, mỗi tensor có shape [N_i, Dim]
+        anchors_list: (Tùy chọn) List gồm B tensors mỏ neo truyền từ ngoài vào (VD: layer l+1).
         """
         if not tokens_list:
             return 0.0
@@ -155,7 +156,7 @@ class TalasJepa(nn.Module):
         D = tokens_list[0].size(-1)
 
         # =====================================================
-        # 1. Khởi tạo Ma trận chiếu ngẫu nhiên A (Dùng chung cho cả batch để tối ưu)
+        # 1. Khởi tạo Ma trận chiếu ngẫu nhiên A
         # =====================================================
         if getattr(self, 'process_rank', 0) == 0:
             projection_seed = random.randint(0, 2**63 - 1)
@@ -181,21 +182,27 @@ class TalasJepa(nn.Module):
         # =====================================================
         # 2. Xử lý Đa dạng Trực giao cho từng bức ảnh
         # =====================================================
-        for tokens in tokens_list: # tokens có shape [N_i, D]
+        for idx, tokens in enumerate(tokens_list):
             N_tokens = tokens.size(0)
             
-            # Lấy trục ngữ nghĩa của riêng bức ảnh này
-            token_mean = tokens.mean(dim=0) # [D]
-            u = F.normalize(token_mean.detach(), p=2, dim=-1, eps=1e-8) # [D]
-            
-            # Phân rã trực giao: z_parallel = (tokens @ u) * u
-            dot_product = torch.sum(tokens * u, dim=-1, keepdim=True) # [N_i, 1]
-            z_parallel = dot_product * u.unsqueeze(0) # [N_i, D]
-            z_perp = tokens - z_parallel # [N_i, D]
+            if self.args.use_mean_anchor:
+                if anchors_list is not None:
+                    token_mean = anchors_list[idx]
+                else:
+                    token_mean = tokens.mean(dim=0) # [D]
+                    
+                u = F.normalize(token_mean.detach(), p=2, dim=-1, eps=1e-8) # [D]
 
-            # Chuẩn hoá khôi phục variance
-            z_perp_normalized = F.layer_norm(z_perp, (D,))
+                # Phân rã trực giao: z_parallel = (tokens @ u) * u
+                dot_product = torch.sum(tokens * u, dim=-1, keepdim=True) # [N_i, 1]
+                z_parallel = dot_product * u.unsqueeze(0) # [N_i, D]
+                z_perp = tokens - z_parallel # [N_i, D]
 
+                # Chuẩn hoá khôi phục variance
+                z_perp_normalized = F.layer_norm(z_perp, (D,))
+            else:
+                z_perp_normalized = F.layer_norm(tokens, (D,))
+                
             # Chiếu dữ liệu: [N_i, D] @ [D, num_slices] -> [N_i, num_slices]
             x_proj = z_perp_normalized @ A
             x_t = x_proj.unsqueeze(-1) * t # [N_i, num_slices, 17]
@@ -214,11 +221,16 @@ class TalasJepa(nn.Module):
     def _compute_modality_distill(self, student_hidden_states, image_features, 
                                   teacher_img_reps, teacher_text_reps, 
                                   text_token_counts, attention_mask, 
-                                  t2s_projector):
+                                  t2s_projector=None):
+
+        k_layers = self.args.num_layers
+
         batch_size = attention_mask.size(0)
         last_layer_idx = len(student_hidden_states) - 1
         
-        stu_img_tokens = []
+        start_sigreg_layer = max(0, last_layer_idx - k_layers)
+        
+        stu_img_tokens = {l: [] for l in range(start_sigreg_layer, last_layer_idx + 1)}
         stu_text_reps = []
         
         cur_idx_img = 0
@@ -237,22 +249,48 @@ class TalasJepa(nn.Module):
             stu_text_reps.append(text_last_hidden.mean(dim=0))
             
             if num_vision_token > 0:
-                stu_img_tokens.append(img_last_hidden)
+                for l in range(start_sigreg_layer, last_layer_idx + 1):
+                    _, img_hidden = get_hidden_text_vision(
+                        student_hidden_states[l][i],
+                        text_token_counts[i].item(),
+                        num_vision_token,
+                        attention_mask[i]
+                    )
+                    stu_img_tokens[l].append(img_hidden)
 
         text_align_loss = 0.0
         if teacher_text_reps is not None:
             stacked_stu_text_reps = torch.stack(stu_text_reps, dim=0)
-            text_align_loss = self.cosine_loss(stacked_stu_text_reps, t2s_projector(teacher_text_reps))
+            # text_align_loss = self.cosine_loss(stacked_stu_text_reps, t2s_projector(teacher_text_reps))
+            text_align_loss = self.structure_loss(stacked_stu_text_reps, teacher_text_reps)
 
         vision_align_loss = 0.0
         sigreg_final = 0.0
         
-        if teacher_img_reps is not None and len(stu_img_tokens) > 0:
-            stu_img_final_reps = torch.stack([x.mean(dim=0) for x in stu_img_tokens], dim=0) 
-            vision_align_loss = self.cosine_loss(stu_img_final_reps, t2s_projector(teacher_img_reps))
+        if teacher_img_reps is not None and len(stu_img_tokens[last_layer_idx]) > 0:
+            # 1. Distill Ảnh bằng Structure Loss ở Layer Cuối
+            stu_img_final_reps = torch.stack([x.mean(dim=0) for x in stu_img_tokens[last_layer_idx]], dim=0) 
+            # vision_align_loss = self.cosine_loss(stu_img_final_reps, t2s_projector(teacher_img_reps))
+            vision_align_loss = self.structure_loss(stu_img_final_reps, teacher_img_reps)
 
+            # 2. Tính SIGReg trên k layers (trừ layer cuối)
             warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
-            sigreg_final = warmup_factor * self.sigreg_orthogonal_per_sample(stu_img_tokens)
+            total_sigreg = 0.0
+            
+            # Duyệt qua các layer từ L-k đến L-1
+            for l in range(start_sigreg_layer, last_layer_idx):
+                
+                # MỎ NEO LÀ MEAN CỦA LAYER L+1 (Detach để an toàn)
+                anchors_l_plus_1 = [x.mean(dim=0).detach() for x in stu_img_tokens[l+1]]
+                
+                # Gọi SIGReg với mỏ neo truyền vào
+                layer_sigreg = self.sigreg_orthogonal_per_sample(
+                    tokens_list=stu_img_tokens[l],
+                    anchors_list=anchors_l_plus_1
+                )
+                total_sigreg += layer_sigreg
+                
+            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers))
 
         return vision_align_loss, sigreg_final, text_align_loss
     
