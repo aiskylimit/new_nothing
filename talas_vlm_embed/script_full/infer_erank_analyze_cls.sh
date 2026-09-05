@@ -70,7 +70,7 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v4_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_v8_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
 
 MODEL="training/FastVLM-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
 

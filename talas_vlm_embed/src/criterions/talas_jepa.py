@@ -230,7 +230,7 @@ class TalasJepa(nn.Module):
                 num_vision_token = img_feat.size(0)
                 
                 for l in range(start_layer, num_layers):
-                    _, mid_stu_img_hidden_state = get_hidden_text_vision(
+                    text_hidden_state, mid_stu_img_hidden_state = get_hidden_text_vision(
                         student_hidden_states[l][i],
                         text_token_counts[i].item(),
                         num_vision_token,
@@ -303,6 +303,12 @@ class TalasJepa(nn.Module):
                                        dim=0,).to(device, dtype=dtype) if teacher_qry[0]['mean_last_img_token'] is not None else None
         tea_img_pos_reps = torch.stack([rep['mean_last_img_token'] for rep in teacher_pos], 
                                        dim=0,).to(device, dtype=dtype) if teacher_pos[0]['mean_last_img_token'] is not None else None
+
+        tea_text_qry_reps = torch.stack([rep['mean_last_text_token'] for rep in teacher_qry], 
+                                               dim=0,).to(device, dtype=dtype) if teacher_qry[0]['mean_last_text_token'] is not None else None
+        tea_text_pos_reps = torch.stack([rep['mean_last_text_token'] for rep in teacher_pos], 
+                                               dim=0,).to(device, dtype=dtype) if teacher_pos[0]['mean_last_text_token'] is not None else None
+        
         
         if getattr(self, 'world_size', 1) > 1:
             all_student_qry_reps = self._dist_gather_tensor(student_qry_reps)
