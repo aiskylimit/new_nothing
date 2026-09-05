@@ -46,7 +46,7 @@ class TalasJepa(nn.Module):
 
         return loss
 
-    def distillcse_kd_loss(self, S1, S2, T1, T2, tau=0.05,):
+    def distillcse_kd_loss(self, S1, S2, T1, T2, tau=0.02,):
         """
         Distill teacher similarity distribution over in-batch negatives.
 
@@ -202,7 +202,7 @@ class TalasJepa(nn.Module):
                 z_perp_normalized = F.layer_norm(z_perp, (D,))
             else:
                 z_perp_normalized = F.layer_norm(tokens, (D,))
-                
+
             # Chiếu dữ liệu: [N_i, D] @ [D, num_slices] -> [N_i, num_slices]
             x_proj = z_perp_normalized @ A
             x_t = x_proj.unsqueeze(-1) * t # [N_i, num_slices, 17]

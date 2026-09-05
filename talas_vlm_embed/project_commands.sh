@@ -85,6 +85,6 @@ CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1
 # 9. Copy JSON eval outputs
 # =========================
 
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
 
-python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+python json_filter.py ./MMEB-eval_outputs_v2 "${JSON_FILTER_DESTINATION}" --overwrite
