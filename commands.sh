@@ -1,4 +1,4 @@
-#2 -0-20
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
 #talas-v9
 #v1
 
