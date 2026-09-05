@@ -1,5 +1,5 @@
-#1 +10
-#test
+#2 -0-20
+#talas-v9
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
@@ -9,13 +9,7 @@
 # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-kill -9 175643 175646 176760 176765 176770 176775 176780 176786 176787 176795 178627
-sleep 3
-nvidia-smi
-cd ./talas_vlm_embed
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-sleep 300
+# sleep 3
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
 
