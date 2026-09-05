@@ -1,4 +1,4 @@
-#2
+#2 +a
 #talas-eval-v8
 #v1
 
