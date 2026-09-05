@@ -211,68 +211,50 @@ class TalasJepa(nn.Module):
         # Lấy trung bình toàn batch
         return total_sigreg / max(B, 1)
 
-    def _compute_vision_distill(self, student_hidden_states, image_features, 
-                                teacher_img_reps, text_token_counts, 
-                                attention_mask, t2s_projector):
-        if teacher_img_reps is None or image_features is None:
-            return 0.0, 0.0, 0.0
-
+    def _compute_modality_distill(self, student_hidden_states, image_features, 
+                                  teacher_img_reps, teacher_text_reps, 
+                                  text_token_counts, attention_mask, 
+                                  t2s_projector):
         batch_size = attention_mask.size(0)
-        num_layers = len(student_hidden_states)
-        start_layer = int(num_layers * 0.5)
+        last_layer_idx = len(student_hidden_states) - 1
         
-        stu_img_tokens = {l: [] for l in range(start_layer, num_layers)}
+        stu_img_tokens = []
+        stu_text_reps = []
         
         cur_idx_img = 0
         for i in range(batch_size):
-            if cur_idx_img < len(image_features):
-                img_feat = image_features[cur_idx_img]
-                num_vision_token = img_feat.size(0)
-                
-                for l in range(start_layer, num_layers):
-                    text_hidden_state, mid_stu_img_hidden_state = get_hidden_text_vision(
-                        student_hidden_states[l][i],
-                        text_token_counts[i].item(),
-                        num_vision_token,
-                        attention_mask[i]
-                    )
-                    stu_img_tokens[l].append(mid_stu_img_hidden_state)
-
+            num_vision_token = 0
+            if image_features is not None and cur_idx_img < len(image_features):
+                num_vision_token = image_features[cur_idx_img].size(0)
                 cur_idx_img += 1
-
-        last_layer_idx = num_layers - 1
-        if len(stu_img_tokens[last_layer_idx]) == 0:
-            return 0.0, 0.0, 0.0
-
-        # ===============================================================
-        # PHẦN 1: TẦNG CUỐI (LAYER L) 
-        # ===============================================================
-        stu_img_reps = torch.stack([x.mean(dim=0) for x in stu_img_tokens[last_layer_idx]], dim=0) 
-
-        # 1.1. Loss Align với Teacher
-        vision_align_loss = self.cosine_loss(stu_img_reps, t2s_projector(teacher_img_reps))
-
-        # 1.2. Tính SIGReg Đa dạng Trực giao
-        warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
-        sigreg_final = warmup_factor * self.sigreg_orthogonal_per_sample(stu_img_tokens[last_layer_idx])
-
-        # ===============================================================
-        # PHẦN 2: CÁC TẦNG GIỮA - Tự chưng cất nối tiếp (Cascade Struct)
-        # ===============================================================
-        cascade_align_loss = 0.0
-        
-        for l in range(start_layer, last_layer_idx):
-            current_mean = torch.stack([x.mean(dim=0) for x in stu_img_tokens[l]], dim=0)    # [B, D]
-            next_layer_mean = torch.stack([x.mean(dim=0) for x in stu_img_tokens[l+1]], dim=0) # [B, D]
             
-            # Layer hiện tại học theo layer ngay trên nó
-            l_align = self.structure_loss(current_mean, next_layer_mean.detach())
-            cascade_align_loss += l_align
-    
-        num_mid_layers = max(last_layer_idx - start_layer, 1)
-        cascade_align_final = cascade_align_loss / num_mid_layers
+            text_last_hidden, img_last_hidden = get_hidden_text_vision(
+                student_hidden_states[last_layer_idx][i],
+                text_token_counts[i].item(),
+                num_vision_token,
+                attention_mask[i]
+            )
+            stu_text_reps.append(text_last_hidden.mean(dim=0))
+            
+            if num_vision_token > 0:
+                stu_img_tokens.append(img_last_hidden)
 
-        return vision_align_loss, cascade_align_final, sigreg_final
+        text_align_loss = 0.0
+        if teacher_text_reps is not None:
+            stacked_stu_text_reps = torch.stack(stu_text_reps, dim=0)
+            text_align_loss = self.cosine_loss(stacked_stu_text_reps, t2s_projector(teacher_text_reps))
+
+        vision_align_loss = 0.0
+        sigreg_final = 0.0
+        
+        if teacher_img_reps is not None and len(stu_img_tokens) > 0:
+            stu_img_final_reps = torch.stack([x.mean(dim=0) for x in stu_img_tokens], dim=0) 
+            vision_align_loss = self.cosine_loss(stu_img_final_reps, t2s_projector(teacher_img_reps))
+
+            warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
+            sigreg_final = warmup_factor * self.sigreg_orthogonal_per_sample(stu_img_tokens)
+
+        return vision_align_loss, sigreg_final, text_align_loss
     
     def forward(self, model_wrapper, input_data):
         student_model = model_wrapper.model
@@ -353,40 +335,50 @@ class TalasJepa(nn.Module):
 
         vision_loss = torch.zeros_like(contrastive_loss)
         SIGReg = torch.zeros_like(contrastive_loss)
-        
-        if tea_img_qry_reps is not None:
-            qry_align, qry_cascade, qry_sigreg = self._compute_vision_distill(
-                student_hidden_states=student_qry_hidden_states,
-                image_features=student_qry_image_features,
-                teacher_img_reps=tea_img_qry_reps,
-                text_token_counts=num_student_text_qry_tokens,
-                attention_mask=student_qry_input['attention_mask'],
-                t2s_projector=projectors['t2s']
-            )
-            vision_loss += (qry_align + qry_cascade) / 2
-            SIGReg += qry_sigreg
+        text_loss = torch.zeros_like(contrastive_loss)
 
-        if tea_img_pos_reps is not None:
-            pos_align, pos_cascade, pos_sigreg = self._compute_vision_distill(
-                student_hidden_states=student_pos_hidden_states,
-                image_features=student_pos_image_features,
-                teacher_img_reps=tea_img_pos_reps,
-                text_token_counts=num_student_text_pos_tokens,
-                attention_mask=student_pos_input['attention_mask'],
-                t2s_projector=projectors['t2s']
+        t2s_projector = projectors['t2s'] 
+        
+        # Xử lý QRY
+        if tea_img_qry_reps is not None or tea_text_qry_reps is not None:
+            qry_vis_align, qry_sigreg, qry_txt_align = self._compute_modality_distill(
+                student_hidden_states=student_qry_hidden_states, 
+                image_features=student_qry_image_features,
+                teacher_img_reps=tea_img_qry_reps, 
+                teacher_text_reps=tea_text_qry_reps,
+                text_token_counts=num_student_text_qry_tokens, 
+                attention_mask=student_qry_input['attention_mask'],
+                t2s_projector=t2s_projector
             )
-            vision_loss += (pos_align + pos_cascade) / 2
+            vision_loss += qry_vis_align
+            SIGReg += qry_sigreg
+            text_loss += qry_txt_align
+
+        # Xử lý POS
+        if tea_img_pos_reps is not None or tea_text_pos_reps is not None:
+            pos_vis_align, pos_sigreg, pos_txt_align = self._compute_modality_distill(
+                student_hidden_states=student_pos_hidden_states, 
+                image_features=student_pos_image_features,
+                teacher_img_reps=tea_img_pos_reps, 
+                teacher_text_reps=tea_text_pos_reps,
+                text_token_counts=num_student_text_pos_tokens, 
+                attention_mask=student_pos_input['attention_mask'],
+                t2s_projector=t2s_projector
+            )
+            vision_loss += pos_vis_align
             SIGReg += pos_sigreg
+            text_loss += pos_txt_align
 
         if tea_img_qry_reps is not None and tea_img_pos_reps is not None:
             vision_loss = vision_loss / 2
+            text_loss = text_loss / 2
             SIGReg = SIGReg / 2
 
         loss_distill = torch.zeros_like(contrastive_loss)
         if self.args.use_distill_cse_loss:
             loss_distill += kd_simcse
         if self.args.use_distill_vison_loss:
-            loss_distill += vision_loss 
+            loss_distill += vision_loss + text_loss
 
         loss = contrastive_loss 
         if self.args.use_distill_loss:
