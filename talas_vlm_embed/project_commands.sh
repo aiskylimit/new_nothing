@@ -77,7 +77,10 @@ CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.2 &
 # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
-# wait
+
+
+
+wait
 
 # CUDA_VISIBLE_DEVICES=0 bash script_full/infer_erank_analyze_cls.sh 1 1 1 0 1.0 0.01
 
