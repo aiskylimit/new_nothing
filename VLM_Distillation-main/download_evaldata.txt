@@ -1,0 +1,18 @@
+#datasets
+--url https://opencompass.openxlab.space/utils/VLMEval/GQA_TestDev_Balanced.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/MME.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/RealWorldQA.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/benchmarks/ScienceQA/ScienceQA_TEST.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/AI2D_TEST_NO_MASK.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/MMMU_DEV_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/MMStar.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/ChartQA_TEST.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/DocVQA_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/TextVQA_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--url https://opencompass.openxlab.space/utils/VLMEval/OCRBench.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+
+#models
+--hf KamilaMila/FastVLM-0.5B /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/KamilaMila/FastVLM-0.5B
+--hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2-VL-2B-Instruct
+--hf Qwen/Qwen2.5-VL-7B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-7B-Instruct
+--hf Qwen/Qwen3-VL-4B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen3-VL-4B-Instruct
