@@ -80,7 +80,7 @@ class MiniGPT4(BaseModel):
 
         chat_state = self.CONV_VISION.copy()
         img_list = []
-        _ = chat.upload_img(image_path, chat_state, img_list)
+        # _ = chat.upload_img(image_path, chat_state, img_list)
         chat.encode_img(img_list)
         chat.ask(prompt, chat_state)
         with torch.inference_mode():
