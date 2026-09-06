@@ -1,4 +1,4 @@
-#1 +10
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
 #test
 #v2
 
@@ -21,7 +21,6 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-rm -rf /mnt/local/uvenvs/vlm-distillation-eval
 
 # cd ./talas_vlm_embed
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
