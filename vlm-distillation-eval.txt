@@ -1,5 +1,5 @@
 # manager: uv
-# python: >=3.11
+# python: 3.11
 # From VLM_Distillation-main/envs/eval/pyproject.toml [project].dependencies.
 accelerate==1.13.0
 anls>=0.0.2
