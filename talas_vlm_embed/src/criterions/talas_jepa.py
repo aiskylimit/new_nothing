@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from src.criterions.utils import count_clean_text_tokens, get_hidden_text, get_hidden_text_vision, pooling
 import random
 import os
+import math
 
 
 class TalasJepa(nn.Module):
@@ -141,11 +142,14 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
-    def sigreg_orthogonal_per_sample(self, tokens_list: list[torch.Tensor], anchors_list: list[torch.Tensor] = None, num_slices: int = 128) -> torch.Tensor:
+    def sigreg_orthogonal_per_sample(self, tokens_list: list[torch.Tensor], 
+                                     anchors_list: list[torch.Tensor] = None,
+                                     num_slices: int = 128, alpha=0.5) -> torch.Tensor:
         """
         Tính Orthogonal SIGReg per sample xử lý độ dài token động (variable length).
         tokens_list: Một list gồm B tensors, mỗi tensor có shape [N_i, Dim]
         anchors_list: (Tùy chọn) List gồm B tensors mỏ neo truyền từ ngoài vào (VD: layer l+1).
+        alpha ∈ [0,1]: 1 = giữ nguyên phân phối hiện tại, 0 = ép hoàn toàn về Gaussian
         """
         if not tokens_list:
             return 0.0
@@ -204,7 +208,10 @@ class TalasJepa(nn.Module):
                 z_perp_normalized = F.layer_norm(tokens, (D,))
 
             # Chiếu dữ liệu: [N_i, D] @ [D, num_slices] -> [N_i, num_slices]
-            x_proj = z_perp_normalized @ A
+            # x_proj = z_perp_normalized @ A
+            noise = torch.randn_like(z_perp_normalized)
+            z_mixed = math.sqrt(alpha) * z_perp_normalized + math.sqrt(1.0 - alpha) * noise
+            x_proj = z_mixed @ A
             x_t = x_proj.unsqueeze(-1) * t # [N_i, num_slices, 17]
 
             # Tính Empirical Characteristic Function
