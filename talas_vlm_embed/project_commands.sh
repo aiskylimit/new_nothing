@@ -59,7 +59,7 @@ CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 3.0 
 CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 4.0 0.1 1 1&
 CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 5.0 0.1 1 1&
 # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 0 0 1.0 0.1 &
-CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 5.0 0.1 3 1&
+CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.1 1 1&
 # wait
 
 CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.1 1 1&
