@@ -7,6 +7,8 @@ from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
+from cypher_extract.paths import get_data_root
+
 
 @dataclass(frozen=True)
 class DatasetSpec:
@@ -24,8 +26,18 @@ class DatasetSpec:
         return self.directory / self.selection_filename
 
 
-def default_dataset_specs(repository_root: Path) -> dict[str, DatasetSpec]:
-    data = repository_root / "data"
+def default_dataset_specs(
+    repository_root: Path, *, data_root: Path | None = None
+) -> dict[str, DatasetSpec]:
+    """Return inference inputs from the downloaded local dataset repository.
+
+    ``repository_root`` remains in the signature for compatibility with
+    callers that also use it for prompts and checkpoints. Set
+    ``CYPHER_DATA_ROOT`` to override the server default.
+    """
+
+    del repository_root
+    data = get_data_root() if data_root is None else data_root
     inference_files = {
         "generation_filename": "generation_inference_test.jsonl",
         "selection_filename": "selection_inference_test.jsonl",

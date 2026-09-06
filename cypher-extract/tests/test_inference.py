@@ -254,8 +254,10 @@ def test_training_output_dirs_match_local_inference_layout() -> None:
 
 
 def test_default_datasets_use_full_test_inference_artifacts() -> None:
-    specs = default_dataset_specs(REPOSITORY_ROOT)
+    data_root = Path("/mnt/local/test-cypher-data")
+    specs = default_dataset_specs(REPOSITORY_ROOT, data_root=data_root)
     for spec in specs.values():
+        assert spec.directory.parent == data_root
         assert spec.generation_test.name == "generation_inference_test.jsonl"
         assert spec.selection_test.name == "selection_inference_test.jsonl"
 

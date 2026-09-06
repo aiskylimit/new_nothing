@@ -169,10 +169,12 @@ Generative eval giữ nguyên metrics hỗn hợp hiện tại nhưng dùng deco
 `{"label": "YES"}` hoặc `{"label": "NO"`; generator giữ sampling
 `temperature=0.5`, `top_p=0.95`, `top_k=0` và tối đa 256 token.
 
+Mặc định code đọc dataset đã tải tại
+`/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data`.
+Có thể đặt `CYPHER_DATA_ROOT` nếu cần chạy từ vị trí khác.
+
 ```powershell
 python scripts\prepare_multitask_prompts.py `
-  --input-dir data\cypherbench_schema_grounding_full_final `
-  --output-dir data\prepared `
   --batch-size 2 `
   --overwrite
 ```
@@ -182,19 +184,17 @@ dataset local cho LlamaFactory:
 
 ```powershell
 python scripts\prepare_llamafactory_data.py `
-  --input-dir data\prepared `
-  --output-dir data\llamafactory `
   --overwrite
 ```
 
 Mỗi row đầu ra chỉ giữ `messages` theo thứ tự `system -> user -> assistant`.
 Các config train dùng tên `cypher_prepared_train` và `cypher_prepared_eval`
-trong `data/llamafactory/dataset_info.json`.
+trong `$CYPHER_DATA_ROOT/llamafactory/dataset_info.json`.
 
 `scripts/train.sh` tự động đọc `per_device_train_batch_size` sau khi gộp
 các CLI override. Nếu batch size khác layout hiện có, script sẽ tạo và dùng
-cache riêng tại `data/prepared/batch_<N>` và
-`data/llamafactory/batch_<N>`. Ví dụ, lệnh sau tự chuẩn bị data cho
+cache riêng tại `$CYPHER_DATA_ROOT/prepared/batch_<N>` và
+`$CYPHER_DATA_ROOT/llamafactory/batch_<N>`. Ví dụ, lệnh sau tự chuẩn bị data cho
 batch size 8 trước khi khởi chạy `torchrun`:
 
 ```bash
@@ -288,18 +288,16 @@ và BF16.
 
 ### 2. Tạo dữ liệu LlamaFactory
 
-Nếu `data/prepared` đã tồn tại, chuyển nó sang OpenAI chat JSONL bằng:
+Dataset tải về đã chứa sẵn thư mục `$CYPHER_DATA_ROOT/prepared`. Để tạo lại
+OpenAI chat JSONL khi cần:
 
 ```bash
-python scripts/prepare_llamafactory_data.py \
-  --input-dir data/prepared \
-  --output-dir data/llamafactory \
-  --overwrite
+python scripts/prepare_llamafactory_data.py --overwrite
 ```
 
 Lệnh tạo bốn dataset `cypher_prepared_train`, `cypher_prepared_eval`,
 `cypher_prepared_test_generator`, `cypher_prepared_test_selector` và đăng ký
-chúng trong `data/llamafactory/dataset_info.json`. Các YAML hiện tại đã trỏ
+chúng trong `$CYPHER_DATA_ROOT/llamafactory/dataset_info.json`. Các YAML hiện tại đã trỏ
 sẵn tới train/eval local này.
 
 ### 3. Train LoRA teacher Qwen
@@ -548,9 +546,9 @@ Cypher. Các trường gold chỉ được đọc sau generation để tính met
 - Ba test dataset đã tồn tại:
 
   ```text
-  data/cypherbench_schema_grounding_full_final/
-  data/mind_the_query_schema_grounding_full/
-  data/neo4j_text2cypher_schema_grounding_full/
+  /mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data/cypherbench_schema_grounding_full_final/
+  /mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data/mind_the_query_schema_grounding_full/
+  /mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data/neo4j_text2cypher_schema_grounding_full/
   ```
 
 Mỗi directory phải có `selection_inference_test.jsonl` và

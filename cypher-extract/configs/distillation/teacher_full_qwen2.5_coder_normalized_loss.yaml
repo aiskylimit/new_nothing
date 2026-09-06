@@ -6,7 +6,7 @@ model_name_or_path: Qwen/Qwen2.5-Coder-7B-Instruct
 model_revision: c03e6d358207e414f1eca0bb1891e29f1db0e242
 dataset: cypher_prepared_train
 eval_dataset: cypher_prepared_eval
-dataset_dir: data/llamafactory
+dataset_dir: ${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data}/llamafactory
 template: qwen
 cutoff_len: 892
 packing: false

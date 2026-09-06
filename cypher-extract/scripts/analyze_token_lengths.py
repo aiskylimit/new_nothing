@@ -31,6 +31,7 @@ from transformers import AutoTokenizer
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from cypher_extract.paths import get_data_root  # noqa: E402
 from schema_grounding.inference.data import default_dataset_specs  # noqa: E402
 from schema_grounding.inference.merge import merge_schema_units  # noqa: E402
 from schema_grounding.inference.prompting import (  # noqa: E402
@@ -57,6 +58,7 @@ BATCH_SIZE = 512
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    data_root = get_data_root()
     parser.add_argument(
         "--model-families",
         default="all",
@@ -70,10 +72,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--prepared-dir",
         type=Path,
-        default=ROOT / "data" / "llamafactory",
+        default=data_root / "llamafactory",
         help="Directory holding the prepared LlamaFactory training files.",
     )
-    parser.add_argument("--output", type=Path, default=ROOT / "data" / "token_length_analysis.json")
+    parser.add_argument("--output", type=Path, default=data_root / "token_length_analysis.json")
     parser.add_argument("--max-rows", type=int, default=None, help="Row limit per file for a smoke test.")
     parser.add_argument(
         "--local-files-only",

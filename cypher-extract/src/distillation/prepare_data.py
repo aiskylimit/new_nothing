@@ -15,6 +15,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from cypher_extract.paths import get_data_root
+
 SPLIT_FILES = {
     "train": "train.jsonl",
     "eval": "eval.jsonl",
@@ -162,8 +164,9 @@ def convert_directory(input_dir: Path, output_dir: Path, *, overwrite: bool = Fa
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-dir", type=Path, default=Path("data/prepared"))
-    parser.add_argument("--output-dir", type=Path, default=Path("data/llamafactory"))
+    data_root = get_data_root()
+    parser.add_argument("--input-dir", type=Path, default=data_root / "prepared")
+    parser.add_argument("--output-dir", type=Path, default=data_root / "llamafactory")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
     counts = convert_directory(args.input_dir, args.output_dir, overwrite=args.overwrite)

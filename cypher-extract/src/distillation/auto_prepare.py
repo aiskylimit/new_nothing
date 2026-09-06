@@ -13,6 +13,8 @@ from typing import Any
 
 from omegaconf import OmegaConf
 
+from cypher_extract.paths import get_data_root
+
 from .data_cache import GROUNDING_FILENAMES, preparation_fingerprint
 from .prepare_data import LAYOUT_FILE, SPLIT_FILES
 
@@ -117,17 +119,34 @@ def cache_is_ready(plan: AutoPreparePlan) -> bool:
     if not isinstance(layout, dict):
         return False
     try:
+        if int(layout.get("batch_size", -1)) != plan.batch_size:
+            return False
+    except (TypeError, ValueError):
+        return False
+
+    fingerprint_keys = {
+        "input_directory",
+        "preparation_seed",
+        "preparation_fingerprint",
+    }
+    if fingerprint_keys.isdisjoint(layout):
+        # Published dataset snapshots are portable and intentionally omit the
+        # machine-specific source path and fingerprint. Their complete file
+        # set plus matching batch layout is sufficient for direct reuse.
+        return True
+    if not fingerprint_keys.issubset(layout):
+        return False
+    try:
         current_fingerprint = preparation_fingerprint(
             plan.grounding_input_dir,
             plan.prompt_root,
             seed=plan.preparation_seed,
         )
         return (
-            int(layout.get("batch_size", -1)) == plan.batch_size
-            and Path(str(layout.get("input_directory", ""))).resolve()
+            Path(str(layout["input_directory"])).resolve()
             == plan.grounding_input_dir.resolve()
-            and int(layout.get("preparation_seed", -1)) == plan.preparation_seed
-            and layout.get("preparation_fingerprint") == current_fingerprint
+            and int(layout["preparation_seed"]) == plan.preparation_seed
+            and layout["preparation_fingerprint"] == current_fingerprint
         )
     except (OSError, TypeError, ValueError):
         return False
@@ -204,15 +223,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise ValueError("Usage: python -m distillation.auto_prepare <config.yaml> [key=value ...]")
     config_path = Path(arguments[0]).resolve()
     project_root = Path(os.environ.get("CYPHER_PROJECT_ROOT", PROJECT_ROOT)).resolve()
+    data_root = get_data_root()
     plan = build_auto_prepare_plan(
         config_path,
         arguments[1:],
         project_root=project_root,
         grounding_input=os.environ.get(
             "CYPHER_GROUNDING_INPUT_DIR",
-            "data/cypherbench_schema_grounding_full_final",
+            str(data_root / "cypherbench_schema_grounding_full_final"),
         ),
-        prepared_root=os.environ.get("CYPHER_PREPARED_ROOT", "data/prepared"),
+        prepared_root=os.environ.get("CYPHER_PREPARED_ROOT", str(data_root / "prepared")),
         preparation_seed=int(os.environ.get("CYPHER_PREPARE_SEED", "42")),
     )
     if plan is None:

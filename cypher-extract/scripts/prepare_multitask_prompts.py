@@ -21,6 +21,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from cypher_extract.paths import get_data_root  # noqa: E402
 from distillation.data_cache import preparation_fingerprint  # noqa: E402
 from schema_grounding.selector_labels import (  # noqa: E402
     NEGATIVE_SELECTOR_LABEL,
@@ -32,12 +33,13 @@ from schema_grounding.selector_labels import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    data_root = get_data_root()
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=Path("data/cypherbench_schema_grounding_full_final"),
+        default=data_root / "cypherbench_schema_grounding_full_final",
     )
-    parser.add_argument("--output-dir", type=Path, default=Path("data/prepared"))
+    parser.add_argument("--output-dir", type=Path, default=data_root / "prepared")
     parser.add_argument(
         "--batch-size",
         type=int,

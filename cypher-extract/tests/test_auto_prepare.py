@@ -119,6 +119,28 @@ def test_cache_readiness_requires_matching_layout_and_all_files(tmp_path: Path) 
     assert not cache_is_ready(plan)
 
 
+def test_portable_downloaded_cache_needs_only_complete_files_and_matching_batch_size(
+    tmp_path: Path,
+) -> None:
+    plan = AutoPreparePlan(
+        batch_size=2,
+        grounding_input_dir=tmp_path / "grounding",
+        prepared_dir=tmp_path / "prepared",
+        dataset_dir=tmp_path / "llamafactory",
+        dataset_dir_override="llamafactory",
+        prompt_root=tmp_path / "prompts",
+    )
+    plan.dataset_dir.mkdir(parents=True)
+    (plan.dataset_dir / "dataset_info.json").write_text("{}\n", encoding="utf-8")
+    (plan.dataset_dir / LAYOUT_FILE).write_text('{"batch_size": 2}\n', encoding="utf-8")
+    for split in SPLIT_FILES:
+        (plan.dataset_dir / f"cypher_prepared_{split}.jsonl").write_text(
+            "{}\n", encoding="utf-8"
+        )
+
+    assert cache_is_ready(plan)
+
+
 def test_cache_is_invalidated_by_source_content_directory_prompt_and_seed(tmp_path: Path) -> None:
     plan = AutoPreparePlan(
         batch_size=4,

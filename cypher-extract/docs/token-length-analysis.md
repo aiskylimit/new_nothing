@@ -14,7 +14,7 @@ python scripts/analyze_token_lengths.py --model-families all --local-files-only
 Report ghi ra `data/token_length_analysis.json` (không được track vì `data/`
 nằm trong `.gitignore`) — file này là bản chép lại kết quả để giữ lâu dài.
 
-## Training (`data/llamafactory/cypher_prepared_*.jsonl`)
+## Training (`$CYPHER_DATA_ROOT/llamafactory/cypher_prepared_*.jsonl`)
 
 `cutoff_len` truncate đúng `prompt + response`, nên nó phải `>= max_total`.
 

@@ -47,6 +47,7 @@ merge-cypher-evaluations = "cypher_evaluation.merge:main"
 
 [tool.hatch.build.targets.wheel]
 packages = [
+    "src/cypher_extract",
     "src/distillation",
     "src/schema_grounding",
     "src/cypher_evaluation",

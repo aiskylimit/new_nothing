@@ -9,7 +9,7 @@ ref_model_revision: c03e6d358207e414f1eca0bb1891e29f1db0e242
 ref_model_adapters: results/qwen2.5_coder/teacher_lora
 dataset: cypher_prepared_train
 eval_dataset: cypher_prepared_eval
-dataset_dir: data/llamafactory
+dataset_dir: ${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data}/llamafactory
 template: qwen
 cutoff_len: 892
 packing: false
