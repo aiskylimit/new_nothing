@@ -1,4 +1,4 @@
-#i vlm-distillation.txt
+#i vlm-distillation-eval.txt
 #talas-v9
 #v2
 
