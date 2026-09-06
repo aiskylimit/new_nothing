@@ -1,4 +1,4 @@
-#i vlm-distillation-eval.txt
+#i vlm-distill-eval.txt
 #test
 #v2
 
