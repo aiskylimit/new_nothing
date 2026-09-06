@@ -18,7 +18,7 @@ Generator and selector losses are normalized separately and then combined with
 equal weight. Checkpoints are isolated from the other settings under:
 
 ```text
-results/full_finetune_normalized_loss/<model-family>/<method>
+results/full_finetune_normalized/<model-family>/<method>
 ```
 
 Train the matching normalized full teacher before running a KD method:

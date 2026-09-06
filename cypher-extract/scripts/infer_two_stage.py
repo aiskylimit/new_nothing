@@ -83,7 +83,7 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         type=Path,
         default=None,
-        help="Inference output root. Defaults to results/inference/<model-family>.",
+        help="Inference output root. Defaults to results/inference/lora/<model-family>.",
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--dtype", choices=("auto", "bfloat16", "float16", "float32"), default="bfloat16")
@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
     if args.output_dir is None:
-        args.output_dir = Path("results/inference") / args.model_family
+        args.output_dir = Path("results/inference/lora") / args.model_family
     return args
 
 

@@ -23,7 +23,7 @@ distill_method: sft
 kd_ratio: 0.0
 selector_loss_weight: 0.5
 
-output_dir: results/full_finetune_normalized_loss/llama3/sft
+output_dir: results/full_finetune_normalized/llama3/sft
 overwrite_output_dir: true
 per_device_train_batch_size: 2
 per_device_eval_batch_size: 32

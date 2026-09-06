@@ -22,7 +22,7 @@ train_on_prompt: false
 distill_method: sft
 kd_ratio: 0.0
 
-output_dir: results/llama3/sft
+output_dir: results/lora/llama3/sft
 overwrite_output_dir: true
 per_device_train_batch_size: 2
 per_device_eval_batch_size: 32

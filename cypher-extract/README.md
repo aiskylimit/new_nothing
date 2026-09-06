@@ -303,7 +303,7 @@ sẵn tới train/eval local này.
 ### 3. Train LoRA teacher Qwen
 
 Train teacher `Qwen/Qwen3-4B-Instruct-2507`. Adapter được lưu tại
-`results/qwen3/teacher_lora`:
+`results/lora/qwen3/teacher_lora`:
 
 ```bash
 RUN_GPUS=0,1 bash scripts/train.sh configs/distillation/teacher_lora_qwen3.yaml
@@ -324,21 +324,21 @@ teacher:
 RUN_GPUS=0,1 bash scripts/train.sh configs/distillation/student_sft.yaml
 ```
 
-Output nằm tại `results/qwen3/sft`, đúng với checkpoint path mà inference dùng
+Output nằm tại `results/lora/qwen3/sft`, đúng với checkpoint path mà inference dùng
 cho method `sft`.
 
 ### 5. Train student bằng KD
 
 Config project mặc định và các preset FKL/RKL của cả ba họ model đều dùng
 `kd_ratio: 0.6`, tự nạp base teacher 4B và LoRA adapter vừa train tại
-`results/qwen3/teacher_lora`:
+`results/lora/qwen3/teacher_lora`:
 
 ```bash
 RUN_GPUS=0,1 bash scripts/train.sh configs/distillation/kd.yaml
 ```
 
 Loss train là `0.4 * LM loss + 0.6 * FKL loss`; output mặc định nằm tại
-`results/qwen3/fkl`.
+`results/lora/qwen3/fkl`.
 
 Có thể thay adapter, dataset hoặc output bằng override:
 
@@ -347,13 +347,13 @@ RUN_GPUS=0,1 bash scripts/train.sh configs/distillation/kd.yaml \
   ref_model_adapters=/path/to/teacher-adapter \
   dataset=cypher_prepared_train \
   eval_dataset=cypher_prepared_eval \
-  output_dir=results/qwen3/my_fkl
+  output_dir=results/lora/qwen3/my_fkl
 ```
 
 ### 6. Chạy các method khác
 
 Các preset trong `configs/qwen3` đã dùng dataset local và tự nạp adapter tại
-`results/qwen3/teacher_lora`. Ví dụ AMID:
+`results/lora/qwen3/teacher_lora`. Ví dụ AMID:
 
 ```bash
 RUN_GPUS=0,1 bash scripts/train.sh configs/qwen3/amid.yaml
@@ -404,7 +404,7 @@ export HF_TOKEN=your_huggingface_token
 RUN_GPUS=0,1 bash scripts/train.sh configs/distillation/teacher_lora_llama3.yaml
 ```
 
-Adapter được lưu tại `results/llama3/teacher_lora` và mọi preset Llama tự nạp
+Adapter được lưu tại `results/lora/llama3/teacher_lora` và mọi preset Llama tự nạp
 đường dẫn này. Ví dụ:
 
 ```bash
@@ -421,7 +421,7 @@ Có thể truyền override cho mọi run, đổi cả cây output qua `RESULTS_
 đổi riêng thư mục log qua `LLAMA3_LOG_DIR`:
 
 ```bash
-LLAMA3_LOG_DIR=results/llama3/custom_logs \
+LLAMA3_LOG_DIR=results/lora/llama3/custom_logs \
 RUN_GPUS=0,1 bash scripts/train_all_llama3_lora.sh num_train_epochs=1
 ```
 
@@ -436,7 +436,7 @@ Chạy inference cho model family Llama 3:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 bash scripts/infer_all_llama3_lora.sh \
-  --checkpoint-root results
+  --checkpoint-root results/lora
 ```
 
 Không dùng adapter Qwen cho config Llama hoặc ngược lại.
@@ -466,7 +466,7 @@ Chạy inference cho các checkpoint local dưới model family `qwen2.5_coder`:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 bash scripts/infer_all_qwen2_5_coder_lora.sh \
-  --checkpoint-root results
+  --checkpoint-root results/lora
 ```
 
 ### 7. GPU, resume và kiểm tra
@@ -483,7 +483,7 @@ Resume chính xác một run từ checkpoint (không dùng `train_all_*`):
 
 ```bash
 RUN_GPUS=0,1 bash scripts/train.sh configs/qwen3/fkl.yaml \
-  resume_from_checkpoint=results/qwen3/fkl/checkpoint-1000
+  resume_from_checkpoint=results/lora/qwen3/fkl/checkpoint-1000
 ```
 
 Phải giữ nguyên config của run cũ, đặc biệt là model/method, dataset, seed,
@@ -607,7 +607,8 @@ distillm_adaptive_srkl
 ```
 
 Với mỗi model, script đọc checkpoint local tại
-`results/<model-family>/<method>/checkpoint-N`. Tên `<model-family>/<method>`
+`results/<setting>/<model-family>/<method>/checkpoint-N`. Tên
+`<model-family>/<method>` bên dưới checkpoint root của setting
 khớp trực tiếp với `output_dir` trong config training; inference không tải
 checkpoint từ một Hugging Face result repository. Trong một method directory,
 inference ưu tiên các checkpoint hoàn tất có `resume_manifest.json`, xác nhận tất
@@ -649,7 +650,7 @@ sample, sau đó ghi nhớ batch size an toàn cho các batch có cùng token bu
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 bash scripts/infer_all_qwen3_lora.sh \
-  --checkpoint-root /mnt/checkpoints/cypher-extract/results \
+  --checkpoint-root /mnt/checkpoints/cypher-extract/results/lora \
   --selector-batch-size 128 \
   --generator-batch-size 16
 ```
@@ -755,7 +756,7 @@ reuse output cũ. Khi đó chọn output directory mới:
 ```bash
 python scripts/infer_two_stage.py \
   --methods sft \
-  --output-dir results/inference/qwen3-run-2
+  --output-dir results/inference/lora/qwen3-run-2
 ```
 
 ### 7. Output
@@ -763,7 +764,7 @@ python scripts/infer_two_stage.py \
 Kết quả mặc định nằm tại:
 
 ```text
-results/inference/qwen3/seed<seed>/<method>/<dataset>/
+results/inference/lora/qwen3/seed<seed>/<method>/<dataset>/
 ├── run_config.json
 ├── selector_predictions.jsonl
 ├── predicted_subschemas.jsonl
@@ -789,13 +790,13 @@ results/inference/qwen3/seed<seed>/<method>/<dataset>/
 Xem metric của một run:
 
 ```bash
-jq . results/inference/qwen3/seed10/sft/cypherbench/metrics.json
+jq . results/inference/lora/qwen3/seed10/sft/cypherbench/metrics.json
 ```
 
 Xem một prediction:
 
 ```bash
-head -n 1 results/inference/qwen3/seed10/sft/cypherbench/generator_predictions.jsonl | jq .
+head -n 1 results/inference/lora/qwen3/seed10/sft/cypherbench/generator_predictions.jsonl | jq .
 ```
 
 ### Chấm Cypher bằng Neo4j
@@ -817,7 +818,7 @@ Copy-Item .env.example .env
 # Nên dùng tài khoản Neo4j read-only vì metric sẽ thực thi trực tiếp Cypher dự đoán.
 
 evaluate-cypher `
-  --input results/inference/qwen3/seed10/sft/cypherbench/generator_predictions.jsonl `
+  --input results/inference/lora/qwen3/seed10/sft/cypherbench/generator_predictions.jsonl `
   --name cypherbench-db `
   --graph nba
 ```
@@ -855,7 +856,7 @@ $seeds = 10, 42, 50, 100, 1234
 
 foreach ($seed in $seeds) {
   evaluate-cypher `
-    --input "results/inference/qwen3/seed$seed/sft/cypherbench/generator_predictions.jsonl" `
+    --input "results/inference/lora/qwen3/seed$seed/sft/cypherbench/generator_predictions.jsonl" `
     --name cypherbench-db `
     --graph nba
 }
@@ -864,11 +865,11 @@ foreach ($seed in $seeds) {
 Kết quả được ghi tự động vào các folder tương ứng:
 
 ```text
-results/evaluation/qwen3/seed10/sft/cypherbench/nba/
-results/evaluation/qwen3/seed42/sft/cypherbench/nba/
-results/evaluation/qwen3/seed50/sft/cypherbench/nba/
-results/evaluation/qwen3/seed100/sft/cypherbench/nba/
-results/evaluation/qwen3/seed1234/sft/cypherbench/nba/
+results/evaluation/lora/qwen3/seed10/sft/cypherbench/nba/
+results/evaluation/lora/qwen3/seed42/sft/cypherbench/nba/
+results/evaluation/lora/qwen3/seed50/sft/cypherbench/nba/
+results/evaluation/lora/qwen3/seed100/sft/cypherbench/nba/
+results/evaluation/lora/qwen3/seed1234/sft/cypherbench/nba/
 ```
 
 Eval và merge toàn bộ 7 graph CypherBench cho cả 5 seed:
@@ -880,13 +881,13 @@ $graphs = "company", "fictional_character", "flight_accident", "geography", "mov
 foreach ($seed in $seeds) {
   foreach ($graph in $graphs) {
     evaluate-cypher `
-      --input "results/inference/qwen3/seed$seed/sft/cypherbench/generator_predictions.jsonl" `
+      --input "results/inference/lora/qwen3/seed$seed/sft/cypherbench/generator_predictions.jsonl" `
       --name cypherbench-db `
       --graph $graph
   }
 
   merge-cypher-evaluations `
-    --input-dir "results/evaluation/qwen3/seed$seed/sft/cypherbench"
+    --input-dir "results/evaluation/lora/qwen3/seed$seed/sft/cypherbench"
 }
 ```
 
@@ -910,7 +911,7 @@ CypherKD. `cypherbench-db` và `mind-the-query-db` là logical connector name, c
 bằng `--name`. `neo4j_text2cypher_db` dùng endpoint demo và username/password bằng
 tên graph, đúng cấu hình reference. Graph chọn bằng `--graph`, mặc định là `nba`. Có thể dùng
 `--database` để override database thực tế. Với command trên, CLI ghi kết quả từng
-mẫu vào `results/evaluation/qwen3/seed10/sft/cypherbench/nba/cypher_scores.jsonl` và
+mẫu vào `results/evaluation/lora/qwen3/seed10/sft/cypherbench/nba/cypher_scores.jsonl` và
 trung bình toàn bộ metric vào file `cypher_scores_summary.json` trong cùng folder.
 Đường dẫn output được suy ra tự động từ `--input` và `--graph`; vẫn có thể truyền
 `--output` nếu muốn ghi sang vị trí khác.
@@ -953,7 +954,7 @@ Tài liệu chi tiết về merge policy và output schema nằm tại
 [`docs/two-stage-inference.md`](docs/two-stage-inference.md).
 
 Các preset task-normalized loss được đặt trong `configs/*_normalized_loss` và
-ghi checkpoint sang cây `results/normalized_loss`. Cách train teacher, student
+ghi checkpoint sang cây `results/lora_normalized`. Cách train teacher, student
 và inference được mô tả tại
 [`docs/normalized-loss.md`](docs/normalized-loss.md).
 
@@ -964,7 +965,7 @@ Hướng dẫn train teacher/student và inference nằm tại
 
 Preset kết hợp full fine-tune với task-normalized loss nằm trong
 `configs/*_full_finetune_normalized_loss`, ghi checkpoint sang
-`results/full_finetune_normalized_loss`; xem
+`results/full_finetune_normalized`; xem
 [`docs/full-finetune-normalized-loss.md`](docs/full-finetune-normalized-loss.md).
 
 Các script chạy toàn bộ tuân theo mẫu

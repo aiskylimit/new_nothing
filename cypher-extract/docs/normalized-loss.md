@@ -25,7 +25,7 @@ Normalized runs use a separate checkpoint tree so they cannot overwrite the
 default baselines:
 
 ```text
-results/normalized_loss/<model-family>/<method>
+results/lora_normalized/<model-family>/<method>
 ```
 
 Train the matching normalized teacher first, then a student method. For

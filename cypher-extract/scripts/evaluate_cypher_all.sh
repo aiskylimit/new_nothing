@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-inference_root="${INFERENCE_ROOT:-results/inference/qwen3}"
-evaluation_root="${EVALUATION_ROOT:-results/evaluation/qwen3}"
+inference_root="${INFERENCE_ROOT:-results/inference/lora/qwen3}"
+evaluation_root="${EVALUATION_ROOT:-results/evaluation/lora/qwen3}"
 seed_csv="${SEEDS:-10,42,50,100,1234}"
 method_csv="${METHODS:-}"
 dataset_csv="${DATASETS:-cypherbench,mind_the_query,neo4j_text2cypher}"

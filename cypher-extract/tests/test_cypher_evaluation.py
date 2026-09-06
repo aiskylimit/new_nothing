@@ -108,9 +108,9 @@ def test_cli_uses_configured_timeout_for_connectivity(monkeypatch, tmp_path: Pat
 
 
 def test_output_path_is_derived_from_input_and_graph():
-    input_path = Path("results/inference/qwen3/sft/cypherbench/generator_predictions.jsonl")
+    input_path = Path("results/inference/lora/qwen3/sft/cypherbench/generator_predictions.jsonl")
     assert resolve_output_path(input_path, None, "flight_accident") == Path(
-        "results/evaluation/qwen3/sft/cypherbench/flight_accident/cypher_scores.jsonl"
+        "results/evaluation/lora/qwen3/sft/cypherbench/flight_accident/cypher_scores.jsonl"
     )
 
 

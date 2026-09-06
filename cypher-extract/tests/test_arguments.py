@@ -120,12 +120,12 @@ def test_normalized_configs_match_base_presets(normalized_directory: str, base_f
         assert "selector_loss_weight" not in remaining_config
         assert normalized_config.pop("selector_loss_weight") == 0.5
         assert normalized_config.pop("output_dir") == (
-            f"results/normalized_loss/{base_family}/{normalized_path.stem}"
+            f"results/lora_normalized/{base_family}/{normalized_path.stem}"
         )
         base_config.pop("output_dir")
         if "ref_model_adapters" in base_config:
             assert normalized_config.pop("ref_model_adapters") == (
-                f"results/normalized_loss/{base_family}/teacher_lora"
+                f"results/lora_normalized/{base_family}/teacher_lora"
             )
             base_config.pop("ref_model_adapters")
         assert normalized_config == base_config
@@ -187,12 +187,12 @@ def test_full_normalized_configs_match_full_finetune_presets(
         assert "selector_loss_weight" not in remaining_config
         assert normalized_config.pop("selector_loss_weight") == 0.5
         assert normalized_config.pop("output_dir") == (
-            f"results/full_finetune_normalized_loss/{base_family}/{normalized_path.stem}"
+            f"results/full_finetune_normalized/{base_family}/{normalized_path.stem}"
         )
         full_config.pop("output_dir")
         if "ref_model" in full_config:
             assert normalized_config.pop("ref_model") == (
-                f"results/full_finetune_normalized_loss/{base_family}/teacher_full"
+                f"results/full_finetune_normalized/{base_family}/teacher_full"
             )
             full_config.pop("ref_model")
         assert normalized_config == full_config
@@ -236,7 +236,7 @@ def test_all_remote_base_models_are_pinned_to_immutable_commits(config_path: Pat
             assert config["ref_model_revision"] == PINNED_MODEL_REVISIONS[config["ref_model"]]
         else:
             assert config["ref_model"].startswith(
-                ("results/full_finetune/", "results/full_finetune_normalized_loss/")
+                ("results/full_finetune/", "results/full_finetune_normalized/")
             )
             assert "ref_model_revision" not in config
 
@@ -545,9 +545,9 @@ def test_baseline_config_student_generation_matrix(config_path: Path) -> None:
     assert distillation_args.uses_task_normalized_loss is False
     if distillation_args.uses_kd:
         expected_adapter = {
-            "qwen3": "results/qwen3/teacher_lora",
-            "llama3": "results/llama3/teacher_lora",
-            "qwen2.5_coder": "results/qwen2.5_coder/teacher_lora",
+            "qwen3": "results/lora/qwen3/teacher_lora",
+            "llama3": "results/lora/llama3/teacher_lora",
+            "qwen2.5_coder": "results/lora/qwen2.5_coder/teacher_lora",
         }[config_path.parent.name]
         assert config["ref_model_adapters"] == expected_adapter
         assert distillation_args.ref_model_revision == MODEL_REVISIONS[config_path.parent.name]["teacher"]

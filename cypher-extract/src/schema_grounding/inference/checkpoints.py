@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_CHECKPOINT_ROOT = Path("results")
+DEFAULT_CHECKPOINT_ROOT = Path("results/lora")
 DEFAULT_MODEL_FAMILY = "qwen3"
 SUPPORTED_MODEL_FAMILIES = ("qwen3", "llama3", "qwen2.5_coder")
 DEFAULT_METHODS = (

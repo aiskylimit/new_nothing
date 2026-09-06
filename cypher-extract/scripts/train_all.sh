@@ -45,14 +45,14 @@ case "${SETTING}" in
     TEACHER_KIND="teacher_lora"
     TEACHER_CONFIG_NAME="teacher_lora_${MODEL_FAMILY}.yaml"
     TEACHER_OVERRIDE_KEY="ref_model_adapters"
-    DEFAULT_RESULTS_SUBDIR="results"
+    DEFAULT_RESULTS_SUBDIR="results/lora"
     ;;
   lora_normalized)
     CONFIG_DIRECTORY="${CONFIG_FAMILY}_normalized_loss"
     TEACHER_KIND="teacher_lora"
     TEACHER_CONFIG_NAME="teacher_lora_${MODEL_FAMILY}_normalized_loss.yaml"
     TEACHER_OVERRIDE_KEY="ref_model_adapters"
-    DEFAULT_RESULTS_SUBDIR="results/normalized_loss"
+    DEFAULT_RESULTS_SUBDIR="results/lora_normalized"
     ;;
   full_finetune)
     CONFIG_DIRECTORY="${CONFIG_FAMILY}_full_finetune"
@@ -66,7 +66,7 @@ case "${SETTING}" in
     TEACHER_KIND="teacher_full"
     TEACHER_CONFIG_NAME="teacher_full_${MODEL_FAMILY}_normalized_loss.yaml"
     TEACHER_OVERRIDE_KEY="ref_model"
-    DEFAULT_RESULTS_SUBDIR="results/full_finetune_normalized_loss"
+    DEFAULT_RESULTS_SUBDIR="results/full_finetune_normalized"
     ;;
   *)
     echo "Unsupported training setting: ${SETTING}" >&2

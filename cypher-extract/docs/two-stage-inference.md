@@ -12,16 +12,17 @@ Cypher. Các trường gold chỉ được nối vào output sau generation đ�
 
 ## Checkpoint
 
-Mặc định script đọc checkpoint local dưới repository root:
+Mặc định script đọc checkpoint LoRA local dưới repository root:
 
 ```text
-results
+results/lora
 ```
 
 Với mỗi method, script đọc
-`results/<model-family>/<method>/checkpoint-N`. Tên family/method khớp với
-`output_dir` của config training. Inference không tải checkpoint từ Hugging
-Face result repository và chọn checkpoint có `N` lớn nhất trong method directory.
+`results/<setting>/<model-family>/<method>/checkpoint-N`. Mỗi wrapper setting
+chọn đúng checkpoint root; tên family/method bên dưới root đó khớp với
+`output_dir` của config training. Inference không tải checkpoint từ Hugging Face
+result repository và chọn checkpoint có `N` lớn nhất trong method directory.
 
 Checkpoint được fingerprint từ các inference assets. Vì vậy nếu weight files
 bị thay tại cùng path và cùng step, `run_config.json` không còn khớp và pipeline
@@ -60,7 +61,7 @@ Hoặc chạy trực tiếp trên Linux:
 
 ```bash
 python scripts/infer_two_stage.py \
-  --checkpoint-root results \
+  --checkpoint-root results/lora \
   --methods all \
   --datasets cypherbench,mind_the_query,neo4j_text2cypher \
   --seeds 10,42,50,100,1234 \
@@ -125,7 +126,7 @@ gold/full schema.
 ## Output và resume
 
 ```text
-results/inference/qwen3/seed<seed>/<method>/<dataset>/
+results/inference/lora/qwen3/seed<seed>/<method>/<dataset>/
 ├── run_config.json
 ├── selector_predictions.jsonl
 ├── predicted_subschemas.jsonl
@@ -172,20 +173,20 @@ $seeds = 10, 42, 50, 100, 1234
 
 foreach ($seed in $seeds) {
   evaluate-cypher `
-    --input "results/inference/qwen3/seed$seed/sft/cypherbench/generator_predictions.jsonl" `
+    --input "results/inference/lora/qwen3/seed$seed/sft/cypherbench/generator_predictions.jsonl" `
     --name cypherbench-db `
     --graph nba
 }
 ```
 
 Output được suy ra tự động dưới
-`results/evaluation/qwen3/seed<seed>/sft/cypherbench/nba/`.
+`results/evaluation/lora/qwen3/seed<seed>/sft/cypherbench/nba/`.
 
 Sau khi đã eval đủ các graph của một seed, gộp kết quả bằng:
 
 ```powershell
 merge-cypher-evaluations `
-  --input-dir results/evaluation/qwen3/seed10/sft/cypherbench
+  --input-dir results/evaluation/lora/qwen3/seed10/sft/cypherbench
 ```
 
 Nếu chỉ chấm một phần metric, truyền cùng danh sách vào cả hai bước, ví dụ

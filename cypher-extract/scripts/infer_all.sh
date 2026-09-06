@@ -27,13 +27,13 @@ esac
 FULL_METHODS="teacher_full,sft,fkl,rkl,sfkl,srkl,csd,hpd,amid,fdd_sfkl,fdd_srkl,distillm_adaptive_sfkl,distillm_adaptive_srkl"
 case "${SETTING}" in
   lora)
-    DEFAULT_CHECKPOINT_ROOT="results"
-    DEFAULT_OUTPUT_ROOT="results/inference"
+    DEFAULT_CHECKPOINT_ROOT="results/lora"
+    DEFAULT_OUTPUT_ROOT="results/inference/lora"
     METHODS="all"
     ;;
   lora_normalized)
-    DEFAULT_CHECKPOINT_ROOT="results/normalized_loss"
-    DEFAULT_OUTPUT_ROOT="results/inference/normalized_loss"
+    DEFAULT_CHECKPOINT_ROOT="results/lora_normalized"
+    DEFAULT_OUTPUT_ROOT="results/inference/lora_normalized"
     METHODS="all"
     ;;
   full_finetune)
@@ -42,8 +42,8 @@ case "${SETTING}" in
     METHODS="${FULL_METHODS}"
     ;;
   full_finetune_normalized)
-    DEFAULT_CHECKPOINT_ROOT="results/full_finetune_normalized_loss"
-    DEFAULT_OUTPUT_ROOT="results/inference/full_finetune_normalized_loss"
+    DEFAULT_CHECKPOINT_ROOT="results/full_finetune_normalized"
+    DEFAULT_OUTPUT_ROOT="results/inference/full_finetune_normalized"
     METHODS="${FULL_METHODS}"
     ;;
   *)

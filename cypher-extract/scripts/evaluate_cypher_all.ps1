@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$InferenceRoot = "results/inference/qwen3",
-    [string]$EvaluationRoot = "results/evaluation/qwen3",
+    [string]$InferenceRoot = "results/inference/lora/qwen3",
+    [string]$EvaluationRoot = "results/evaluation/lora/qwen3",
     [int[]]$Seeds = @(10, 42, 50, 100, 1234),
     [string[]]$Methods = @(),
     [string[]]$Datasets = @("cypherbench", "mind_the_query", "neo4j_text2cypher"),

@@ -29,7 +29,7 @@ kd_ratio: 0.0
 
 # LlamaFactory saves the trained LoRA adapter in this directory. kd.yaml loads it
 # through ref_model_adapters while keeping the 4B base model frozen.
-output_dir: results/qwen3/teacher_lora
+output_dir: results/lora/qwen3/teacher_lora
 overwrite_output_dir: true
 per_device_train_batch_size: 2
 per_device_eval_batch_size: 8

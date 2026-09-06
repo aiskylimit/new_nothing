@@ -54,17 +54,17 @@ def test_shared_infer_all_runner_maps_checkpoint_and_output_roots() -> None:
     for setting in SETTINGS.values():
         assert f"  {setting})" in script
     for checkpoint_root in (
-        "results",
-        "results/normalized_loss",
+        "results/lora",
+        "results/lora_normalized",
         "results/full_finetune",
-        "results/full_finetune_normalized_loss",
+        "results/full_finetune_normalized",
     ):
         assert f'DEFAULT_CHECKPOINT_ROOT="{checkpoint_root}"' in script
     for output_root in (
-        "results/inference",
-        "results/inference/normalized_loss",
+        "results/inference/lora",
+        "results/inference/lora_normalized",
         "results/inference/full_finetune",
-        "results/inference/full_finetune_normalized_loss",
+        "results/inference/full_finetune_normalized",
     ):
         assert f'DEFAULT_OUTPUT_ROOT="{output_root}"' in script
 

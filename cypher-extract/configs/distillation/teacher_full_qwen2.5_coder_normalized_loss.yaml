@@ -22,7 +22,7 @@ kd_ratio: 0.0
 selector_loss_weight: 0.5
 # LlamaFactory saves a complete fine-tuned teacher checkpoint here.
 # Full-finetune KD configs load this directory directly through ref_model.
-output_dir: results/full_finetune_normalized_loss/qwen2.5_coder/teacher_full
+output_dir: results/full_finetune_normalized/qwen2.5_coder/teacher_full
 overwrite_output_dir: true
 per_device_train_batch_size: 2
 per_device_eval_batch_size: 8
