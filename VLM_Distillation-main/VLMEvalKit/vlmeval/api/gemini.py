@@ -110,8 +110,8 @@ class GeminiWrapper(BaseAPI):
             elif inp['type'] == 'image':
                 text_and_images.append(Image.open(inp['value']))
             elif inp['type'] == 'video':
-                video_file = self.upload_video_genai(inp['value'])
-                video_parts.append(video_file)
+                # video_file = self.upload_video_genai(inp['value'])
+                # video_parts.append(video_file)
                 video_in_msg = True
 
         messages = video_parts + text_and_images
