@@ -21,7 +21,7 @@ class TalasJepa(nn.Module):
         self.kd_weight = args.kd_weight
 
         self.counter = 0
-        self.warm_up_sigreg = 17000
+        self.warm_up_sigreg = 0
     
     def _dist_gather_tensor(self, t: torch.Tensor):
         t = t.contiguous()
