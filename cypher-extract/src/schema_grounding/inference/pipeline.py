@@ -54,8 +54,8 @@ class GenerationRunner(Protocol):
 
 @dataclass(frozen=True)
 class InferenceOptions:
-    selector_batch_size: int = 128
-    generator_batch_size: int = 16
+    selector_batch_size: int = 100
+    generator_batch_size: int = 100
     selector_max_new_tokens: int = 16
     generator_max_new_tokens: int = 256
     close_relation_endpoints: bool = True

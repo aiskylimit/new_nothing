@@ -87,8 +87,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--dtype", choices=("auto", "bfloat16", "float16", "float32"), default="bfloat16")
-    parser.add_argument("--selector-batch-size", type=int, default=128)
-    parser.add_argument("--generator-batch-size", type=int, default=16)
+    parser.add_argument("--selector-batch-size", type=int, default=100)
+    parser.add_argument("--generator-batch-size", type=int, default=100)
     parser.add_argument("--generator-max-new-tokens", type=int, default=256)
     parser.add_argument(
         "--seeds",

@@ -33,9 +33,9 @@ skew_alpha: 0.1
 
 output_dir: results/lora_normalized/qwen3/srkl
 overwrite_output_dir: true
-per_device_train_batch_size: 2
-per_device_eval_batch_size: 16
-gradient_accumulation_steps: 8
+per_device_train_batch_size: 8
+per_device_eval_batch_size: 64
+gradient_accumulation_steps: 2
 learning_rate: 0.0001
 num_train_epochs: 5
 optim: adamw_torch
