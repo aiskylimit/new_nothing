@@ -350,7 +350,7 @@ class TalasJepa(nn.Module):
                                             mode='eos', normalize=True)
         
         kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, last_stu_pos_hidden_state, 
-                                            teacher_qry_reps, teacher_pos_reps)
+                                             teacher_qry_reps, teacher_pos_reps)
 
         ##################################
         student_special_ids = torch.tensor(
