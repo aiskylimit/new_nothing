@@ -45,4 +45,6 @@ export NCCL_DEBUG=WARN
 
 # cd ./VLM_Distillation-main
 # bash ./project_commands.sh
+# bash ./project_commands_eval.sh
+# CUDA_VISIBLE_DEVICES=2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
