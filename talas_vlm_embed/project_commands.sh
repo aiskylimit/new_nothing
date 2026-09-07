@@ -82,12 +82,12 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 # wait
 
-CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 5.0 0.1 10 1
+CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 0.1 10 1
 
 # =========================
 # 9. Copy JSON eval outputs
 # =========================
 
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
+# JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
 
-python json_filter.py ./MMEB-eval_outputs_v2 "${JSON_FILTER_DESTINATION}" --overwrite
+# python json_filter.py ./MMEB-eval_outputs_v2 "${JSON_FILTER_DESTINATION}" --overwrite
