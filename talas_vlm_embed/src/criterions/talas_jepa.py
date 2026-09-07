@@ -142,6 +142,77 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
+    import math
+
+    def sigreg_sinkhorn_orthogonal(self, z: torch.Tensor, 
+                                   tau: float = 0.05, n_iters: int = 3,
+                                   num_slices: int = 64, alpha: float = 0.9) -> torch.Tensor:
+        """
+        Sinkhorn Centroids + Orthogonal RMSNorm + Spherical Mixing
+        """
+        N, D = z.shape
+        device, dtype = z.device, z.dtype
+        
+        # ==========================================
+        # 1. SINKHORN-KNOPP AFFINITY
+        # ==========================================
+        z_norm = F.normalize(z, p=2, dim=-1)
+        cost_matrix = 1.0 - (z_norm @ z_norm.T)
+        log_Q = -cost_matrix / tau
+        
+        with torch.no_grad():
+            for _ in range(n_iters - 1):
+                log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True)
+                log_Q = log_Q - torch.logsumexp(log_Q, dim=0, keepdim=True)
+                
+        log_Q = log_Q - torch.logsumexp(log_Q, dim=0, keepdim=True)
+        log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True)
+        affinity = torch.exp(log_Q)
+        
+        # ==========================================
+        # 2. TÂM CỤM (CENTROIDS)
+        # ==========================================
+        z_centroid = affinity @ z  # [N, D]
+        
+        # ==========================================
+        # 3. TRỰC GIAO HÓA & RMSNORM (Bảo toàn trực giao)
+        # ==========================================
+        centroid_mean = z_centroid.mean(dim=0)
+        u = F.normalize(centroid_mean.detach(), p=2, dim=-1, eps=1e-8)
+        
+        # Gram-Schmidt
+        dot_product = torch.sum(z_centroid * u, dim=-1, keepdim=True)
+        z_parallel = dot_product * u.unsqueeze(0)
+        z_perp = z_centroid - z_parallel
+        
+        z_perp_normed = z_perp / z_perp.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D-1)
+        
+        # ==========================================
+        # 4. SPHERICAL NOISE MIXING (Xấp xỉ phương sai)
+        # ==========================================
+        if alpha < 1.0:
+            noise = torch.randn_like(z_perp_normed)
+            z_mixed = math.sqrt(alpha) * z_perp_normed + math.sqrt(1.0 - alpha) * noise
+        else:
+            z_mixed = z_perp_normed
+            
+        # ==========================================
+        # 5. ECF VÀ EPPS-PULLEY LOSS
+        # ==========================================
+        A = torch.randn(D, num_slices, device=device, dtype=dtype)
+        A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
+        t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
+        exp_f = torch.exp(-0.5 * t.square())
+        
+        x_proj = z_mixed @ A
+        x_t = x_proj.unsqueeze(-1) * t
+        ecf = torch.exp(1j * x_t).mean(dim=0)
+        
+        err = (ecf - exp_f).abs().square().mul(exp_f)
+        loss = torch.trapezoid(err, t, dim=-1) * N
+        
+        return loss.mean()
+
     def sigreg_orthogonal_per_sample(self, tokens_list: list[torch.Tensor], 
                                      anchors_list: list[torch.Tensor] = None,
                                      num_slices: int = 128, alpha=0.5) -> torch.Tensor:
@@ -233,7 +304,7 @@ class TalasJepa(nn.Module):
         """
         k_layers = self.args.num_layers
         batch_size = attention_mask.size(0)
-        last_layer_idx = len(student_hidden_states) - 9
+        last_layer_idx = len(student_hidden_states) - 15
         
         start_sigreg_layer = max(0, last_layer_idx - k_layers)
         
@@ -283,12 +354,17 @@ class TalasJepa(nn.Module):
                 # MỎ NEO LÀ MEAN CỦA LAYER L+1 (Detach để an toàn)
                 # anchors_l_plus_1 = [x.mean(dim=0).detach() for x in stu_img_tokens[l+1]]
                 
-                # Gọi SIGReg với mỏ neo truyền vào
-                layer_sigreg = self.sigreg_orthogonal_per_sample(
-                    tokens_list=stu_img_tokens[l],
-                    # anchors_list=anchors_l_plus_1
-                )
-                total_sigreg += layer_sigreg
+                # # Gọi SIGReg với mỏ neo truyền vào
+                # layer_sigreg = self.sigreg_orthogonal_per_sample(
+                #     tokens_list=stu_img_tokens[l],
+                #     # anchors_list=anchors_l_plus_1
+                # )
+
+                layer_sigreg = 0.0
+                for tokens in stu_img_tokens[l]:
+                    layer_sigreg += self.sigreg_sinkhorn_orthogonal(tokens, tau=0.1)
+
+                total_sigreg += layer_sigreg / len(stu_img_tokens[l])
                 
             sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers))
 
