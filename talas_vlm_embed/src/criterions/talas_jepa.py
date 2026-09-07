@@ -144,7 +144,7 @@ class TalasJepa(nn.Module):
 
     def sigreg_orthogonal_per_sample(self, tokens_list: list[torch.Tensor], 
                                      anchors_list: list[torch.Tensor] = None,
-                                     num_slices: int = 128, alpha=0.7) -> torch.Tensor:
+                                     num_slices: int = 128, alpha=0.5) -> torch.Tensor:
         """
         Tính Orthogonal SIGReg per sample xử lý độ dài token động (variable length).
         tokens_list: Một list gồm B tensors, mỗi tensor có shape [N_i, Dim]
