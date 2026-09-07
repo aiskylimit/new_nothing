@@ -13,11 +13,14 @@ without modifying the training `.venv`:
 env -u PYTHONPATH uv sync --project envs/eval
 ```
 
-This creates `envs/eval/.venv`. Point the evaluation launchers at it explicitly:
+This creates `envs/eval/.venv`. Activate it before invoking an evaluation launcher:
 
 ```bash
-export PYTHON_BIN="$PWD/envs/eval/.venv/bin/python"
+source "$PWD/envs/eval/.venv/bin/activate"
 ```
+
+All evaluation scripts use `python` from the active environment; no separate
+interpreter variable is required.
 
 On a server that provisions environments from text manifests, use the sibling
 file `../vlm-distillation-eval.txt`. The train manifest remains

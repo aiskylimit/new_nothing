@@ -53,7 +53,6 @@ def discover_runs(root):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--project-dir", type=Path, required=True)
-    p.add_argument("--python-bin", type=Path, required=True)
     p.add_argument("--outputs-root", type=Path, required=True)
     p.add_argument("--suite", default="requested_benchmarks")
     p.add_argument("--pattern", default="*")

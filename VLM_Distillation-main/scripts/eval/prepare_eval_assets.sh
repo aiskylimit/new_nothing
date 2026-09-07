@@ -3,14 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$(cd -- "${SCRIPT_DIR}/../.." && pwd)}"
-PYTHON_BIN="${PYTHON_BIN:-${PROJECT_DIR}/.venv/bin/python}"
 VLMEVALKIT_DIR="${VLMEVALKIT_DIR:-${PROJECT_DIR}/VLMEvalKit}"
 LMUData="${LMUData:-${PROJECT_DIR}/eval_data/LMUData}"
 SUITE_CONFIG="${SUITE_CONFIG:-${PROJECT_DIR}/configs/eval/requested_benchmarks.json}"
 
-if [[ ! -x "${PYTHON_BIN}" ]]; then
-  echo "ERROR: repository Python is missing or not executable: ${PYTHON_BIN}" >&2
-  echo "Create/populate ${PROJECT_DIR}/.venv, or explicitly set PYTHON_BIN." >&2
+if ! command -v python >/dev/null 2>&1; then
+  echo "ERROR: python is not available. Activate the evaluation environment first." >&2
   exit 2
 fi
 if [[ ! -f "${VLMEVALKIT_DIR}/run.py" ]] || \
@@ -23,7 +21,7 @@ if [[ ! -f "${SUITE_CONFIG}" ]]; then
   exit 2
 fi
 
-exec "${PYTHON_BIN}" "${SCRIPT_DIR}/prepare_eval_assets.py" \
+exec python "${SCRIPT_DIR}/prepare_eval_assets.py" \
   --project-dir "${PROJECT_DIR}" \
   --vlmevalkit-dir "${VLMEVALKIT_DIR}" \
   --lmu-data "${LMUData}" \

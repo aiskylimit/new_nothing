@@ -3,7 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$(cd -- "${SCRIPT_DIR}/../.." && pwd)}"
-PYTHON_BIN="${PYTHON_BIN:-/mnt/local/uvenvs/vlm-distill-eval/bin/python}"
 LMUData="${LMUData:-${PROJECT_DIR}/eval_data/LMUData}"
 
 # Either edit these two defaults, set the matching environment variables, or
@@ -18,7 +17,6 @@ else
   set --
 fi
 
-[[ -x "${PYTHON_BIN}" ]] || { echo "ERROR: missing repository Python: ${PYTHON_BIN}" >&2; exit 2; }
 [[ -s "${TRAINED_CHECKPOINT}/adapter_config.json" ]] || {
   echo "ERROR: not an adapter-only LoRA checkpoint: ${TRAINED_CHECKPOINT}" >&2
   exit 2

@@ -19,7 +19,6 @@ from prepare_eval_assets import check_environment
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--project-dir", type=Path, required=True)
-    p.add_argument("--python-bin", type=Path, required=True)
     p.add_argument("--vlmevalkit-dir", type=Path, required=True)
     p.add_argument("--lmu-data", type=Path, required=True)
     p.add_argument("--checkpoint", type=Path, required=True)
@@ -89,7 +88,7 @@ def merge_adapter(args, checkpoint, run_name, architecture, base, revision):
     if merged_complete(merged, expected): return merged, expected
     if merged.exists() and any(merged.iterdir()):
         raise EvalError(f"Will not overwrite incomplete or mismatched merge: {merged}")
-    cmd = [str(args.python_bin), str(args.project_dir / "scripts/eval/merge_lora.py"),
+    cmd = [sys.executable, str(args.project_dir / "scripts/eval/merge_lora.py"),
            "--adapter", str(checkpoint), "--output", str(merged), "--base-model", base,
            "--device-map", args.merge_device_map, "--identity", identity,
            "--expected-architecture", architecture]
@@ -146,10 +145,6 @@ def effective_judge(requested):
 
 def main():
     args = parse_args()
-    # Keep the virtualenv launcher path intact.  Path.resolve() dereferences
-    # .venv/bin/python to uv's base interpreter, which then loses the venv's
-    # site-packages in child processes such as merge_lora.py.
-    args.python_bin = args.python_bin.expanduser().absolute()
     for name in ("project_dir", "vlmevalkit_dir", "lmu_data", "checkpoint"):
         setattr(args, name, getattr(args, name).expanduser().resolve())
     args.suite_config = (args.suite_config or args.project_dir / "configs/eval" / f"{args.suite}.json").resolve()
@@ -157,9 +152,9 @@ def main():
     cfg = suite_config(args.suite_config)
     environment_failures = check_environment(args.project_dir)
     if environment_failures:
-        raise EvalError("Selected repository Python failed environment validation: " +
+        raise EvalError("Active Python environment failed validation: " +
                         "; ".join(environment_failures) +
-                        ". No system-Python fallback is used.")
+                        ". Activate the evaluation environment before running this launcher.")
     commit = git_commit(args.vlmevalkit_dir)
     if commit != PINNED_VLMEVAL_COMMIT:
         print(f"WARNING: VLMEvalKit commit {commit}, expected {PINNED_VLMEVAL_COMMIT}", file=sys.stderr)
@@ -169,7 +164,7 @@ def main():
             manifest, dataset_classes = validate_manifest(args, cfg, commit)
         except EvalError:
             if not args.prepare_missing_assets: raise
-            env = {**os.environ, "PYTHON_BIN": str(args.python_bin), "VLMEVALKIT_DIR": str(args.vlmevalkit_dir),
+            env = {**os.environ, "VLMEVALKIT_DIR": str(args.vlmevalkit_dir),
                    "LMUData": str(args.lmu_data), "SUITE_CONFIG": str(args.suite_config)}
             subprocess.run([str(args.project_dir / "scripts/eval/prepare_eval_assets.sh")], check=True,
                            cwd=args.project_dir, env=env)
@@ -220,7 +215,7 @@ def main():
     config_path = run_dir / "vlmeval_config.json"
     write_config(config_path, model_name, effective, architecture, cfg["datasets"], dataset_classes, args)
     native = run_dir / "native"
-    cmd = [str(args.python_bin), str(args.project_dir / "scripts/eval/vlmeval_entrypoint.py"),
+    cmd = [sys.executable, str(args.project_dir / "scripts/eval/vlmeval_entrypoint.py"),
            "--config", str(config_path), "--work-dir", str(native), "--mode", args.mode]
     if args.reuse: cmd.append("--reuse")
     resolved_judge = effective_judge(args.judge)
