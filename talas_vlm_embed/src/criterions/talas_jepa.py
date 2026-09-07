@@ -280,20 +280,7 @@ class TalasJepa(nn.Module):
             
             # Duyệt qua các layer từ L-k đến L-1
             for l in range(start_sigreg_layer, last_layer_idx):
-                # MỎ NEO LÀ MEAN CỦA LAYER L+1 (Detach để an toàn)
-                # anchors_l_plus_1 = [x.mean(dim=0).detach() for x in stu_img_tokens[l+1]]
-                
-                # # Gọi SIGReg với mỏ neo truyền vào
-                # layer_sigreg = self.sigreg_orthogonal_per_sample(
-                #     tokens_list=stu_img_tokens[l],
-                #     # anchors_list=anchors_l_plus_1
-                # )
-
-                layer_sigreg = 0.0
-                for tokens in stu_img_tokens[l]:
-                    layer_sigreg += self.sigreg_sinkhorn(tokens, concept_queries)
-
-                total_sigreg += layer_sigreg / len(stu_img_tokens[l])
+                total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
                 
             sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers))
 
