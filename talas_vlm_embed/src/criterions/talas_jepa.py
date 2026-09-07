@@ -143,8 +143,9 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
-    def sigreg_sinkhorn_masked(self, z_list: list[torch.Tensor], concept_queries: torch.Tensor,
-                            tau: float = 0.05, n_iters: int = 3):
+    def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
+                        concept_queries: torch.Tensor,
+                        tau: float = 0.05, n_iters: int = 3):
         B = len(z_list)
         if B == 0: return 0.0
         
