@@ -304,7 +304,7 @@ class TalasJepa(nn.Module):
         """
         k_layers = self.args.num_layers
         batch_size = attention_mask.size(0)
-        last_layer_idx = len(student_hidden_states) - 9
+        last_layer_idx = len(student_hidden_states) - 15
         
         start_sigreg_layer = max(0, last_layer_idx - k_layers)
         
