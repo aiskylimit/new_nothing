@@ -8,8 +8,8 @@ LMUData="${LMUData:-${PROJECT_DIR}/eval_data/LMUData}"
 
 # Either edit these two defaults, set the matching environment variables, or
 # pass both paths as positional arguments (positional arguments take priority).
-DEFAULT_TRAINED_CHECKPOINT="/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/outputs/CHANGE_ME/checkpoint-CHANGE_ME"
-DEFAULT_BASE_MODEL="/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/CHANGE_ME"
+DEFAULT_TRAINED_CHECKPOINT="/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/outputs/qwen3_teacher_8b_qwen25_student_3b_dskd_v2_with_eta/checkpoint-166236"
+DEFAULT_BASE_MODEL="/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-3B-Instruct"
 TRAINED_CHECKPOINT="${1:-${TRAINED_CHECKPOINT:-${DEFAULT_TRAINED_CHECKPOINT}}}"
 BASE_MODEL="${2:-${BASE_MODEL:-${DEFAULT_BASE_MODEL}}}"
 if [[ $# -ge 2 ]]; then
