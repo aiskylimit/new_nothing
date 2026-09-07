@@ -51,18 +51,28 @@ POS_MOD_DICT = {
 def process_image(image, resolution, max_dim=1344):
     if image is None:
         return None
+
+    width, height = image.size
+    max_side = max(width, height)
+
     if resolution == "high":
-        image = image.resize((1344, 1344))
+        target_max = 1344
     elif resolution == "mid":
-        image = image.resize((672, 672))
-    elif resolution == "tiny":
-        image = image.resize((336, 336))
+        target_max = 672
     elif resolution == "low":
-        image = image.resize((448, 448))
+        target_max = 448
+    elif resolution == "tiny":
+        target_max = 336
     else:
-        cur_max_dim = max(image.size)
-        if cur_max_dim > max_dim:
-            image = image.resize((max_dim, max_dim))
+        target_max = max_dim
+
+    # Tính tỉ lệ scale sao cho cạnh lớn nhất = target_max
+    if max_side > target_max:
+        scale = target_max / max_side
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        image = image.resize((new_width, new_height))
+
     return image
 
 def create_semi_orthogonal_matrix(tensor):
@@ -140,7 +150,9 @@ class SingleWrapper(nn.Module):
                     a, b = parsed[i], parsed[i+1]
                     if isinstance(a, int) and isinstance(b, int):
                         layer = nn.Linear(a, b)
-                        create_semi_orthogonal_matrix(layer.weight)
+                        # create_semi_orthogonal_matrix(layer.weight)
+                        with torch.no_grad():
+                            layer.weight.normal_(mean=0.0, std=1e-3)
                         layer = layer.to(dtype=torch.bfloat16)
                         seq.append(layer)
                     elif b == "relu":
@@ -148,7 +160,9 @@ class SingleWrapper(nn.Module):
                     elif a =="relu" and isinstance(b, int):
                         prev_out = parsed[i-1] if isinstance(parsed[i-1], int) else None
                         layer = nn.Linear(prev_out, b)
-                        create_semi_orthogonal_matrix(layer.weight)
+                        # create_semi_orthogonal_matrix(layer.weight)
+                        with torch.no_grad():
+                            layer.weight.normal_(mean=0.0, std=1e-3)
                         layer = layer.to(dtype=torch.bfloat16)
                         seq.append(layer)
                 self.projectors[name] = seq
@@ -159,6 +173,8 @@ class SingleWrapper(nn.Module):
                     self.teacher_hidden_dim,
                     dtype=torch.bfloat16
                 )
+                with torch.no_grad():
+                    projector.weight.normal_(mean=0.0, std=1e-3)
                 projector_list.append(projector)
 
             self.projectors = projector_list
@@ -169,6 +185,8 @@ class SingleWrapper(nn.Module):
                     self.teacher_hidden_dim,
                     dtype=torch.bfloat16
                 )
+                with torch.no_grad():
+                    projector.weight.normal_(mean=0.0, std=1e-3)
                 projector_list.append(projector)
 
             self.projectors = nn.ModuleList(projector_list)

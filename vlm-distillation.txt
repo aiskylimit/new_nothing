@@ -1,5 +1,5 @@
 # manager: uv
-# python: >=3.11
+# python: 3.11
 # From VLM_Distillation-main/pyproject.toml [project].dependencies.
 accelerate==1.13.0
 cvxpy==1.6.4

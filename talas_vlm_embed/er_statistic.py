@@ -23,7 +23,42 @@ def compute_effective_rank(
     return torch.exp(entropy) / n
 
 
-def load_image_hidden_layers(pt_path: str) -> torch.Tensor | None:
+def get_image_token_slice(
+    obj: dict,
+    hidden_state: torch.Tensor,
+) -> slice:
+    """Locate the image-token block in a saved, padding-free sequence."""
+    num_image_tokens = int(obj.get("num_image_tokens", 0))
+    num_valid_tokens = int(obj.get("num_valid_tokens", hidden_state.size(1)))
+
+    if hidden_state.size(1) != num_valid_tokens:
+        raise ValueError(
+            f"Saved hidden length ({hidden_state.size(1)}) does not match "
+            f"num_valid_tokens ({num_valid_tokens})."
+        )
+
+    if bool(obj.get("last_image_token", False)):
+        # With a terminal EOS, the image block ends immediately before it.
+        image_end = num_valid_tokens - int(bool(obj.get("has_eos_id", False)))
+        image_start = image_end - num_image_tokens
+    else:
+        image_start = 0
+        image_end = num_image_tokens
+
+    if image_start < 0 or image_end > num_valid_tokens:
+        raise ValueError(
+            f"Invalid image-token range [{image_start}, {image_end}) for "
+            f"num_valid_tokens={num_valid_tokens} and "
+            f"num_image_tokens={num_image_tokens}."
+        )
+
+    return slice(image_start, image_end)
+
+
+def load_image_hidden_layers(
+    pt_path: str,
+    normalize: bool = False,
+) -> torch.Tensor | None:
     obj = torch.load(pt_path, map_location="cpu")
 
     num_image_tokens = int(obj.get("num_image_tokens", 0))
@@ -33,9 +68,24 @@ def load_image_hidden_layers(pt_path: str) -> torch.Tensor | None:
     # [num_layers, num_valid_tokens, hidden_dim]
     hidden_state = obj["hidden_state"]
 
-    # Keep image tokens only:
+    image_slice = get_image_token_slice(obj, hidden_state)
+
     # [num_layers, num_image_tokens, hidden_dim]
-    return hidden_state[:, :num_image_tokens, :].float()
+    image_hidden_layers = hidden_state[:, image_slice, :].float()
+    if image_hidden_layers.size(1) != num_image_tokens:
+        raise ValueError(
+            f"Extracted {image_hidden_layers.size(1)} image tokens from {pt_path}, "
+            f"expected {num_image_tokens}."
+        )
+
+    if normalize:
+        image_hidden_layers = torch.nn.functional.normalize(
+            image_hidden_layers,
+            p=2,
+            dim=-1,
+        )
+
+    return image_hidden_layers
 
 
 def compute_per_sample_layer_eranks(
@@ -65,7 +115,7 @@ def main():
 
     parser.add_argument(
         "--pt_dir",
-        default="infer/FastVLM-0.5B_base_16_eos_cls/ImageNet-1K/query",
+        default="infer/FastVLM-0.5B_talas_1.0_eos_cls/ImageNet-1K/query",
     )
     parser.add_argument("--start_idx", type=int, default=0)
     parser.add_argument("--end_idx", type=int, default=49)
@@ -77,6 +127,11 @@ def main():
         "--output_file",
         type=str,
         default="effective_rank_results.txt",
+    )
+    parser.add_argument(
+        "--normalize",
+        action="store_true",
+        help="L2-normalize each image token along the hidden dimension before computing effective rank.",
     )
 
     args = parser.parse_args()
@@ -99,7 +154,10 @@ def main():
             print(f"Skip missing file: {pt_path}")
             continue
 
-        image_hidden_layers = load_image_hidden_layers(pt_path)
+        image_hidden_layers = load_image_hidden_layers(
+            pt_path,
+            normalize=args.normalize,
+        )
 
         if image_hidden_layers is None:
             print(f"Skip no-image file: {pt_path}")
@@ -208,6 +266,7 @@ def main():
     output_lines = []
 
     output_lines.append(f"Loaded files: {len(loaded_files)}")
+    output_lines.append(f"L2-normalized image tokens: {args.normalize}")
 
     output_lines.append(
         "Per-sample image effective rank shape: "
