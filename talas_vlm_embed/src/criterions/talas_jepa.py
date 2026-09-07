@@ -142,9 +142,75 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
+    def sigreg_sinkhorn(self, z: torch.Tensor, concept_queries,
+                        tau: float = 0.05, n_iters: int = 3):
+        """
+        z shape: [B, N, D] - Toàn bộ batch ảnh với N tokens mỗi ảnh
+        """
+        B, N, D = z.shape
+        device, dtype = z.device, z.dtype
+        
+        # # ==========================================
+        # # 1. DIVERSITY LOSS: Ép K mỏ neo phải phân tách
+        # # ==========================================
+        queries_norm = F.normalize(concept_queries, p=2, dim=-1)
+        # query_sim_matrix = queries_norm @ queries_norm.T # [K, K]
+        # loss_diversity = F.mse_loss(query_sim_matrix, torch.eye(self.K, device=device, dtype=dtype))
+        
+        # ==========================================
+        # 2. BATCH-WISE SINKHORN-KNOPP
+        # ==========================================
+        z_norm = F.normalize(z, p=2, dim=-1) # [B, N, D]
+        
+        cost_matrix = 1.0 - torch.einsum('kd,bnd->bkn', queries_norm, z_norm)
+        log_Q = -cost_matrix / tau
+        
+        # Chạy Sinkhorn ngầm
+        with torch.no_grad():
+            for _ in range(n_iters - 1):
+                log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True) # Cân bằng K
+                log_Q = log_Q - torch.logsumexp(log_Q, dim=2, keepdim=True) # Cân bằng N
+                
+        # Vòng cuối CÓ gradient (BẮT BUỘC KẾT THÚC BẰNG DIM=2)
+        log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True) 
+        log_Q = log_Q - torch.logsumexp(log_Q, dim=2, keepdim=True) 
+        
+        affinity = torch.exp(log_Q) # [B, K, N]
+        
+        # Rút ra K centroids: [B, K, D]
+        z_centroids = torch.bmm(affinity, z) 
+        
+        # ==========================================
+        # 3. CHUẨN BỊ KHÔNG GIAN BẰNG RMSNorm
+        # ==========================================
+        z_k_concepts = z_centroids.transpose(0, 1) 
+        z_normed = z_k_concepts / z_k_concepts.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D)
+            
+        # ==========================================
+        # 4. BATCH-WISE SIGREG TRÊN KHÔNG GIAN TINH KHIẾT
+        # ==========================================
+        A = torch.randn(D, self.num_slices, device=device, dtype=dtype)
+        A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
+        t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
+        exp_f = torch.exp(-0.5 * t.square())
+        
+        x_proj = z_normed @ A                  # [K, B, num_slices]
+        x_t = x_proj.unsqueeze(-1) * t         # [K, B, num_slices, 17]
+        
+        # TÍNH ECF: Lấy trung bình dọc theo BATCH (dim=1)
+        ecf = torch.exp(1j * x_t).mean(dim=1)  # [K, num_slices, 17]
+        
+        err = (ecf - exp_f).abs().square().mul(exp_f)
+        loss_sigreg = torch.trapezoid(err, t, dim=-1).mean(dim=-1) * B 
+        
+        total_loss = loss_sigreg.mean()
+        # total_loss += 0.1 * loss_diversity 
+        
+        return total_loss
+
 
     def _compute_modality_distill(self, student_hidden_states, image_features, 
-                                  text_token_counts, attention_mask):
+                                  text_token_counts, attention_mask, concept_queries):
         """
         Hàm này chỉ còn nhiệm vụ trích xuất text và vision representations 
         của student, cùng với việc tính toán SIGReg loss.
@@ -209,7 +275,7 @@ class TalasJepa(nn.Module):
 
                 layer_sigreg = 0.0
                 for tokens in stu_img_tokens[l]:
-                    layer_sigreg += self.sigreg_sinkhorn_orthogonal(tokens, tau=0.1)
+                    layer_sigreg += self.sigreg_sinkhorn(tokens, concept_queries)
 
                 total_sigreg += layer_sigreg / len(stu_img_tokens[l])
                 
@@ -220,7 +286,8 @@ class TalasJepa(nn.Module):
     def forward(self, model_wrapper, input_data):
         student_model = model_wrapper.model
         student_processor = model_wrapper.get_processor()
-        student_tokenizer = student_processor.tokenizer      
+        student_tokenizer = student_processor.tokenizer
+        concept_queries = model_wrapper.concept_queries      
 
         student_qry_input = input_data['qry']
         student_pos_input = input_data['pos']
@@ -291,7 +358,8 @@ class TalasJepa(nn.Module):
             student_hidden_states=student_qry_hidden_states, 
             image_features=student_qry_image_features,
             text_token_counts=num_student_text_qry_tokens, 
-            attention_mask=student_qry_input['attention_mask']
+            attention_mask=student_qry_input['attention_mask'], 
+            concept_queries=concept_queries
         )
 
         # Trích xuất Representations từ POS
@@ -299,7 +367,8 @@ class TalasJepa(nn.Module):
             student_hidden_states=student_pos_hidden_states, 
             image_features=student_pos_image_features,
             text_token_counts=num_student_text_pos_tokens, 
-            attention_mask=student_pos_input['attention_mask']
+            attention_mask=student_pos_input['attention_mask'], 
+            concept_queries=concept_queries
         )
 
         stu_modality_features = []

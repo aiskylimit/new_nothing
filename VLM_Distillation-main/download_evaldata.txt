@@ -10,7 +10,6 @@
 --url https://opencompass.openxlab.space/utils/VLMEval/DocVQA_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
 --url https://opencompass.openxlab.space/utils/VLMEval/TextVQA_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
 --url https://opencompass.openxlab.space/utils/VLMEval/OCRBench.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
-
 #models
 --hf KamilaMila/FastVLM-0.5B /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/KamilaMila/FastVLM-0.5B
 --hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2-VL-2B-Instruct
