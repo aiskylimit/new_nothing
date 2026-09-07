@@ -144,7 +144,7 @@ class TalasJepa(nn.Module):
         return sigreg_per_slice.mean()
 
     def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
-                        concept_queries: torch.Tensor,
+                        concept_queries: torch.Tensor, num_slices=128,
                         tau: float = 0.05, n_iters: int = 3):
         B = len(z_list)
         if B == 0: return 0.0
@@ -211,7 +211,7 @@ class TalasJepa(nn.Module):
         z_k_concepts = z_centroids.transpose(0, 1) # [K, B, D]
         z_normed = z_k_concepts / z_k_concepts.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D)
             
-        A = torch.randn(D, self.num_slices, device=device, dtype=dtype)
+        A = torch.randn(D, num_slices, device=device, dtype=dtype)
         A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
         t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
         exp_f = torch.exp(-0.5 * t.square())
