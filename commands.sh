@@ -1,4 +1,4 @@
-#1 +10
+#2 +a
 #vlm-eval-test
 #v1
 
@@ -45,8 +45,8 @@ export NCCL_DEBUG=WARN
 # cd ./reward-guidance-main
 # bash ./project_command.sh
 
-cd ./VLM_Distillation-main
-ls outputs -R
+# cd ./VLM_Distillation-main
+# ls outputs -R
 # # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
 # # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
 # # bash ./project_commands.sh
