@@ -78,7 +78,7 @@ D_MEAN=$(bool_to_int "$USE_MEAN")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v10_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
+EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
 
 OUTPUT_DIR="training/llava_ov-0.5B_vqa_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_vqa"
