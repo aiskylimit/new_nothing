@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn 
 import torch.distributed as dist
 import torch.nn.functional as F
-from src.criterions.utils import count_clean_text_tokens, get_hidden_text, get_hidden_text_vision, pooling
+from src.criterions.utils import count_clean_text_tokens, get_hidden_text_vision, pooling
 import random
-import os
 import math
 from torch.nn.utils.rnn import pad_sequence
 
@@ -145,7 +144,7 @@ class TalasJepa(nn.Module):
 
     def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
                         concept_queries: torch.Tensor, num_slices=128,
-                        tau: float = 0.05, n_iters: int = 3):
+                        tau: float = 0.05, n_iters: int = 3, alpha: float = 1.0):
         B = len(z_list)
         if B == 0: return 0.0
         
@@ -163,7 +162,6 @@ class TalasJepa(nn.Module):
         z_padded = pad_sequence(z_list, batch_first=True, padding_value=0.0) 
         
         # Tạo Mask boolean [B, 1, N_max]: True là token thật, False là token rác (padding)
-        # mask[b, 0, n] = True nếu n < lengths[b]
         idx = torch.arange(N_max, device=device).unsqueeze(0).unsqueeze(0) # [1, 1, N_max]
         mask = idx < lengths.view(B, 1, 1) # [B, 1, N_max]
         
@@ -183,8 +181,6 @@ class TalasJepa(nn.Module):
             for _ in range(n_iters - 1):
                 # Cân bằng K (dim=1)
                 log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True)
-                # Dọn dẹp lỗi NaN: (-inf) - (-inf) sinh ra NaN ở các cột padding. 
-                # Ta dùng masked_fill đè lại -inf để hệ thống sạch sẽ.
                 log_Q = log_Q.masked_fill(~mask, -float('inf'))
                 
                 # Cân bằng N (dim=2)
@@ -197,26 +193,33 @@ class TalasJepa(nn.Module):
         log_Q = log_Q - torch.logsumexp(log_Q, dim=2, keepdim=True)
         log_Q = log_Q.masked_fill(~mask, -float('inf'))
         
-        # Chuyển về không gian xác suất: exp(-inf) sẽ tự động = 0
-        # Nghĩa là các token padding có trọng số tuyệt đối bằng 0
+        # Chuyển về không gian xác suất
         affinity = torch.exp(log_Q) # [B, K, N_max]
         
-        # Rút ra K centroids: [B, K, N_max] @ [B, N_max, D] -> [B, K, D]
-        # (Vì affinity ở vị trí padding = 0, z_padded = 0 sẽ không gây ảnh hưởng)
+        # Rút ra K centroids
         z_centroids = torch.bmm(affinity, z_padded) 
         
         # ==========================================
-        # 2. CHUẨN BỊ KHÔNG GIAN BẰNG RMSNorm & SIGREG
+        # 2. CHUẨN BỊ KHÔNG GIAN BẰNG RMSNorm & THÊM NOISE
         # ==========================================
         z_k_concepts = z_centroids.transpose(0, 1) # [K, B, D]
         z_normed = z_k_concepts / z_k_concepts.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D)
+        
+        if alpha < 1.0:
+            noise = torch.randn_like(z_normed)
+            z_mixed = math.sqrt(alpha) * z_normed + math.sqrt(1.0 - alpha) * noise
+        else:
+            z_mixed = z_normed
             
+        # ==========================================
+        # 3. SIGREG TRÊN KHÔNG GIAN ĐÃ MIX NOISE
+        # ==========================================
         A = torch.randn(D, num_slices, device=device, dtype=dtype)
         A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
         t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
         exp_f = torch.exp(-0.5 * t.square())
         
-        x_proj = z_normed @ A                  # [K, B, num_slices]
+        x_proj = z_mixed @ A                   # [K, B, num_slices]
         x_t = x_proj.unsqueeze(-1) * t         # [K, B, num_slices, 17]
         ecf = torch.exp(1j * x_t).mean(dim=1)  # [K, num_slices, 17]
         
