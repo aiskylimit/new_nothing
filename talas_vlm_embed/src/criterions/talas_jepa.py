@@ -144,7 +144,7 @@ class TalasJepa(nn.Module):
 
     def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
                         concept_queries: torch.Tensor, num_slices=128,
-                        tau: float = 0.05, n_iters: int = 3, alpha: float = 0.9):
+                        tau: float = 0.05, n_iters: int = 3, alpha: float = 0.8):
         B = len(z_list)
         if B == 0: return 0.0
         
@@ -236,11 +236,10 @@ class TalasJepa(nn.Module):
         """
         k_layers = self.args.num_layers
         batch_size = attention_mask.size(0)
-        last_layer_idx = len(student_hidden_states) - 20
+        last_layer_idx = len(student_hidden_states) - 1
+        layers = [1, int(last_layer_idx / 4), int(last_layer_idx / 2), last_layer_idx]
         
-        start_sigreg_layer = max(0, last_layer_idx - k_layers)
-        
-        stu_img_tokens = {l: [] for l in range(start_sigreg_layer, last_layer_idx + 1)}
+        stu_img_tokens = {l: [] for l in layers}
         stu_text_reps = []
         
         cur_idx_img = 0
@@ -259,7 +258,7 @@ class TalasJepa(nn.Module):
             stu_text_reps.append(text_last_hidden.mean(dim=0))
             
             if num_vision_token > 0:
-                for l in range(start_sigreg_layer, last_layer_idx + 1):
+                for l in layers:
                     _, img_hidden = get_hidden_text_vision(
                         student_hidden_states[l][i],
                         text_token_counts[i].item(),
@@ -281,8 +280,7 @@ class TalasJepa(nn.Module):
             warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
             total_sigreg = 0.0
             
-            # Duyệt qua các layer từ L-k đến L-1
-            for l in range(start_sigreg_layer, last_layer_idx):
+            for l in layers[:-1]:  # Chỉ tính SIGReg cho các layer trừ layer cuối cùng
                 total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
                 
             sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers))
