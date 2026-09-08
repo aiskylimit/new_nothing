@@ -2,10 +2,10 @@ import torch
 import torch.nn as nn 
 import torch.distributed as dist
 import torch.nn.functional as F
-from src.criterions.utils import count_clean_text_tokens, get_hidden_text, get_hidden_text_vision, pooling
+from src.criterions.utils import count_clean_text_tokens, get_hidden_text_vision, pooling
 import random
-import os
 import math
+from torch.nn.utils.rnn import pad_sequence
 
 
 class TalasJepa(nn.Module):
@@ -142,173 +142,104 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
-    import math
-
-    def sigreg_sinkhorn_orthogonal(self, z: torch.Tensor, 
-                                   tau: float = 0.05, n_iters: int = 3,
-                                   num_slices: int = 64, alpha: float = 0.9) -> torch.Tensor:
-        """
-        Sinkhorn Centroids + Orthogonal RMSNorm + Spherical Mixing
-        """
-        N, D = z.shape
-        device, dtype = z.device, z.dtype
+    def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
+                        concept_queries: torch.Tensor, num_slices=128,
+                        tau: float = 0.05, n_iters: int = 3, alpha: float = 0.8):
+        B = len(z_list)
+        if B == 0: return 0.0
+        
+        device, dtype = z_list[0].device, z_list[0].dtype
+        D = z_list[0].shape[-1]
         
         # ==========================================
-        # 1. SINKHORN-KNOPP AFFINITY
+        # 0. PADDING & MASKING (Chuẩn bị Tensor vuông)
         # ==========================================
-        z_norm = F.normalize(z, p=2, dim=-1)
-        cost_matrix = 1.0 - (z_norm @ z_norm.T)
+        # Lấy độ dài thực tế của từng ảnh
+        lengths = torch.tensor([x.size(0) for x in z_list], device=device)
+        N_max = lengths.max().item()
+        
+        # Pad các tensor bằng 0 để gom thành khối [B, N_max, D]
+        z_padded = pad_sequence(z_list, batch_first=True, padding_value=0.0) 
+        
+        # Tạo Mask boolean [B, 1, N_max]: True là token thật, False là token rác (padding)
+        idx = torch.arange(N_max, device=device).unsqueeze(0).unsqueeze(0) # [1, 1, N_max]
+        mask = idx < lengths.view(B, 1, 1) # [B, 1, N_max]
+        
+        # ==========================================
+        # 1. BATCH-WISE MASKED SINKHORN
+        # ==========================================
+        queries_norm = F.normalize(concept_queries, p=2, dim=-1) # [K, D]
+        z_norm = F.normalize(z_padded, p=2, dim=-1)              # [B, N_max, D]
+        
+        # [B, K, N_max]
+        cost_matrix = 1.0 - torch.einsum('kd,bnd->bkn', queries_norm, z_norm)
         log_Q = -cost_matrix / tau
+        
+        log_Q = log_Q.masked_fill(~mask, -float('inf'))
         
         with torch.no_grad():
             for _ in range(n_iters - 1):
+                # Cân bằng K (dim=1)
                 log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True)
-                log_Q = log_Q - torch.logsumexp(log_Q, dim=0, keepdim=True)
+                log_Q = log_Q.masked_fill(~mask, -float('inf'))
                 
-        log_Q = log_Q - torch.logsumexp(log_Q, dim=0, keepdim=True)
+                # Cân bằng N (dim=2)
+                log_Q = log_Q - torch.logsumexp(log_Q, dim=2, keepdim=True)
+                log_Q = log_Q.masked_fill(~mask, -float('inf'))
+                
+        # Vòng cuối (Mở gradient)
         log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True)
-        affinity = torch.exp(log_Q)
+        log_Q = log_Q.masked_fill(~mask, -float('inf'))
+        log_Q = log_Q - torch.logsumexp(log_Q, dim=2, keepdim=True)
+        log_Q = log_Q.masked_fill(~mask, -float('inf'))
+        
+        # Chuyển về không gian xác suất
+        affinity = torch.exp(log_Q) # [B, K, N_max]
+        
+        # Rút ra K centroids
+        z_centroids = torch.bmm(affinity, z_padded) 
         
         # ==========================================
-        # 2. TÂM CỤM (CENTROIDS)
+        # 2. CHUẨN BỊ KHÔNG GIAN BẰNG RMSNorm & THÊM NOISE
         # ==========================================
-        z_centroid = affinity @ z  # [N, D]
+        z_k_concepts = z_centroids.transpose(0, 1) # [K, B, D]
+        z_normed = z_k_concepts / z_k_concepts.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D)
         
-        # ==========================================
-        # 3. TRỰC GIAO HÓA & RMSNORM (Bảo toàn trực giao)
-        # ==========================================
-        centroid_mean = z_centroid.mean(dim=0)
-        u = F.normalize(centroid_mean.detach(), p=2, dim=-1, eps=1e-8)
-        
-        # Gram-Schmidt
-        dot_product = torch.sum(z_centroid * u, dim=-1, keepdim=True)
-        z_parallel = dot_product * u.unsqueeze(0)
-        z_perp = z_centroid - z_parallel
-        
-        z_perp_normed = z_perp / z_perp.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D-1)
-        
-        # ==========================================
-        # 4. SPHERICAL NOISE MIXING (Xấp xỉ phương sai)
-        # ==========================================
         if alpha < 1.0:
-            noise = torch.randn_like(z_perp_normed)
-            z_mixed = math.sqrt(alpha) * z_perp_normed + math.sqrt(1.0 - alpha) * noise
+            noise = torch.randn_like(z_normed)
+            z_mixed = math.sqrt(alpha) * z_normed + math.sqrt(1.0 - alpha) * noise
         else:
-            z_mixed = z_perp_normed
+            z_mixed = z_normed
             
         # ==========================================
-        # 5. ECF VÀ EPPS-PULLEY LOSS
+        # 3. SIGREG TRÊN KHÔNG GIAN ĐÃ MIX NOISE
         # ==========================================
         A = torch.randn(D, num_slices, device=device, dtype=dtype)
         A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
         t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
         exp_f = torch.exp(-0.5 * t.square())
         
-        x_proj = z_mixed @ A
-        x_t = x_proj.unsqueeze(-1) * t
-        ecf = torch.exp(1j * x_t).mean(dim=0)
+        x_proj = z_mixed @ A                   # [K, B, num_slices]
+        x_t = x_proj.unsqueeze(-1) * t         # [K, B, num_slices, 17]
+        ecf = torch.exp(1j * x_t).mean(dim=1)  # [K, num_slices, 17]
         
         err = (ecf - exp_f).abs().square().mul(exp_f)
-        loss = torch.trapezoid(err, t, dim=-1) * N
+        loss_sigreg = torch.trapezoid(err, t, dim=-1).mean(dim=-1) * B 
         
-        return loss.mean()
-
-    def sigreg_orthogonal_per_sample(self, tokens_list: list[torch.Tensor], 
-                                     anchors_list: list[torch.Tensor] = None,
-                                     num_slices: int = 128, alpha=0.5) -> torch.Tensor:
-        """
-        Tính Orthogonal SIGReg per sample xử lý độ dài token động (variable length).
-        tokens_list: Một list gồm B tensors, mỗi tensor có shape [N_i, Dim]
-        anchors_list: (Tùy chọn) List gồm B tensors mỏ neo truyền từ ngoài vào (VD: layer l+1).
-        alpha ∈ [0,1]: 1 = giữ nguyên phân phối hiện tại, 0 = ép hoàn toàn về Gaussian
-        """
-        if not tokens_list:
-            return 0.0
-
-        device = tokens_list[0].device
-        dtype = tokens_list[0].dtype
-        B = len(tokens_list)
-        D = tokens_list[0].size(-1)
-
-        # =====================================================
-        # 1. Khởi tạo Ma trận chiếu ngẫu nhiên A
-        # =====================================================
-        if getattr(self, 'process_rank', 0) == 0:
-            projection_seed = random.randint(0, 2**63 - 1)
-        else:
-            projection_seed = 0
-
-        if getattr(self, 'world_size', 1) > 1:
-            seed_tensor = torch.tensor(projection_seed, dtype=torch.int64, device=device)
-            dist.broadcast(seed_tensor, src=0)
-            projection_seed = seed_tensor.item()
-
-        g = torch.Generator(device=device)
-        g.manual_seed(projection_seed)
-
-        A = torch.randn(D, num_slices, generator=g, device=device, dtype=dtype)
-        A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
-
-        t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
-        exp_f = torch.exp(-0.5 * t.square()) # [17]
-
-        total_sigreg = 0.0
-
-        # =====================================================
-        # 2. Xử lý Đa dạng Trực giao cho từng bức ảnh
-        # =====================================================
-        for idx, tokens in enumerate(tokens_list):
-            N_tokens = tokens.size(0)
-            
-            if self.args.use_mean_anchor:
-                if anchors_list is not None:
-                    token_mean = anchors_list[idx]
-                else:
-                    token_mean = tokens.mean(dim=0) # [D]
-                    
-                u = F.normalize(token_mean.detach(), p=2, dim=-1, eps=1e-8) # [D]
-
-                # Phân rã trực giao: z_parallel = (tokens @ u) * u
-                dot_product = torch.sum(tokens * u, dim=-1, keepdim=True) # [N_i, 1]
-                z_parallel = dot_product * u.unsqueeze(0) # [N_i, D]
-                z_perp = tokens - z_parallel # [N_i, D]
-
-                # Chuẩn hoá khôi phục variance
-                z_perp_normalized = F.layer_norm(z_perp, (D,))
-            else:
-                z_perp_normalized = F.layer_norm(tokens, (D,))
-
-            # Chiếu dữ liệu: [N_i, D] @ [D, num_slices] -> [N_i, num_slices]
-            # x_proj = z_perp_normalized @ A
-            noise = torch.randn_like(z_perp_normalized)
-            z_mixed = math.sqrt(alpha) * z_perp_normalized + math.sqrt(1.0 - alpha) * noise
-            x_proj = z_mixed @ A
-            x_t = x_proj.unsqueeze(-1) * t # [N_i, num_slices, 17]
-
-            # Tính Empirical Characteristic Function
-            ecf = torch.exp(1j * x_t).mean(dim=0) # [num_slices, 17]
-            err = (ecf - exp_f).abs().square().mul(exp_f) # [num_slices, 17]
-            
-            # Tích phân Epps-Pulley
-            T_stat = torch.trapezoid(err, t, dim=-1) * N_tokens # [num_slices]
-            total_sigreg += T_stat.mean()
-
-        # Lấy trung bình toàn batch
-        return total_sigreg / max(B, 1)
+        return loss_sigreg.mean()
 
     def _compute_modality_distill(self, student_hidden_states, image_features, 
-                                  text_token_counts, attention_mask):
+                                  text_token_counts, attention_mask, concept_queries):
         """
         Hàm này chỉ còn nhiệm vụ trích xuất text và vision representations 
         của student, cùng với việc tính toán SIGReg loss.
         """
         k_layers = self.args.num_layers
         batch_size = attention_mask.size(0)
-        last_layer_idx = len(student_hidden_states) - 15
+        last_layer_idx = len(student_hidden_states) - 1
+        layers = [1, int(last_layer_idx / 4), int(last_layer_idx / 2), last_layer_idx]
         
-        start_sigreg_layer = max(0, last_layer_idx - k_layers)
-        
-        stu_img_tokens = {l: [] for l in range(start_sigreg_layer, last_layer_idx + 1)}
+        stu_img_tokens = {l: [] for l in layers}
         stu_text_reps = []
         
         cur_idx_img = 0
@@ -327,7 +258,7 @@ class TalasJepa(nn.Module):
             stu_text_reps.append(text_last_hidden.mean(dim=0))
             
             if num_vision_token > 0:
-                for l in range(start_sigreg_layer, last_layer_idx + 1):
+                for l in layers:
                     _, img_hidden = get_hidden_text_vision(
                         student_hidden_states[l][i],
                         text_token_counts[i].item(),
@@ -349,22 +280,8 @@ class TalasJepa(nn.Module):
             warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
             total_sigreg = 0.0
             
-            # Duyệt qua các layer từ L-k đến L-1
-            for l in range(start_sigreg_layer, last_layer_idx):
-                # MỎ NEO LÀ MEAN CỦA LAYER L+1 (Detach để an toàn)
-                # anchors_l_plus_1 = [x.mean(dim=0).detach() for x in stu_img_tokens[l+1]]
-                
-                # # Gọi SIGReg với mỏ neo truyền vào
-                # layer_sigreg = self.sigreg_orthogonal_per_sample(
-                #     tokens_list=stu_img_tokens[l],
-                #     # anchors_list=anchors_l_plus_1
-                # )
-
-                layer_sigreg = 0.0
-                for tokens in stu_img_tokens[l]:
-                    layer_sigreg += self.sigreg_sinkhorn_orthogonal(tokens, tau=0.1)
-
-                total_sigreg += layer_sigreg / len(stu_img_tokens[l])
+            for l in layers[:-1]:  # Chỉ tính SIGReg cho các layer trừ layer cuối cùng
+                total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
                 
             sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers))
 
@@ -373,7 +290,8 @@ class TalasJepa(nn.Module):
     def forward(self, model_wrapper, input_data):
         student_model = model_wrapper.model
         student_processor = model_wrapper.get_processor()
-        student_tokenizer = student_processor.tokenizer      
+        student_tokenizer = student_processor.tokenizer
+        concept_queries = model_wrapper.concept_queries      
 
         student_qry_input = input_data['qry']
         student_pos_input = input_data['pos']
@@ -444,7 +362,8 @@ class TalasJepa(nn.Module):
             student_hidden_states=student_qry_hidden_states, 
             image_features=student_qry_image_features,
             text_token_counts=num_student_text_qry_tokens, 
-            attention_mask=student_qry_input['attention_mask']
+            attention_mask=student_qry_input['attention_mask'], 
+            concept_queries=concept_queries
         )
 
         # Trích xuất Representations từ POS
@@ -452,7 +371,8 @@ class TalasJepa(nn.Module):
             student_hidden_states=student_pos_hidden_states, 
             image_features=student_pos_image_features,
             text_token_counts=num_student_text_pos_tokens, 
-            attention_mask=student_pos_input['attention_mask']
+            attention_mask=student_pos_input['attention_mask'], 
+            concept_queries=concept_queries
         )
 
         stu_modality_features = []
