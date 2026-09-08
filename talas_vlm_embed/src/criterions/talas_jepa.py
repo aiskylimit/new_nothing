@@ -144,7 +144,7 @@ class TalasJepa(nn.Module):
 
     def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
                         concept_queries: torch.Tensor, num_slices=128,
-                        tau: float = 0.05, n_iters: int = 3, alpha: float = 1.0):
+                        tau: float = 0.05, n_iters: int = 3, alpha: float = 0.9):
         B = len(z_list)
         if B == 0: return 0.0
         
@@ -236,7 +236,7 @@ class TalasJepa(nn.Module):
         """
         k_layers = self.args.num_layers
         batch_size = attention_mask.size(0)
-        last_layer_idx = len(student_hidden_states) - 15
+        last_layer_idx = len(student_hidden_states) - 20
         
         start_sigreg_layer = max(0, last_layer_idx - k_layers)
         
