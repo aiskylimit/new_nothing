@@ -45,7 +45,7 @@ fi
 # 3. Train and save the final checkpoint under SAVE_PATH/<step>.
 TRAIN_PID=""
 if [[ "${RUN_TRAIN:-1}" == "1" ]]; then
-    CUDA_VISIBLE_DEVICES=0,1 bash scripts/qwen/train_rvd_qwen2.5_14b_to_1.5b.sh &
+    CUDA_VISIBLE_DEVICES=4,5 bash scripts/qwen/train_rvd_qwen2.5_14b_to_1.5b.sh &
     TRAIN_PID=$!
 fi
 
@@ -56,5 +56,5 @@ if [[ "${RUN_EVAL:-1}" == "1" ]]; then
     if [[ -n "$TRAIN_PID" ]]; then
         wait "$TRAIN_PID"
     fi
-    bash scripts/eval/eval.sh run
+    CUDA_VISIBLE_DEVICES=4,5 bash scripts/eval/eval.sh run
 fi
