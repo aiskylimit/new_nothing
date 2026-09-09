@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ from typing import Any
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_ROOT = PROJECT_DIR / "outputs/eval/requested_benchmarks"
+VLMEVALKIT_DIR = PROJECT_DIR / "VLMEvalKit"
 
 CSV_FIELDS = (
     "summary_path",
@@ -70,6 +72,131 @@ def json_value(value: Any) -> str:
     return str(value)
 
 
+def is_missing_metric(value: Any) -> bool:
+    if value is None or value == "":
+        return True
+    if isinstance(value, dict):
+        return not value or all(is_missing_metric(item) for item in value.values())
+    return False
+
+
+def latest_native_status(summary_path: Path) -> Path | None:
+    native_root = summary_path.parent / "native"
+    if not native_root.is_dir():
+        return None
+    candidates = []
+    for candidate in native_root.rglob("status.json"):
+        try:
+            candidates.append((candidate.stat().st_mtime, candidate))
+        except OSError:
+            continue
+    return max(candidates, default=(None, None), key=lambda item: item[0])[1]
+
+
+def reporter_primary_metric(dataset: str, metrics: dict[str, Any]) -> dict[str, Any]:
+    """Reproduce VLMEvalKit's display-metric selection without running evaluation."""
+    if not VLMEVALKIT_DIR.is_dir():
+        return {}
+    local_lmu_data = PROJECT_DIR / "eval_data/LMUData"
+    if "LMUData" not in os.environ and local_lmu_data.is_dir():
+        os.environ["LMUData"] = str(local_lmu_data)
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+    kit_path = str(VLMEVALKIT_DIR)
+    if kit_path not in sys.path:
+        sys.path.insert(0, kit_path)
+    try:
+        from vlmeval.smp.status_report import _resolve_dataset_reporter
+
+        reporter = _resolve_dataset_reporter(dataset)
+        resolved = reporter.report_primary_metric(metrics)
+    except Exception:
+        return {}
+    return resolved if isinstance(resolved, dict) else {}
+
+
+def known_display_metric(name: Any, metrics: dict[str, Any]) -> Any:
+    """Resolve stable label/key conversions used by the requested MCQ datasets."""
+    source_keys = {
+        "Overall Acc": ("split=none|Overall",),
+        "Overall Acc (val)": ("split=validation|Overall", "split=val|Overall"),
+        "Overall Acc (test)": ("split=test|Overall",),
+    }
+    for key in source_keys.get(name, ()):
+        value = metrics.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value * 100
+    return None
+
+
+def metric_from_status(dataset: str, benchmark: dict[str, Any], status: dict[str, Any]) -> tuple[Any, Any]:
+    name = benchmark.get("primary_metric_name") or status.get("primary_metric")
+    stored_value = status.get("primary_metric_value")
+    if not is_missing_metric(stored_value):
+        return name, stored_value
+
+    metrics = status.get("metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        return name, None
+
+    if isinstance(name, list):
+        direct = {key: metrics.get(key) for key in name}
+        if not is_missing_metric(direct):
+            return name, direct
+    elif name in metrics:
+        return name, metrics[name]
+
+    known_value = known_display_metric(name, metrics)
+    if not is_missing_metric(known_value):
+        return name, known_value
+
+    resolved = reporter_primary_metric(dataset, metrics)
+    if not resolved:
+        return name, None
+    if isinstance(name, list):
+        selected = {key: resolved.get(key) for key in name}
+        if not is_missing_metric(selected):
+            return name, selected
+    elif name in resolved:
+        return name, resolved[name]
+    if len(resolved) == 1:
+        resolved_name, resolved_value = next(iter(resolved.items()))
+        return name or resolved_name, resolved_value
+    return name, None
+
+
+def backfill_metrics_from_status(summary: dict[str, Any], summary_path: Path) -> None:
+    missing = [
+        item for item in summary["benchmarks"]
+        if isinstance(item, dict) and is_missing_metric(item.get("primary_metric_value"))
+    ]
+    if not missing:
+        return
+    status_path = latest_native_status(summary_path)
+    if status_path is None:
+        return
+    try:
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    datasets = status.get("datasets") if isinstance(status, dict) else None
+    if not isinstance(datasets, dict):
+        return
+
+    for benchmark in missing:
+        dataset = benchmark.get("dataset")
+        native = datasets.get(dataset)
+        if not isinstance(dataset, str) or not isinstance(native, dict):
+            continue
+        name, value = metric_from_status(dataset, benchmark, native)
+        if is_missing_metric(value):
+            continue
+        benchmark["primary_metric_name"] = name
+        benchmark["primary_metric_value"] = value
+
+
 def read_summary(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -81,6 +208,7 @@ def read_summary(path: Path) -> dict[str, Any]:
     if not isinstance(benchmarks, list):
         raise ValueError(f"Summary has no valid benchmarks list: {path}")
     value["summary_path"] = str(path.resolve())
+    backfill_metrics_from_status(value, path.resolve())
     return value
 
 
