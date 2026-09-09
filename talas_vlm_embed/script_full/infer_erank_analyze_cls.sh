@@ -98,7 +98,7 @@ python $INFER_SCRIPT \
     --lora_r 64 \
     --lora_alpha 64 \
     --pooling eos \
-    --model_backbone llava_qwen2 \
+    --model_backbone llava_onevision \
     --normalize True \
     --bf16 \
     --dataset_name vlm2vec_eval/MMEB-eval \
