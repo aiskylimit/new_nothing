@@ -139,7 +139,7 @@ torchrun --standalone \
     --warmup_ratio 0.03 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
-    --image_resolution "low" \
+    --image_resolution "tiny" \
     --projector_config_path "./config/projector_config_emo.json" \
     --num_self_kd_layers 3 \
     --projector_lr 5e-4 \
@@ -198,9 +198,9 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 8 \
+    --per_device_eval_batch_size 16 \
     --image_dir eval_images/ \
-    --image_resolution "low" \
+    --image_resolution "tiny" \
     --tgt_prefix_mod \
     --load_pretrained_lora True \
     --report_to none
