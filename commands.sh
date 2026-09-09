@@ -1,5 +1,5 @@
-#2
-#erank
+#1 +120
+#reasoning_velocity_distill
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
@@ -56,3 +56,11 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py
 # # CUDA_VISIBLE_DEVICES=2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
 # # # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
+
+
+cd ./reasoning_velocity_distill
+bash ./project_commands.sh
+CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
