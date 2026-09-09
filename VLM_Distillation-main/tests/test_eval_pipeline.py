@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts/eval"))
 from eval_utils import (EvalError, classify_checkpoint, detect_architecture, output_dir,
                         git_commit, parse_overrides, resolve_base, select_checkpoint, suite_config)
 from eval_utils import update_summary
+from collect_eval_summaries import read_summary
 from prepare_eval_assets import resolve_registry_classes
 import prepare_eval_assets as prepare
 from run_all_methods import discover_runs, is_completed_summary, is_mode_complete
@@ -186,6 +187,50 @@ class EvalPipelineTests(unittest.TestCase):
         self.assertEqual(summary["overall_status"], "partial")
         self.assertEqual(summary["merge_metadata"]["identity"], "123")
         self.assertEqual(summary["runtime"]["attention_backend"], "eager")
+
+    def test_collector_backfills_display_metric_from_latest_native_status(self):
+        run = self.root / "run"
+        status = run / "native/model/T20260908-130753/status.json"
+        dump(status, {"datasets": {
+            "AI2D_TEST_NO_MASK": {
+                "status": "done",
+                "primary_metric": "Overall Acc",
+                "metrics": {"split=none|Overall": 0.863},
+            },
+            "MMMU_DEV_VAL": {
+                "status": "done",
+                "primary_metric": "Overall Acc (val)",
+                "metrics": {"split=validation|Overall": 0.4578},
+            },
+        }})
+        summary_path = run / "summary.json"
+        dump(summary_path, {"benchmarks": [
+            {"dataset": "AI2D_TEST_NO_MASK", "primary_metric_name": "Overall Acc",
+             "primary_metric_value": None},
+            {"dataset": "MMMU_DEV_VAL", "primary_metric_name": "Overall Acc (val)",
+             "primary_metric_value": None},
+            {"dataset": "missing", "primary_metric_name": "Overall", "primary_metric_value": None},
+        ]})
+
+        summary = read_summary(summary_path)
+
+        self.assertAlmostEqual(summary["benchmarks"][0]["primary_metric_value"], 86.3)
+        self.assertAlmostEqual(summary["benchmarks"][1]["primary_metric_value"], 45.78)
+        self.assertIsNone(summary["benchmarks"][2]["primary_metric_value"])
+
+    def test_collector_preserves_summary_metric_over_status(self):
+        run = self.root / "run"
+        dump(run / "native/model/T1/status.json", {"datasets": {
+            "MMStar": {"primary_metric": "Overall Acc", "primary_metric_value": 1.0}
+        }})
+        summary_path = run / "summary.json"
+        dump(summary_path, {"benchmarks": [
+            {"dataset": "MMStar", "primary_metric_name": "Overall Acc", "primary_metric_value": 55.4}
+        ]})
+
+        summary = read_summary(summary_path)
+
+        self.assertEqual(summary["benchmarks"][0]["primary_metric_value"], 55.4)
 
     def test_generated_configs_all_architectures(self):
         expected = {"qwen2_vl": "ProjectQwen2VLChat", "qwen2_5_vl": "ProjectQwen2VLChat",
