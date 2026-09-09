@@ -5,8 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
-uv sync
-source .venv/bin/activate
+source /mnt/local/uvenvs/cypher-extract/bin/activate
 
 CUDA_VISIBLE_DEVICES=3 RUN_GPUS=3 bash scripts/run_teacher_student.sh \
   --families qwen3 \
