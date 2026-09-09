@@ -139,7 +139,7 @@ torchrun --standalone \
     --warmup_ratio 0.03 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
-    --image_resolution "tiny" \
+    --image_resolution "low" \
     --projector_config_path "./config/projector_config_emo.json" \
     --num_self_kd_layers 3 \
     --projector_lr 5e-4 \

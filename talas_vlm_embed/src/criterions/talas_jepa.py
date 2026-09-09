@@ -47,7 +47,7 @@ class TalasJepa(nn.Module):
 
         return loss
 
-    def distillcse_kd_loss(self, S1, S2, T1, T2, tau=0.04):
+    def distillcse_kd_loss(self, S1, S2, T1, T2, tau=0.02):
         """
         Distill teacher similarity distribution over in-batch negatives.
 
