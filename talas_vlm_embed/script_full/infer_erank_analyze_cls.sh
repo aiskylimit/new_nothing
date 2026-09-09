@@ -109,7 +109,8 @@ python $INFER_SCRIPT \
     --encode_output_path "infer/FastVLM-0.5B_${EXP_NAME}" \
     --per_device_eval_batch_size 8 \
     --load_pretrained_lora True \
-    --report_to None
+    --report_to None \
+    --image_resolution "tiny"
 
 # analyze erank
 python ./er_statistic.py \
