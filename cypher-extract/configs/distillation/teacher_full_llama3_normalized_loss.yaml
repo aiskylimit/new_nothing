@@ -27,7 +27,7 @@ output_dir: results/full_finetune_normalized/llama3/teacher_full
 overwrite_output_dir: true
 per_device_train_batch_size: 8
 per_device_eval_batch_size: 64
-gradient_accumulation_steps: 2
+gradient_accumulation_steps: 4
 learning_rate: 0.00001
 num_train_epochs: 5
 optim: adamw_torch
