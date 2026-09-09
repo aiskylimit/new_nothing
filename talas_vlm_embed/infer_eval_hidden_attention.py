@@ -187,7 +187,10 @@ def get_special_ids_for_text_count(tokenizer):
 
     eos_ids = tokenizer.eos_token_id
     eos_ids = [] if eos_ids is None else eos_ids if isinstance(eos_ids, list) else [eos_ids]
-    return set(getattr(tokenizer, "all_special_ids", [])) - set(eos_ids)
+    return (
+        set(getattr(tokenizer, "all_special_ids", []))
+        | set(tokenizer.added_tokens_encoder.values())
+    ) - set(eos_ids)
 
 
 def load_infer_model(model_args, data_args, device):
