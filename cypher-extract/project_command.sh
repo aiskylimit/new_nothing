@@ -13,4 +13,4 @@ RUN_GPUS=3 bash scripts/run_teacher_student.sh \
   --settings all \
   --student-settings full_finetune,full_finetune_normalized \
   --student-methods sft \
-  --phase train
+  --phase all
