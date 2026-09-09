@@ -1,0 +1,47 @@
+stage: sft
+do_train: true
+do_eval: true
+predict_with_generate: true
+model_name_or_path: Qwen/Qwen2.5-Coder-7B-Instruct
+model_revision: c03e6d358207e414f1eca0bb1891e29f1db0e242
+dataset: cypher_prepared_train
+eval_dataset: cypher_prepared_eval
+dataset_dir: ${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data}/llamafactory
+template: qwen
+cutoff_len: 892
+packing: false
+ignore_pad_token_for_loss: true
+preprocessing_num_workers: 1
+dataloader_num_workers: 1
+dataloader_drop_last: false
+finetuning_type: lora
+lora_target: all
+lora_rank: 32
+lora_alpha: 64
+lora_dropout: 0.1
+train_on_prompt: false
+# The shared CLI treats kd_ratio=0 as ordinary SFT, so no reference model is loaded.
+distill_method: sft
+kd_ratio: 0.0
+# LlamaFactory saves the trained LoRA adapter in this directory. kd.yaml loads it
+# through ref_model_adapters while keeping the 7B base model frozen.
+output_dir: results/lora/qwen2.5_coder/teacher_lora
+overwrite_output_dir: true
+per_device_train_batch_size: 8
+per_device_eval_batch_size: 64
+gradient_accumulation_steps: 2
+learning_rate: 0.00001
+num_train_epochs: 5
+optim: adamw_torch
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+weight_decay: 0.01
+max_grad_norm: 1.0
+logging_steps: 20
+save_strategy: epoch
+save_total_limit: null
+eval_strategy: epoch
+seed: 42
+bf16: true
+deepspeed: configs/deepspeed/ds_config_bf16.json
+report_to: none
