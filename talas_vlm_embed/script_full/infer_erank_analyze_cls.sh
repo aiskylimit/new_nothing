@@ -76,7 +76,8 @@ D_MEAN=$(bool_to_int "$USE_MEAN")
 
 EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
 
-MODEL="training/FastVLM-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
+# MODEL="training/FastVLM-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
+MODEL="training/llava_ov-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
 
 
 
