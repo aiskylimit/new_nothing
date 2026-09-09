@@ -1,0 +1,21 @@
+#d
+#datasets
+--url https://huggingface.co/datasets/VoCuc/UltraInteract-Infer/resolve/main/Qwen/Qwen2.5-14B-Instruct/generated_train.jsonl /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/raw/Qwen/Qwen2.5-14B-Instruct/
+
+# Evaluation datasets. The server reads these local mirrors through scripts/eval/local_lm_eval.py.
+--hf-dataset openai/gsm8k /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/gsm8k
+--hf-dataset qintongli/GSM-Plus /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/gsm_plus
+--hf-dataset EleutherAI/hendrycks_math /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/hendrycks_math
+--hf-dataset google-research-datasets/mbpp /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/mbpp
+--hf-dataset allenai/sciq /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/sciq
+--hf-dataset cais/mmlu /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/mmlu
+--hf-dataset TIGER-Lab/MMLU-Pro /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/mmlu_pro
+--hf-dataset SaylorTwift/bbh /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/bbh
+
+# MBPP metric source pinned to the installed evaluate version. Both files are required offline.
+--url https://raw.githubusercontent.com/huggingface/evaluate/v0.4.6/metrics/code_eval/code_eval.py /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/code_eval/
+--url https://raw.githubusercontent.com/huggingface/evaluate/v0.4.6/metrics/code_eval/execute.py /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/code_eval/
+
+#models
+--hf Qwen/Qwen2.5-1.5B-Instruct /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/models/Qwen2.5_1.5B-Instruct
+--hf Qwen/Qwen2.5-14B-Instruct /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/models/Qwen2.5_14B-Instruct
