@@ -1,66 +1,10 @@
-#2 -0-5
-#test
-#v1
-
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/outputs/eval/ +a
-
-# nvidia-smi
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
-# kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-# sleep 2
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-nvidia-smi
-
-
-export PATH=/usr/local/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-export HF_HUB_OFFLINE=1
-export TRANSFORMERS_OFFLINE=1
-export HF_DATASETS_OFFLINE=1
-export NCCL_DEBUG=WARN
-
-# cd ./talas_vlm_embed
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# bash ./project_commands.sh
-# # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
-# cd ./spectral-guided-learning
-# bash ./project_commands.sh
-
-# cd ./reward-guidance-main
-# bash ./project_command.sh
-
-# cd ./VLM_Distillation-main
-# bash ./project_commands_collect_eval_summary.sh
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
-# # # bash ./project_commands.sh
-# bash ./project_commands_eval_base_model_1.sh &
-# bash ./project_commands_eval_base_model_2.sh &
-# wait
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py
-# # CUDA_VISIBLE_DEVICES=2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
-# # # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-
-
-# cd ./reasoning_velocity_distill
-# bash ./project_commands.sh
-# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+#d
+#datasets
+--hf-dataset fisherman611/cypher-extract-data /mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data
+#models
+--hf Qwen/Qwen3-0.6B /mnt/local/aiskylimit_new_nothing/cypher-extract/models/Qwen3-0.6B
+--hf Qwen/Qwen3-4B-Instruct-2507 /mnt/local/aiskylimit_new_nothing/cypher-extract/models/Qwen3-4B-Instruct-2507
+--hf meta-llama/Llama-3.2-1B-Instruct /mnt/local/aiskylimit_new_nothing/cypher-extract/models/Llama-3.2-1B-Instruct
+--hf meta-llama/Meta-Llama-3-8B-Instruct /mnt/local/aiskylimit_new_nothing/cypher-extract/models/Meta-Llama-3-8B-Instruct
+--hf Qwen/Qwen2.5-Coder-3B-Instruct /mnt/local/aiskylimit_new_nothing/cypher-extract/models/Qwen2.5-Coder-3B-Instruct
+--hf Qwen/Qwen2.5-Coder-7B-Instruct /mnt/local/aiskylimit_new_nothing/cypher-extract/models/Qwen2.5-Coder-7B-Instruct
