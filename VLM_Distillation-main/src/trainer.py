@@ -7,6 +7,7 @@ import torch
 import torch.distributed as dist
 from transformers import Trainer
 from transformers.trainer import TRAINING_ARGS_NAME
+from transformers.trainer_pt_utils import LengthGroupedSampler
 
 from src.arguments import ModelArguments, TrainingArguments
 from src.distiller import Distiller
@@ -66,15 +67,8 @@ class DistillTrainer(Trainer):
         super().__init__(**kwargs)
 
         self._is_ddp = dist.is_initialized()
-        self._loss_metric_sums: Dict[str, float] = {}
+        self._loss_metric_sums: Dict[str, Any] = {}
         self._loss_metric_counts: Dict[str, int] = {}
-        self._latest_loss_metrics: Dict[str, float] = {}
-
-        # Accumulators for criterion-side metrics. compute_loss is called once
-        # per micro-batch; we average across grad_accum_steps and emit at the
-        # next logging step via our `log()` override below.
-        self._kd_metric_sums: Dict[str, float] = {}
-        self._kd_metric_count: int = 0
 
     # ------------------------------------------------------------------
     # Column removal — disabled; our batches are nested dicts
@@ -83,23 +77,19 @@ class DistillTrainer(Trainer):
     def _remove_unused_columns(self, dataset, description=None):
         return dataset
 
-    # ------------------------------------------------------------------
-    # Component-metric logging
-    # ------------------------------------------------------------------
-
-    def log(self, logs: Dict[str, Any], *args, **kwargs):
-        """Inject accumulated criterion-side metrics into each periodic log.
-
-        HF Trainer's `_maybe_log_save_evaluate` calls `self.log(logs)` at
-        `args.logging_steps`. We hook here so SCVA / CGKD / hard_loss /
-        validity counters are available at every visible step.
-        """
-        if self._kd_metric_count > 0:
-            for key, total in self._kd_metric_sums.items():
-                logs[f"train/{key}"] = total / self._kd_metric_count
-            self._kd_metric_sums.clear()
-            self._kd_metric_count = 0
-        return super().log(logs, *args, **kwargs)
+    def _get_train_sampler(self, train_dataset=None):
+        """Use the dataset's cheap text-length estimates for VLM bucketing."""
+        train_dataset = train_dataset if train_dataset is not None else self.train_dataset
+        if (
+            train_dataset is not None
+            and self.args.train_sampling_strategy == "group_by_length"
+            and hasattr(train_dataset, "lengths")
+        ):
+            return LengthGroupedSampler(
+                self.args.train_batch_size * self.args.gradient_accumulation_steps,
+                lengths=train_dataset.lengths,
+            )
+        return super()._get_train_sampler(train_dataset)
 
     # ------------------------------------------------------------------
     # Loss
@@ -112,23 +102,9 @@ class DistillTrainer(Trainer):
             loss_output = model(self.criterion, inputs)
             if isinstance(loss_output, dict):
                 self._record_loss_metrics(loss_output)
-                self._update_tqdm_postfix()
                 loss = loss_output["loss"]
             else:
                 loss = loss_output
-
-            if isinstance(loss_output, dict):
-                for key, value in loss_output.items():
-                    if key == "loss":
-                        continue
-                    if torch.is_tensor(value):
-                        if value.numel() == 0:
-                            continue
-                        scalar = value.detach().float().mean().item()
-                    else:
-                        scalar = float(value)
-                    self._kd_metric_sums[key] = self._kd_metric_sums.get(key, 0.0) + scalar
-                self._kd_metric_count += 1
 
             return (loss, None) if return_outputs else loss
 
@@ -172,68 +148,24 @@ class DistillTrainer(Trainer):
     # ------------------------------------------------------------------
 
     def _record_loss_metrics(self, loss_output: Dict[str, Any]) -> None:
-        latest = {}
         for name, value in loss_output.items():
-            scalar = self._to_log_scalar(value)
-            if scalar is None:
-                continue
-
-            latest[name] = scalar
             if name == "loss":
                 continue
+            if torch.is_tensor(value):
+                if value.numel() != 1:
+                    continue
+                # Keep detached scalar accumulators on their original device.
+                # Calling .item() here would synchronize CUDA once per metric
+                # and micro-batch; conversion is deferred to periodic log().
+                scalar = value.detach().float()
+            elif isinstance(value, Number):
+                scalar = float(value)
+            else:
+                continue
 
-            self._loss_metric_sums[name] = self._loss_metric_sums.get(name, 0.0) + scalar
+            current = self._loss_metric_sums.get(name)
+            self._loss_metric_sums[name] = scalar if current is None else current + scalar
             self._loss_metric_counts[name] = self._loss_metric_counts.get(name, 0) + 1
-        self._latest_loss_metrics = latest
-
-    def _update_tqdm_postfix(self) -> None:
-        if not self._latest_loss_metrics:
-            return
-
-        priority_keys = (
-            "loss",
-            "supervised_loss",
-            "hard_loss",
-            "kd_loss",
-            "t2s_ce_loss",
-            "t2s_kd_loss",
-            "s2t_kd_loss",
-            "dtw_loss",
-            "weighted_dtw_loss",
-            "mcw_ot_logits_loss",
-            "mcw_ot_hidden_loss",
-            "scva_loss",
-            "cgkd_loss",
-            "sre_kd_loss",
-            "sre_span_loss",
-            "sre_geom_loss",
-            "sre_logit_loss",
-            "response_kd_loss",
-            "vision_kd_loss",
-            "vision_logit_loss",
-            "affinity_loss",
-        )
-
-        loss_keys = [
-            key
-            for key in self._latest_loss_metrics
-            if key == "loss" or key.endswith("_loss") or "loss" in key
-        ]
-        ordered_keys = [key for key in priority_keys if key in loss_keys]
-        ordered_keys.extend(sorted(key for key in loss_keys if key not in set(ordered_keys)))
-
-        postfix = {key: f"{self._latest_loss_metrics[key]:.4g}" for key in ordered_keys}
-        if not postfix:
-            return
-
-        for callback in getattr(self.callback_handler, "callbacks", []):
-            training_bar = getattr(callback, "training_bar", None)
-            if training_bar is not None:
-                try:
-                    training_bar.set_postfix(postfix, refresh=False)
-                except TypeError:
-                    training_bar.set_postfix(postfix)
-                break
 
     @staticmethod
     def _to_log_scalar(value: Any) -> Optional[float]:
@@ -258,7 +190,9 @@ class DistillTrainer(Trainer):
             for name, total in self._loss_metric_sums.items():
                 count = self._loss_metric_counts.get(name, 0)
                 if count > 0 and name not in logs:
-                    logs[name] = total / count
+                    scalar = self._to_log_scalar(total / count)
+                    if scalar is not None:
+                        logs[name] = scalar
             self._loss_metric_sums.clear()
             self._loss_metric_counts.clear()
 
@@ -293,6 +227,9 @@ class DistillTrainer(Trainer):
             {
                 "params": [p for p in self.model.projectors.parameters() if p.requires_grad],
                 "lr": proj_lr,
+                # The SRA-v2 reference explicitly excludes its learned hidden
+                # projector from weight decay.
+                "weight_decay": 0.0,
             }
         )
         print_master(f"Projector param group added to optimizer (lr={proj_lr})")

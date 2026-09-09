@@ -53,8 +53,12 @@ class Distiller(nn.Module):
         self.student = self._load_student()
         self.teacher = self._load_teacher()
 
-        self.student_hidden_dim = model_args.student_hidden_dim
-        self.teacher_hidden_dim = model_args.teacher_hidden_dim
+        self.student_hidden_dim = self._infer_text_hidden_dim(self.student, model_args.student_hidden_dim)
+        self.teacher_hidden_dim = self._infer_text_hidden_dim(self.teacher, model_args.teacher_hidden_dim)
+        print_master(
+            f"Resolved text hidden dimensions: student={self.student_hidden_dim}, "
+            f"teacher={self.teacher_hidden_dim}"
+        )
 
         self.set_projector()
         self.load_projectors_if_needed()
@@ -100,6 +104,31 @@ class Distiller(nn.Module):
         # SCVA, and their joint criteria consume attention matrices directly.
         return kd_loss_type not in attention_free_kd_losses
 
+    def _needs_vision_attention_outputs(self) -> bool:
+        # SRE consumes text-decoder attention only.  Keeping the vision backend
+        # on SDPA/Flash avoids eager vision attention without changing SRE.
+        kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
+        return self._needs_attention_outputs() and kd_loss_type != "sre"
+
+    @staticmethod
+    def _infer_text_hidden_dim(model: nn.Module, fallback: int) -> int:
+        config = getattr(model, "config", None)
+        candidates = (
+            getattr(config, "text_config", None),
+            getattr(config, "llm_config", None),
+            getattr(config, "language_config", None),
+            config,
+        )
+        for candidate in candidates:
+            hidden_size = (
+                candidate.get("hidden_size")
+                if isinstance(candidate, dict)
+                else getattr(candidate, "hidden_size", None)
+            )
+            if hidden_size is not None:
+                return int(hidden_size)
+        return int(fallback)
+
     def _load_student(self) -> VLMModel:
         print_master(
             f"Loading student: {self.model_args.model_name} "
@@ -108,6 +137,7 @@ class Distiller(nn.Module):
         student = VLMModel.build(
             self.model_args,
             output_attentions=self._needs_attention_outputs(),
+            vision_output_attentions=self._needs_vision_attention_outputs(),
         )
         print_master("Student model built.")
         return student
@@ -122,6 +152,7 @@ class Distiller(nn.Module):
             teacher_model_args,
             is_trainable=False,
             output_attentions=self._needs_attention_outputs(),
+            vision_output_attentions=self._needs_vision_attention_outputs(),
         )
         for param in teacher.parameters():
             param.requires_grad = False
@@ -224,11 +255,16 @@ class Distiller(nn.Module):
 
                 self.projectors[name] = seq
         else:
+            n_projectors = len(self.training_args.teacher_layer_mapping)
+            sre_like_types = {"sre", "joint", "unit_aligned", "unit_aligned_distillation"}
+            if kd_loss_type in sre_like_types and getattr(self.training_args, "sre_use_projector", True):
+                n_projectors = max(n_projectors, 1)
             projector_list = nn.ModuleList()
-            for _ in range(len(self.training_args.teacher_layer_mapping)):
-                projector_list.append(
-                    nn.Linear(self.student_hidden_dim, self.teacher_hidden_dim, dtype=torch.bfloat16)
-                )
+            for _ in range(n_projectors):
+                projector = nn.Linear(self.student_hidden_dim, self.teacher_hidden_dim, dtype=torch.bfloat16)
+                if kd_loss_type in sre_like_types:
+                    nn.init.xavier_uniform_(projector.weight)
+                projector_list.append(projector)
             self.projectors = projector_list
 
         print_master(f"Created {len(self.projectors)} projector(s).")
@@ -236,7 +272,9 @@ class Distiller(nn.Module):
     def add_optimizer_param_group(self, optimizer):
         if hasattr(self, "projectors") and self.projectors is not None:
             lr = self.model_args.projector_lr or self.training_args.learning_rate
-            optimizer.add_param_group({"params": self.projectors.parameters(), "lr": lr})
+            optimizer.add_param_group(
+                {"params": self.projectors.parameters(), "lr": lr, "weight_decay": 0.0}
+            )
             print_master("Projector parameters added to optimizer.")
         return optimizer
 

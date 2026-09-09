@@ -41,7 +41,20 @@ torchrun \
   --save_total_limit 2 \
   --logging_steps 100 \
   --dataloader_num_workers 2 \
+  --train_sampling_strategy group_by_length \
   --max_len 2048 \
   --image_resolution low \
   --resume_from none \
-  --kd_loss_type "sre" 
+  --kd_loss_type "sre" \
+  --sre_use_projector true \
+  --teacher_layer_mapping -3 -1 \
+  --student_layer_mapping -3 -1 \
+  --sre_alpha 0.5 \
+  --sre_p 1.0 \
+  --sre_span_loss_weight 1.0 \
+  --sre_geom_loss_weight 3.0 \
+  --sre_logit_loss_weight 1.0 \
+  --sre_temperature 2.0 \
+  --sre_skew_loss_weight 1.0 \
+  --sre_skew_lambda 0.01 \
+  --projector_lr 5e-4
