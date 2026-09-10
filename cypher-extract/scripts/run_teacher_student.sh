@@ -6,7 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Default first run: all four teachers and only the full-SFT plus normalized
-# full-SFT students for every model family, followed by seed-42 inference.
+# full-SFT students for every model family. With --phase all, each model is
+# inferred with seed 42 immediately after its training finishes.
 MODEL_FAMILIES="${MODEL_FAMILIES:-llama3,qwen3,qwen2.5_coder}"
 STUDENT_METHODS="${STUDENT_METHODS:-sft}"
 STUDENT_SETTINGS="${STUDENT_SETTINGS:-full_finetune,full_finetune_normalized}"
@@ -312,6 +313,28 @@ fi
 
 cd "${PROJECT_ROOT}"
 
+run_inference() {
+  local model_family="$1"
+  local setting="$2"
+  local methods="$3"
+  local inference_args=(
+    --methods "${methods}"
+    --seeds "${INFERENCE_SEEDS}"
+  )
+
+  if [[ -n "${INFERENCE_DATASETS}" ]]; then
+    inference_args+=(--datasets "${INFERENCE_DATASETS}")
+  fi
+
+  echo
+  echo "============================================================"
+  echo "Running ${model_family} inference: ${setting}"
+  echo "Methods: ${methods}"
+  echo "Seeds: ${INFERENCE_SEEDS}"
+  echo "============================================================"
+  bash scripts/infer_all.sh "${model_family}" "${setting}" "${inference_args[@]}"
+}
+
 if [[ "${RUN_PHASE}" == "all" || "${RUN_PHASE}" == "train" ]]; then
   for model_family in "${SELECTED_MODEL_FAMILIES[@]}"; do
     for setting in "${SELECTED_SETTINGS[@]}"; do
@@ -323,6 +346,9 @@ if [[ "${RUN_PHASE}" == "all" || "${RUN_PHASE}" == "train" ]]; then
       echo "Config: configs/distillation/${TEACHER_CONFIG}"
       echo "============================================================"
       bash scripts/train.sh "configs/distillation/${TEACHER_CONFIG}" "${TRAIN_OVERRIDES[@]}"
+      if [[ "${RUN_PHASE}" == "all" ]]; then
+        run_inference "${model_family}" "${setting}" "${TEACHER_METHOD}"
+      fi
 
       if has_student_setting "${setting}"; then
         for method in "${SELECTED_METHODS[@]}"; do
@@ -331,14 +357,17 @@ if [[ "${RUN_PHASE}" == "all" || "${RUN_PHASE}" == "train" ]]; then
           echo "Training ${model_family} student: ${setting}/${method}"
           echo "Config: configs/${CONFIG_DIRECTORY}/${method}.yaml"
           echo "============================================================"
-        bash scripts/train.sh "configs/${CONFIG_DIRECTORY}/${method}.yaml" "${TRAIN_OVERRIDES[@]}"
+          bash scripts/train.sh "configs/${CONFIG_DIRECTORY}/${method}.yaml" "${TRAIN_OVERRIDES[@]}"
+          if [[ "${RUN_PHASE}" == "all" ]]; then
+            run_inference "${model_family}" "${setting}" "${method}"
+          fi
         done
       fi
     done
   done
 fi
 
-if [[ "${RUN_PHASE}" == "all" || "${RUN_PHASE}" == "infer" ]]; then
+if [[ "${RUN_PHASE}" == "infer" ]]; then
   for model_family in "${SELECTED_MODEL_FAMILIES[@]}"; do
     for setting in "${SELECTED_SETTINGS[@]}"; do
       setting_paths "${model_family}" "${setting}"
@@ -349,20 +378,7 @@ if [[ "${RUN_PHASE}" == "all" || "${RUN_PHASE}" == "infer" ]]; then
         done
       fi
 
-      echo
-      echo "============================================================"
-      echo "Running ${model_family} inference: ${setting}"
-      echo "Methods: ${inference_methods}"
-      echo "Seeds: ${INFERENCE_SEEDS}"
-      echo "============================================================"
-      inference_args=(
-        --methods "${inference_methods}"
-        --seeds "${INFERENCE_SEEDS}"
-      )
-      if [[ -n "${INFERENCE_DATASETS}" ]]; then
-        inference_args+=(--datasets "${INFERENCE_DATASETS}")
-      fi
-      bash scripts/infer_all.sh "${model_family}" "${setting}" "${inference_args[@]}"
+      run_inference "${model_family}" "${setting}" "${inference_methods}"
     done
   done
 fi
