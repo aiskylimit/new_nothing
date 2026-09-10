@@ -6,6 +6,7 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 
 bash set_base_model_path.sh
+ls -lh /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm-3.8.0-py3-none-any.whl
 python -m pip install /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm-3.8.0-py3-none-any.whl
 # python fix_lib.py
 
