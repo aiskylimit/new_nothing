@@ -4,6 +4,8 @@ set -e
 
 source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
+
+bash set_base_model_path.sh
 # python fix_lib.py
 
 # #
