@@ -1,4 +1,4 @@
-#1 +120
+#2 -0-5
 #cypher-extract
 #v1
 
@@ -65,5 +65,5 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
 
-cd ./cypher-extract
-bash ./project_command.sh
+# cd ./cypher-extract
+# bash ./project_command.sh
