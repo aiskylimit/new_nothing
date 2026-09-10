@@ -6,14 +6,15 @@ The production entrypoint is:
 bash project_command.sh
 ```
 
-It sources `env.sh`, creates an offline uv environment, validates all local
-assets, validates two scheduler-assigned Blackwell GPUs, launches Accelerate DDP,
+It sources `env.sh`, reuses the uv environment created by the platform from
+`requirements.txt`, validates all local assets and two scheduler-assigned
+Blackwell GPUs, launches Accelerate DDP,
 evaluates the final model immediately, and writes `results/summary.json`.
 
-All assets must already exist under `offline_assets/` (or be redirected with
-the variables in `env.sh`). Follow `download.txt` on an Internet-connected
-Linux machine. The server flow sets all Hugging Face libraries to offline mode
-and disables external reporting/upload.
+The platform must process the root-level `download.txt` manifest before the
+job starts. It downloads every model and dataset into `offline_assets/`; the
+runtime itself sets all Hugging Face libraries to offline mode and disables
+external reporting/upload.
 
 Default production semantics:
 
@@ -32,10 +33,11 @@ Detailed logs are in `runtime/logs/project.log`, per-run training logs are in
 `runtime/eval/<eval>/logs/`. Rerunning the entrypoint reuses completed model,
 prompt, image, score, and report artifacts.
 
-The Hessian A100 pilot uses the same entrypoint with overrides and is not the
-production configuration:
+For a non-platform pilot, point `VENV_DIR` at an existing compatible uv
+environment. For example:
 
 ```bash
 PIPELINE_MODE=pilot GPU_IDS=2,3 NUM_GPUS=2 TARGET_GPU_FAMILY=A100 \
+  VENV_DIR=/path/to/existing/venv \
   OFFLINE_EVAL_LIMIT=2 bash project_command.sh
 ```

@@ -29,34 +29,20 @@ IFS=',' read -r -a configured_gpus <<< "$GPU_IDS"
 log ENV "mode=$PIPELINE_MODE target=$TARGET_GPU_FAMILY gpu_ids=$GPU_IDS num_gpus=$NUM_GPUS"
 log ENV "offline=1 effective_batch=$EFFECTIVE_BATCH model=$MODEL_DIR data=$DATA_DIR"
 
-log SETUP "preparing uv environment at $VENV_DIR"
-if [[ "${SKIP_ENV_SETUP:-0}" != 1 ]]; then
-  [[ -d "$WHEELHOUSE_DIR" ]] || fail "offline wheelhouse missing: $WHEELHOUSE_DIR; follow download.txt" 12
-  UV_BIN="${UV_BIN:-$(command -v uv || true)}"
-  [[ -n "$UV_BIN" ]] || UV_BIN="$ASSET_ROOT/bin/uv"
-  if [[ -f "$UV_BIN" && ! -x "$UV_BIN" ]]; then
-    chmod +x "$UV_BIN"
-  fi
-  [[ -n "$UV_BIN" && -x "$UV_BIN" ]] || fail "uv not found; copy the uv binary as described in download.txt" 13
-  export UV_OFFLINE=1 UV_PYTHON_DOWNLOADS=never
-  if [[ ! -x "$VENV_DIR/bin/python" ]]; then
-    "$UV_BIN" venv --python "${PYTHON_BIN:-python3.10}" "$VENV_DIR"
-  fi
-  requirements_hash="$(sha256sum "$PROJECT_ROOT/requirements-offline-b200.txt" | awk '{print $1}')"
-  marker="$VENV_DIR/.requirements-$requirements_hash"
-  if [[ ! -f "$marker" ]]; then
-    clip_wheels=("$WHEELHOUSE_DIR"/clip-*.whl)
-    [[ -e "${clip_wheels[0]}" ]] || fail "OpenAI CLIP wheel missing from $WHEELHOUSE_DIR" 14
-    "$UV_BIN" pip install --offline --find-links "$WHEELHOUSE_DIR" \
-      --python "$VENV_DIR/bin/python" -r "$PROJECT_ROOT/requirements-offline-b200.txt" \
-      "${clip_wheels[0]}"
-    touch "$marker"
-  else
-    log SETUP "dependency marker found; installation reused"
-  fi
-else
-  [[ -x "$VENV_DIR/bin/python" ]] || fail "SKIP_ENV_SETUP=1 but venv is missing: $VENV_DIR" 15
-  log SETUP "reusing caller-provided environment"
+log SETUP "using platform-managed uv environment at $VENV_DIR"
+[[ -x "$VENV_DIR/bin/python" ]] || fail \
+  "managed uv environment missing: $VENV_DIR; requirements.txt must be processed first" 12
+log SETUP "python=$($VENV_DIR/bin/python --version 2>&1)"
+
+# download.txt materializes the Hugging Face dataset tree. Build the compact
+# binary-label manifest locally once; this step performs no network access.
+if [[ ! -s "$STREAM_MANIFEST" ]]; then
+  log 'CHECK ASSETS' "building local Pick-a-Pic manifest"
+  [[ -d "$DATA_DIR" ]] || fail "dataset directory missing: $DATA_DIR" 13
+  "$VENV_DIR/bin/python" "$PROJECT_ROOT/hessian/prepare_binary_local_manifest.py" \
+    --data-dir "$DATA_DIR" --output "$STREAM_MANIFEST" \
+    --target-rows 851293 --workers "${MANIFEST_WORKERS:-16}" \
+    | tee "$LOG_DIR/dataset-manifest.log"
 fi
 
 # hpsv2 1.2.0 expects this vocabulary beside its package; supply it locally.
@@ -72,9 +58,7 @@ cp -f "$RATIO_HPSV2_BPE" "$hps_pkg_dir/bpe_simple_vocab_16e6.txt.gz"
 log SETUP "environment ready"
 
 log 'CHECK ASSETS' "validating local model, data, prompts, and reward weights"
-asset_args=()
-[[ "${SKIP_ENV_SETUP:-0}" == 1 ]] && asset_args+=(--skip-wheelhouse)
-"$VENV_DIR/bin/python" "$PROJECT_ROOT/hessian/check_offline_assets.py" "${asset_args[@]}" \
+"$VENV_DIR/bin/python" "$PROJECT_ROOT/hessian/check_offline_assets.py" --skip-wheelhouse \
   | tee "$LOG_DIR/assets.json"
 log 'CHECK ASSETS' "all runtime assets are local and complete"
 

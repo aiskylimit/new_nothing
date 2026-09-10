@@ -1,20 +1,24 @@
-torch==2.7.1
-torchvision==0.22.1
+# manager: uv
+# python: 3.11
+# Offline SDXL Q3/DSPO training and evaluation dependencies for B200.
+numpy==1.26.4
+torch==2.9.0
+torchvision==0.24.0
 accelerate==0.33.0
 diffusers==0.30.3
 transformers==4.44.2
 datasets==2.21.0
-huggingface_hub==0.24.7
+huggingface-hub==0.24.7
 pyarrow==17.0.0
 pandas==2.2.2
 safetensors==0.4.4
 Pillow==10.4.0
-numpy==1.26.4
 ftfy==6.2.3
 tensorboard==2.17.1
 Jinja2==3.1.4
 tqdm==4.66.5
 pytest==8.3.2
-open_clip_torch==2.26.1
+open-clip-torch==2.26.1
 hpsv2==1.2.0
 image-reward==1.5
+clip @ git+https://github.com/openai/CLIP.git
