@@ -1,4 +1,4 @@
-#2 -1 +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
 #test
 #v1
 
@@ -45,9 +45,9 @@ export NCCL_DEBUG=WARN
 # cd ./reward-guidance-main
 # bash ./project_command.sh
 
-cd ./VLM_Distillation-main
-bash ./project_commands_collect_eval_summary.sh
-bash scripts/eval/collect_base_model_summaries.sh
+# cd ./VLM_Distillation-main
+# bash ./project_commands_collect_eval_summary.sh
+# bash scripts/eval/collect_base_model_summaries.sh
 # ls outputs/eval/
 # ls outputs/eval/base_models
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
