@@ -22,7 +22,7 @@ USE_SIGREG_LOSS=${4:-True}
 KD_WEIGHT=${5:-1.0}
 SIGREG_WEIGHT=${6:-0.05}
 NUM_LAYER=${7:-1}
-USE_MEAN=${8:-True}
+D_TAU=${8:-0.02}
 
 # ============================================================
 # Convert True/False -> 1/0 cho tên folder
@@ -64,21 +64,19 @@ DISTILL_LOSS_BOOL=$(bool_to_python "$USE_DISTILL_LOSS")
 DISTILL_CSE_BOOL=$(bool_to_python "$USE_DISTILL_CSE_LOSS")
 DISTILL_VISION_BOOL=$(bool_to_python "$USE_DISTILL_VISON_LOSS")
 SIGREG_BOOL=$(bool_to_python "$USE_SIGREG_LOSS")
-MEAN_BOOL=$(bool_to_python "$USE_MEAN")
 
 # Folder values
 D_DISTILL=$(bool_to_int "$USE_DISTILL_LOSS")
 D_CSE=$(bool_to_int "$USE_DISTILL_CSE_LOSS")
 D_VISION=$(bool_to_int "$USE_DISTILL_VISON_LOSS")
 D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
-D_MEAN=$(bool_to_int "$USE_MEAN")
 
 
 # ============================================================
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
+EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
 
 OUTPUT_DIR="training/llava_ov-0.5B_vqa_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_vqa"
@@ -136,7 +134,7 @@ torchrun --standalone \
     --normalize True \
     --teacher_normalize True \
     --lr_scheduler_type "cosine" \
-    --warmup_ratio 0.03 \
+    --warmup_ratio 0.05 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \

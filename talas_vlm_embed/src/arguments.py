@@ -130,7 +130,7 @@ class TrainingArguments(TrainingArguments):
     use_sigreg_loss: bool = field(default=True, metadata={"help": "Use sigreg loss"})
     sigreg_weight: float = field(default=0.05, metadata={"help": "weight for sigreg loss"})
     num_layers: int = field(default=1, metadata={"help": "Number of layers for sigreg"})
-    use_mean_anchor: bool = field(default=True, metadata={"help": "Use mean anchor for sigreg"})
+    d_cse_temperature: float = field(default=0.02, metadata={"help": "distill cse temperature for softmax"})
 
 @dataclass
 class MTEBArguments:

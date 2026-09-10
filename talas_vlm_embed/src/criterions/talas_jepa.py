@@ -144,7 +144,7 @@ class TalasJepa(nn.Module):
 
     def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
                         concept_queries: torch.Tensor, num_slices=128,
-                        tau: float = 0.05, n_iters: int = 3, alpha: float = 2.0):
+                        tau: float = 0.05, n_iters: int = 3, alpha: float = 0.9):
         B = len(z_list)
         if B == 0: return 0.0
         
@@ -229,7 +229,7 @@ class TalasJepa(nn.Module):
         return loss_sigreg.mean()
 
     def sigreg_erank(self, z_list_first: list[torch.Tensor], z_list_last: list[torch.Tensor],
-                     num_slices: int = 128, T: int = 17, R: float = 5.0,
+                     num_slices: int = 512, T: int = 17, R: float = 5.0,
                      min_valid_tokens: int = 4, eps: float = 1e-8):
 
         B = len(z_list_last)
@@ -365,7 +365,7 @@ class TalasJepa(nn.Module):
 
             sigreg_erank_loss = self.sigreg_erank(stu_img_tokens[0], stu_img_tokens[last_layer_idx])
                 
-            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
+            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + 10 * sigreg_erank_loss
 
         return stacked_stu_text_reps, stu_img_final_reps, sigreg_final
     
@@ -425,8 +425,10 @@ class TalasJepa(nn.Module):
                                             student_pos_input['attention_mask'], 
                                             mode='eos', normalize=True)
         
-        kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, last_stu_pos_hidden_state, 
-                                             teacher_qry_reps, teacher_pos_reps)
+        kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, 
+                                             last_stu_pos_hidden_state, 
+                                             teacher_qry_reps, teacher_pos_reps, 
+                                             tau=self.args.d_cse_temperature)
 
         ##################################
         student_special_ids = torch.tensor(
