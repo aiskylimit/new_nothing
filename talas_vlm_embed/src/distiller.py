@@ -347,6 +347,16 @@ class DistillationDataset(Dataset):
                 subset,
                 split=f"{self.data_args.dataset_split}"
             )
+
+            subset_data = load_dataset(
+                "parquet",
+                data_files={
+                    self.data_args.dataset_split:
+                        f"{self.data_args.dataset_name}/{subset}/{self.data_args.dataset_split}-00000-of-00001.parquet"
+                },
+                split=self.data_args.dataset_split,
+            )
+            
             if subset == "WebQA" and "qry" in subset_data.column_names:
                 subset_data = subset_data.map(
                     lambda x: {"qry": x["qry"].replace("<|image_1|>", "").strip()}
