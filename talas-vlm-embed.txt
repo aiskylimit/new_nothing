@@ -34,3 +34,4 @@ spacy
 gpustat
 matplotlib
 trl==0.21.0
+pip
