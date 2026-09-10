@@ -63,6 +63,7 @@ if [[ "${RUN_EVAL:-1}" == "1" ]]; then
     bash scripts/eval/eval.sh check
 fi
 
+
 CUDA_VISIBLE_DEVICES=4,5 \
 LORA_PATH="$PWD/results/qwen2.5-1.5B-Instruct-rvd/7455" \
 bash scripts/eval/eval.sh run
