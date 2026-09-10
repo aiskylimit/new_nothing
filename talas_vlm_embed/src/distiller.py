@@ -342,11 +342,11 @@ class DistillationDataset(Dataset):
         train_data = []
         
         for subset in data_args.subset_name:
-            subset_data = load_dataset(
-                self.data_args.dataset_name, 
-                subset,
-                split=f"{self.data_args.dataset_split}"
-            )
+            # subset_data = load_dataset(
+            #     self.data_args.dataset_name, 
+            #     subset,
+            #     split=f"{self.data_args.dataset_split}"
+            # )
 
             subset_data = load_dataset(
                 "parquet",
@@ -356,7 +356,7 @@ class DistillationDataset(Dataset):
                 },
                 split=self.data_args.dataset_split,
             )
-            
+
             if subset == "WebQA" and "qry" in subset_data.column_names:
                 subset_data = subset_data.map(
                     lambda x: {"qry": x["qry"].replace("<|image_1|>", "").strip()}
