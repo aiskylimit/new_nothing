@@ -68,6 +68,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/Visual7W.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/OK-VQA.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/MSCOCO.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
+--url https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm-3.8.0-py3-none-any.whl
 #models
 --hf VoCuc/B3_Qwen2_2B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_2B_full
 --hf raghavlite/B3_Qwen2_7B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_7B
