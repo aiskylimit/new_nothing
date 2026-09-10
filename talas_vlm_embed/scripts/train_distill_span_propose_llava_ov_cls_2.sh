@@ -70,7 +70,7 @@ EVAL_SUBSETS=(
 
 python eval_mmeb.py \
   --model_name "training/span_propose_llava_ov_cls_v3/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs/span_propose_llava_ov_cls_v3" \
+  --encode_output_path "./MMEB-eval_outputs_v3/span_propose_llava_ov_cls_v3" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \

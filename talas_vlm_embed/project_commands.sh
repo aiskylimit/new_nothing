@@ -70,6 +70,7 @@ CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 
 # wait
 
 CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 1.0 9 0.1 &
+CUDA_VISIBLE_DEVICES=2 bash scripts/train_single_ov_eos_cls.sh &
 # CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 0.1 6 1&
 # CUDA_VISIBLE_DEVICES=2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=2,3 python3 multi_gpu.py &
@@ -77,7 +78,8 @@ CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.2 &
 # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
-
+CUDA_VISIBLE_DEVICES=4 bash scripts/train_distill_span_propose_llava_ov_cls.sh &
+CUDA_VISIBLE_DEVICES=5 bash scripts/train_distill_span_propose_llava_ov_cls_2.sh &
 
 wait
 
