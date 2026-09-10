@@ -6,7 +6,7 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 
 bash set_base_model_path.sh
-python -m pip install en_core_web_sm-3.8.0-py3-none-any.whl
+python -m pip install ./en_core_web_sm-3.8.0-py3-none-any.whl
 # python fix_lib.py
 
 # #
