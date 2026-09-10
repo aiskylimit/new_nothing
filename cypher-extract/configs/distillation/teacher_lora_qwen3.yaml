@@ -3,7 +3,7 @@ do_train: true
 do_eval: true
 predict_with_generate: true
 
-model_name_or_path: Qwen/Qwen3-4B-Instruct-2507
+model_name_or_path: /mnt/local/aiskylimit_new_nothing/cypher-extract/models/Qwen3-4B-Instruct-2507
 model_revision: cdbee75f17c01a7cc42f958dc650907174af0554
 dataset: cypher_prepared_train
 eval_dataset: cypher_prepared_eval

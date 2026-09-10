@@ -76,13 +76,28 @@ MODEL_REVISIONS = {
         "teacher": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
     },
 }
+MODEL_ROOT = "/mnt/local/aiskylimit_new_nothing/cypher-extract/models"
+MODEL_PATHS = {
+    "qwen3": {
+        "student": f"{MODEL_ROOT}/Qwen3-0.6B",
+        "teacher": f"{MODEL_ROOT}/Qwen3-4B-Instruct-2507",
+    },
+    "llama3": {
+        "student": f"{MODEL_ROOT}/Llama-3.2-1B-Instruct",
+        "teacher": f"{MODEL_ROOT}/Meta-Llama-3-8B-Instruct",
+    },
+    "qwen2.5_coder": {
+        "student": f"{MODEL_ROOT}/Qwen2.5-Coder-3B-Instruct",
+        "teacher": f"{MODEL_ROOT}/Qwen2.5-Coder-7B-Instruct",
+    },
+}
 PINNED_MODEL_REVISIONS = {
-    "Qwen/Qwen3-0.6B": MODEL_REVISIONS["qwen3"]["student"],
-    "Qwen/Qwen3-4B-Instruct-2507": MODEL_REVISIONS["qwen3"]["teacher"],
-    "meta-llama/Llama-3.2-1B-Instruct": MODEL_REVISIONS["llama3"]["student"],
-    "meta-llama/Meta-Llama-3-8B-Instruct": MODEL_REVISIONS["llama3"]["teacher"],
-    "Qwen/Qwen2.5-Coder-3B-Instruct": MODEL_REVISIONS["qwen2.5_coder"]["student"],
-    "Qwen/Qwen2.5-Coder-7B-Instruct": MODEL_REVISIONS["qwen2.5_coder"]["teacher"],
+    MODEL_PATHS["qwen3"]["student"]: MODEL_REVISIONS["qwen3"]["student"],
+    MODEL_PATHS["qwen3"]["teacher"]: MODEL_REVISIONS["qwen3"]["teacher"],
+    MODEL_PATHS["llama3"]["student"]: MODEL_REVISIONS["llama3"]["student"],
+    MODEL_PATHS["llama3"]["teacher"]: MODEL_REVISIONS["llama3"]["teacher"],
+    MODEL_PATHS["qwen2.5_coder"]["student"]: MODEL_REVISIONS["qwen2.5_coder"]["student"],
+    MODEL_PATHS["qwen2.5_coder"]["teacher"]: MODEL_REVISIONS["qwen2.5_coder"]["teacher"],
 }
 
 
@@ -375,10 +390,10 @@ def test_fdd_configs_map_middle_and_final_hidden_states(
 @pytest.mark.parametrize("config_path", sorted(Path("configs/qwen3").glob("*.yaml")))
 def test_qwen_configs_follow_template_defaults(config_path: Path) -> None:
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    assert config["model_name_or_path"] == "Qwen/Qwen3-0.6B"
+    assert config["model_name_or_path"] == MODEL_PATHS["qwen3"]["student"]
     assert config["model_revision"] == MODEL_REVISIONS["qwen3"]["student"]
     if config["distill_method"] != "sft":
-        assert config["ref_model"] == "Qwen/Qwen3-4B-Instruct-2507"
+        assert config["ref_model"] == MODEL_PATHS["qwen3"]["teacher"]
         assert config["ref_model_revision"] == MODEL_REVISIONS["qwen3"]["teacher"]
     assert config["template"] == "qwen3_nothink"
     assert config["cutoff_len"] == 892
@@ -393,10 +408,10 @@ def test_qwen_configs_follow_template_defaults(config_path: Path) -> None:
 @pytest.mark.parametrize("config_path", sorted(Path("configs/qwen2.5_coder").glob("*.yaml")))
 def test_qwen2_5_coder_configs_follow_architecture_defaults(config_path: Path) -> None:
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    assert config["model_name_or_path"] == "Qwen/Qwen2.5-Coder-3B-Instruct"
+    assert config["model_name_or_path"] == MODEL_PATHS["qwen2.5_coder"]["student"]
     assert config["model_revision"] == MODEL_REVISIONS["qwen2.5_coder"]["student"]
     if config["distill_method"] != "sft":
-        assert config["ref_model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
+        assert config["ref_model"] == MODEL_PATHS["qwen2.5_coder"]["teacher"]
         assert config["ref_model_revision"] == MODEL_REVISIONS["qwen2.5_coder"]["teacher"]
     assert config["template"] == "qwen"
     assert config["cutoff_len"] == 892
