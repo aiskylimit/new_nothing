@@ -4,8 +4,8 @@ set -euo pipefail
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
 
-STUDENT_MODEL="KamilaMila/FastVLM-0.5B"
-TEACHER_MODEL="Qwen/Qwen3-VL-4B-Instruct"
+STUDENT_MODEL="${STUDENT_MODEL:-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/KamilaMila/FastVLM-0.5B}"
+TEACHER_MODEL="${TEACHER_MODEL:-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen3-VL-4B-Instruct}"
 DATA_PATH="${PROJECT_DIR}/train_data/llava_v1_5_mix665k.json"
 IMAGE_DIR="${PROJECT_DIR}/train_data"
 OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen3_teacher_4b_fastvlm_student_05b_sre"
@@ -28,7 +28,7 @@ torchrun \
   --lora true \
   --lora_r 128 \
   --lora_alpha 256 \
-  --per_device_train_batch_size 1 \
+  --per_device_train_batch_size 2 \
   --gradient_accumulation_steps 1 \
   --num_train_epochs 1 \
   --learning_rate 1e-5 \

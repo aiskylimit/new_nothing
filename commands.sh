@@ -1,31 +1,34 @@
-#2 -0-5
-#VLM_Distillation
+#2 -0-10
+#reasoning_velocity_distill
 #v1
 
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
+#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/outputs/eval/ +a
 
 # nvidia-smi
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
-# kill -9 $(nvidia-smi -i 4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+# kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
 # sleep 3
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
+
 
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
+export NCCL_DEBUG=WARN
 
 # cd ./talas_vlm_embed
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=6,7 python3 multi_gpu.py &
 # bash ./project_commands.sh
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
+# # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
+# # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
@@ -34,7 +37,7 @@ export HF_DATASETS_OFFLINE=1
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
+# CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
 # cd ./spectral-guided-learning
 # bash ./project_commands.sh
@@ -43,6 +46,27 @@ export HF_DATASETS_OFFLINE=1
 # bash ./project_command.sh
 
 # cd ./VLM_Distillation-main
-# bash ./project_commands.sh
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
+# bash ./project_commands_collect_eval_summary.sh
+# bash scripts/eval/collect_base_model_summaries.sh
+# ls outputs/eval/
+# ls outputs/eval/base_models
+# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
+# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
+# # # bash ./project_commands.sh
+# bash ./project_commands_eval_base_model_1.sh &
+# bash ./project_commands_eval_base_model_2.sh &
+# wait
+# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py
+# # CUDA_VISIBLE_DEVICES=2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
+# # # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 
+
+# cd ./reasoning_velocity_distill
+# bash ./project_commands.sh
+# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+# CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
+
+# cd ./cypher-extract
+# bash ./project_command.sh

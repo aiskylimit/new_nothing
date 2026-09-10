@@ -11,6 +11,7 @@ from transformers.trainer import TRAINING_ARGS_NAME
 from src.arguments import ModelArguments, TrainingArguments
 from src.distiller import Distiller
 from src.model.model import VLMModel
+from src.model.processor import save_processor
 from src.utils import print_master
 
 
@@ -324,7 +325,7 @@ class DistillTrainer(Trainer):
 
         processing_class = getattr(self, "processing_class", None) or getattr(self, "tokenizer", None)
         if processing_class is not None:
-            processing_class.save_pretrained(output_dir)
+            save_processor(processing_class, output_dir, self.model_args.model_backbone)
 
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
         print_master(f"Checkpoint saved to {output_dir}")

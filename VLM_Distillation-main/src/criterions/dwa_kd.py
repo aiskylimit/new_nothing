@@ -70,6 +70,19 @@ def safe_std(value: torch.Tensor) -> torch.Tensor:
     return value.float().std().clamp_min(1e-6)
 
 
+def cosine_cost_matrices(
+    student_seq: torch.Tensor,
+    teacher_seq: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Build DWA cosine costs without broadcasting to [S, T, hidden_dim]."""
+    student_norm = F.normalize(student_seq, p=2, dim=-1, eps=1e-8)
+    teacher_norm = F.normalize(teacher_seq, p=2, dim=-1, eps=1e-8)
+    cross_cost = 1.0 - torch.matmul(student_norm, teacher_norm.transpose(0, 1))
+    student_cost = 1.0 - torch.matmul(student_norm, student_norm.transpose(0, 1))
+    teacher_cost = 1.0 - torch.matmul(teacher_norm, teacher_norm.transpose(0, 1))
+    return cross_cost, student_cost, teacher_cost
+
+
 class DWAKDCriterion(VariousDivergence):
     """
     DWA-KD criterion adapted to the current VLM_Distill criterion API.
@@ -319,9 +332,7 @@ class DWAKDCriterion(VariousDivergence):
             pairs += 1
             student_seq = student_embs[index].index_select(0, student_positions).float()
             teacher_seq = teacher_embs[index].index_select(0, teacher_positions).float()
-            cross_cost = 1.0 - F.cosine_similarity(student_seq.unsqueeze(1), teacher_seq.unsqueeze(0), dim=-1)
-            student_cost = 1.0 - F.cosine_similarity(student_seq.unsqueeze(1), student_seq.unsqueeze(0), dim=-1)
-            teacher_cost = 1.0 - F.cosine_similarity(teacher_seq.unsqueeze(1), teacher_seq.unsqueeze(0), dim=-1)
+            cross_cost, student_cost, teacher_cost = cosine_cost_matrices(student_seq, teacher_seq)
 
             cross_cost = self._apply_adaptive_band(cross_cost, index, student_positions, teacher_positions)
             s2t = self.dtw.forward_with_cost_matrix(cross_cost.unsqueeze(0))

@@ -47,6 +47,13 @@ def require_projector(projectors: Any, name: str) -> nn.Module:
     return projectors[name]
 
 
+def resolve_topk_vocab(args) -> int:
+    value = int(getattr(args, "dskd_topk_vocab", -1) or -1)
+    if value == -1:
+        value = int(getattr(args, "topk_vocab", -1) or -1)
+    return value
+
+
 class DSKDv2Criterion(VariousDivergence):
     """Dual-Space KD v2 with ETA, adapted to the VLM distillation API.
 
@@ -176,14 +183,17 @@ class DSKDv2Criterion(VariousDivergence):
         teacher_target = teacher_target[:, :common_len]
         pad_mask = pad_mask[:, :common_len] & self._shifted_text_mask(student_outputs, common_len, labels.device)
         teacher_pad_mask = teacher_pad_mask[:, :common_len] & self._shifted_text_mask(teacher_outputs, common_len, labels.device)
-        target = target.masked_fill(~pad_mask, self.padding_id)
-        teacher_target = teacher_target.masked_fill(~teacher_pad_mask, self.padding_id)
+        # DSKDv2 is position-wise, so a position is usable only when both
+        # processors identify it as assistant text.
+        aligned_mask = pad_mask & teacher_pad_mask
+        target = target.masked_fill(~aligned_mask, self.padding_id)
+        teacher_target = teacher_target.masked_fill(~aligned_mask, self.padding_id)
 
         hiddens = get_hidden_states(student_outputs)[-1][:, :common_len]
         teacher_hiddens = get_hidden_states(teacher_outputs)[-1][:, :common_len].to(device=hiddens.device)
         student_logits = student_outputs.logits[:, :common_len]
         teacher_logits = teacher_outputs.logits[:, :common_len].to(device=hiddens.device)
-        loss_denom = pad_mask.sum().float().clamp_min(1.0)
+        loss_denom = aligned_mask.sum().float().clamp_min(1.0)
 
         # student space: same position-wise logic as dskdv2.py, restricted to text masks.
         t2s_hiddens = project(require_projector(distiller.projectors, "t2s"), teacher_hiddens)
@@ -192,11 +202,11 @@ class DSKDv2Criterion(VariousDivergence):
         t2s_logits = t2s_hiddens.matmul(student_head_weight.transpose(-1, -2))
 
         t_preds = teacher_logits.argmax(dim=-1)
-        t_preds = torch.where(teacher_pad_mask, t_preds, teacher_target)
+        t_preds = torch.where(aligned_mask, t_preds, teacher_target)
         t_preds_for_ce = t_preds.masked_fill(t_preds.ge(t2s_logits.shape[-1]), self.padding_id)
         t2s_ce_loss = self.compute_cross_entropy_loss(t2s_logits, t_preds_for_ce, shift=False) / loss_denom
 
-        t2s_agreement_mask = t2s_logits.argmax(dim=-1).eq(t_preds) & pad_mask
+        t2s_agreement_mask = t2s_logits.argmax(dim=-1).eq(t_preds) & aligned_mask
         t2s_agreement = t2s_agreement_mask.sum().float() / loss_denom
         t2s_kd_loss = self.dist_func(student_logits, t2s_logits.detach(), target, reduction="none")
         if t2s_agreement <= self.t2s_agreement_threshold:
@@ -204,14 +214,14 @@ class DSKDv2Criterion(VariousDivergence):
                 t2s_kd_loss * t2s_agreement_mask.to(dtype=t2s_kd_loss.dtype)
             ).sum() / t2s_agreement_mask.sum().float().clamp_min(1e-3)
         else:
-            t2s_kd_loss = (t2s_kd_loss * pad_mask.to(dtype=t2s_kd_loss.dtype)).sum() / loss_denom
+            t2s_kd_loss = (t2s_kd_loss * aligned_mask.to(dtype=t2s_kd_loss.dtype)).sum() / loss_denom
 
         # teacher space: same position-wise logic as dskdv2.py, restricted to text masks.
         s2t_hiddens = self._student_to_teacher_value(distiller, hiddens)
         teacher_head = get_output_head(distiller.teacher)
         s2t_logits = teacher_head(s2t_hiddens.to(dtype=teacher_hiddens.dtype))
         s2t_kd_loss = self.dist_func(s2t_logits, teacher_logits, teacher_target, reduction="none")
-        s2t_kd_loss = (s2t_kd_loss * teacher_pad_mask.to(dtype=s2t_kd_loss.dtype)).sum() / loss_denom
+        s2t_kd_loss = (s2t_kd_loss * aligned_mask.to(dtype=s2t_kd_loss.dtype)).sum() / loss_denom
 
         if self.only_stu_kd:
             kd_loss = t2s_kd_loss + t2s_ce_loss
@@ -220,9 +230,9 @@ class DSKDv2Criterion(VariousDivergence):
         else:
             kd_loss = t2s_kd_loss + t2s_ce_loss + s2t_kd_loss
 
-        s2t_agreement = (s2t_logits.argmax(dim=-1).eq(student_logits.argmax(dim=-1)) & pad_mask).sum().float() / loss_denom
-        t_acc = (teacher_logits.argmax(dim=-1).eq(target) & pad_mask).sum().float() / loss_denom
-        t2s_acc = (t2s_logits.argmax(dim=-1).eq(target) & pad_mask).sum().float() / loss_denom
+        s2t_agreement = (s2t_logits.argmax(dim=-1).eq(student_logits.argmax(dim=-1)) & aligned_mask).sum().float() / loss_denom
+        t_acc = (teacher_logits.argmax(dim=-1).eq(target) & aligned_mask).sum().float() / loss_denom
+        t2s_acc = (t2s_logits.argmax(dim=-1).eq(target) & aligned_mask).sum().float() / loss_denom
 
         return kd_loss, {
             "t2s_ce_loss": t2s_ce_loss,
@@ -241,7 +251,7 @@ class DSKDv2Criterion(VariousDivergence):
             overlap_ids = getattr(distiller, "student_overlap_token_ids", None)
             if overlap_ids is not None:
                 student_head = student_head[:, overlap_ids.to(device=student_head.device)]
-            topk_vocab = int(getattr(self.args, "dskd_topk_vocab", getattr(self.args, "topk_vocab", -1)) or -1)
+            topk_vocab = resolve_topk_vocab(self.args)
             if topk_vocab != -1:
                 student_head = student_head[:, :topk_vocab]
             part_teacher_head_pinv = distiller.part_teacher_head_pinv.to(

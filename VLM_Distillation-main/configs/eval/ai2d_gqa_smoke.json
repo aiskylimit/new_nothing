@@ -1,0 +1,14 @@
+{
+  "name": "ai2d_gqa_smoke",
+  "description": "Local end-to-end smoke suite using a deterministic prefix of AI2D and GQA.",
+  "datasets": [
+    "AI2D_TEST_NO_MASK",
+    "GQA_TestDev_Balanced"
+  ],
+  "dataset_class_overrides": {
+    "AI2D_TEST_NO_MASK": "LimitedImageMCQDataset",
+    "GQA_TestDev_Balanced": "LimitedImageVQADataset"
+  },
+  "judge_model": null,
+  "judge_kwargs": {}
+}

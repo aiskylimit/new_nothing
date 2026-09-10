@@ -17,6 +17,8 @@ USE_DISTILL_VISON_LOSS=${3:-True}
 USE_SIGREG_LOSS=${4:-True}
 KD_WEIGHT=${5:-1.0}
 SIGREG_WEIGHT=${6:-0.05}
+NUM_LAYER=${7:-1}
+USE_MEAN=${8:-True}
 
 # ============================================================
 # Convert True/False -> 1/0 cho tên folder
@@ -58,21 +60,24 @@ DISTILL_LOSS_BOOL=$(bool_to_python "$USE_DISTILL_LOSS")
 DISTILL_CSE_BOOL=$(bool_to_python "$USE_DISTILL_CSE_LOSS")
 DISTILL_VISION_BOOL=$(bool_to_python "$USE_DISTILL_VISON_LOSS")
 SIGREG_BOOL=$(bool_to_python "$USE_SIGREG_LOSS")
+MEAN_BOOL=$(bool_to_python "$USE_MEAN")
 
 # Folder values
 D_DISTILL=$(bool_to_int "$USE_DISTILL_LOSS")
 D_CSE=$(bool_to_int "$USE_DISTILL_CSE_LOSS")
 D_VISION=$(bool_to_int "$USE_DISTILL_VISON_LOSS")
 D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
+D_MEAN=$(bool_to_int "$USE_MEAN")
 
 
 # ============================================================
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v4_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
 
 MODEL="training/FastVLM-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
+# MODEL="training/llava_ov-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
 
 
 
@@ -111,5 +116,6 @@ python ./er_statistic.py \
     --pt_dir "infer/FastVLM-0.5B_${EXP_NAME}"/${INFER_SUBSETS[0]}/query \
     --start_idx 0 \
     --end_idx 49 \
+    --normalize \
     --output_file "analyze/FastVLM-0.5B_${EXP_NAME}.txt"
 

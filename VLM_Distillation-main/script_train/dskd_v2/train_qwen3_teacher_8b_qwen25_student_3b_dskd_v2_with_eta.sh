@@ -9,7 +9,6 @@ TEACHER_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 DATA_PATH="${PROJECT_DIR}/train_data/llava_v1_5_mix665k.json"
 IMAGE_DIR="${PROJECT_DIR}/train_data"
 OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen3_teacher_8b_qwen25_student_3b_dskd_v2_with_eta"
-PROJECTOR_CONFIG="${PROJECT_DIR}/config/dskd_v2_projectors.json"
 
 MASTER_PORT="${MASTER_PORT:-29501}"
 STUDENT_HIDDEN_DIM="${STUDENT_HIDDEN_DIM:-2048}"
@@ -26,7 +25,6 @@ torchrun \
   --teacher_model_name "${TEACHER_MODEL}" \
   --student_hidden_dim "${STUDENT_HIDDEN_DIM}" \
   --teacher_hidden_dim "${TEACHER_HIDDEN_DIM}" \
-  --projector_config_path "${PROJECTOR_CONFIG}" \
   --data_path "${DATA_PATH}" \
   --image_dir "${IMAGE_DIR}" \
   --output_dir "${OUTPUT_DIR}" \

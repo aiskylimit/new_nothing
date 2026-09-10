@@ -21,6 +21,8 @@ USE_DISTILL_VISON_LOSS=${3:-True}
 USE_SIGREG_LOSS=${4:-True}
 KD_WEIGHT=${5:-1.0}
 SIGREG_WEIGHT=${6:-0.05}
+NUM_LAYER=${7:-1}
+D_TAU=${8:-0.02}
 
 # ============================================================
 # Convert True/False -> 1/0 cho tên folder
@@ -74,7 +76,7 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v5_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}"
+EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
 
 OUTPUT_DIR="training/FastVLM-0.5B_cls_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"
@@ -138,14 +140,16 @@ torchrun --standalone \
     --image_resolution "low" \
     --projector_config_path "./config/projector_config_emo.json" \
     --num_self_kd_layers 3 \
-    --projector_lr 5e-5 \
+    --projector_lr 5e-4 \
     --report_to None \
     --use_distill_loss "$DISTILL_LOSS_BOOL" \
     --use_distill_cse_loss "$DISTILL_CSE_BOOL" \
     --use_distill_vison_loss "$DISTILL_VISION_BOOL" \
     --use_sigreg_loss "$SIGREG_BOOL" \
     --kd_weight "$KD_WEIGHT" \
-    --sigreg_weight "$SIGREG_WEIGHT"
+    --sigreg_weight "$SIGREG_WEIGHT" \
+    --num_layers "$NUM_LAYER" \
+    --d_cse_temperature "$D_TAU"
 
 
 # ============================================================
@@ -185,7 +189,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_cls_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs_v3/FastVLM-0.5B_cls_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -224,5 +228,5 @@ echo "============================================================"
 # 4. Collect result
 # ============================================================
 
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
-python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v3}"
+python json_filter.py ./MMEB-eval_outputs_v3 "${JSON_FILTER_DESTINATION}" --overwrite

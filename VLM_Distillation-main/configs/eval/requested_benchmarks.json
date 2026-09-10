@@ -1,0 +1,30 @@
+{
+  "name": "requested_benchmarks",
+  "description": "Final offline evaluation suite: eleven requested benchmarks in one run per checkpoint.",
+  "datasets": [
+    "GQA_TestDev_Balanced",
+    "MME",
+    "RealWorldQA",
+    "ScienceQA_TEST",
+    "AI2D_TEST_NO_MASK",
+    "MMMU_DEV_VAL",
+    "MMStar",
+    "ChartQA_TEST",
+    "DocVQA_VAL",
+    "TextVQA_VAL",
+    "OCRBench"
+  ],
+  "dataset_class_overrides": {
+    "MME": "MMEPerceptionDataset"
+  },
+  "judge_model": null,
+  "judge_kwargs": {},
+  "notes": {
+    "MME": "Only the ten official perception categories are inferred and perception is the primary metric.",
+    "ScienceQA_TEST": "SQA means ScienceQA for this suite.",
+    "MMMU_DEV_VAL": "Public dev+validation split.",
+    "AI2D_TEST_NO_MASK": "No-mask variant.",
+    "DocVQA_VAL": "Public validation split; ANLS.",
+    "TextVQA_VAL": "Validation split; VQA score."
+  }
+}

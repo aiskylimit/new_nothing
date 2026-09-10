@@ -37,6 +37,13 @@ def _init_semi_orthogonal(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
+def _resolve_dskd_topk_vocab(args) -> int:
+    value = int(getattr(args, "dskd_topk_vocab", -1) or -1)
+    if value == -1:
+        value = int(getattr(args, "topk_vocab", -1) or -1)
+    return value
+
+
 class Distiller(nn.Module):
     def __init__(self, model_args: ModelArguments, training_args: TrainingArguments):
         super().__init__()
@@ -71,12 +78,37 @@ class Distiller(nn.Module):
     # Model loading
     # ------------------------------------------------------------------
 
+    def _needs_attention_outputs(self) -> bool:
+        kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
+        attention_free_kd_losses = {
+            "ce_only",
+            "default",
+            "default_distillation",
+            "emkd",
+            "em_kd",
+            "dwa_kd",
+            "dwakd",
+            "dskd_v2",
+            "dskdv2",
+            "dskd_v2_with_eta",
+            "dskdv2_with_eta",
+            "mcw_kd",
+            "mcwkd",
+            "cgkd",
+        }
+        # Unknown/future criteria keep the conservative old behaviour.  SRE,
+        # SCVA, and their joint criteria consume attention matrices directly.
+        return kd_loss_type not in attention_free_kd_losses
+
     def _load_student(self) -> VLMModel:
         print_master(
             f"Loading student: {self.model_args.model_name} "
             f"(lora={self.model_args.lora}, r={self.model_args.lora_r})"
         )
-        student = VLMModel.build(self.model_args)
+        student = VLMModel.build(
+            self.model_args,
+            output_attentions=self._needs_attention_outputs(),
+        )
         print_master("Student model built.")
         return student
 
@@ -86,7 +118,11 @@ class Distiller(nn.Module):
             f"Loading teacher: {teacher_model_args.model_name} "
             f"(lora={teacher_model_args.lora}, r={teacher_model_args.lora_r})"
         )
-        teacher = VLMModel.load(teacher_model_args, is_trainable=False)
+        teacher = VLMModel.load(
+            teacher_model_args,
+            is_trainable=False,
+            output_attentions=self._needs_attention_outputs(),
+        )
         for param in teacher.parameters():
             param.requires_grad = False
         teacher.eval()
@@ -126,7 +162,23 @@ class Distiller(nn.Module):
     # ------------------------------------------------------------------
 
     def set_projector(self):
-        if self.model_args.projector_config_path is not None:
+        kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
+        if kd_loss_type in {"dskd_v2_with_eta", "dskdv2_with_eta", "dskd_v2", "dskdv2"}:
+            # DSKDv2 owns a fixed pair of dual-space mappings.  Their shapes
+            # follow directly from the two LM hidden dimensions, and
+            # init_dskd_projectors_if_needed() initializes/caches the mappings
+            # from the LM-head pseudo-inverses.  No external JSON is required.
+            self.projectors = nn.ModuleDict(
+                {
+                    "t2s": nn.Sequential(
+                        nn.Linear(self.teacher_hidden_dim, self.student_hidden_dim, dtype=torch.bfloat16)
+                    ),
+                    "s2t": nn.Sequential(
+                        nn.Linear(self.student_hidden_dim, self.teacher_hidden_dim, dtype=torch.bfloat16)
+                    ),
+                }
+            )
+        elif self.model_args.projector_config_path is not None:
             self.projectors = nn.ModuleDict()
             with open(self.model_args.projector_config_path) as f:
                 projector_config = json.load(f)
@@ -239,9 +291,9 @@ class Distiller(nn.Module):
         if not (getattr(self.training_args, "init_t2s_projector", False) or getattr(self.training_args, "init_s2t_projector", False)):
             return
         if not isinstance(self.projectors, nn.ModuleDict):
-            raise RuntimeError("DSKDv2 projector initialization requires named projectors `t2s` and `s2t`.")
+            raise RuntimeError("DSKDv2 internal projector creation did not produce a named ModuleDict.")
         if "t2s" not in self.projectors or "s2t" not in self.projectors:
-            raise RuntimeError("DSKDv2 projector initialization requires `t2s` and `s2t` in projector_config_path.")
+            raise RuntimeError("DSKDv2 internal projector creation must provide `t2s` and `s2t`.")
 
         student_head = self._output_head_weight(self.student).detach().transpose(0, 1).float()
         teacher_head = self._output_head_weight(self.teacher).detach().transpose(0, 1).float()
@@ -265,7 +317,7 @@ class Distiller(nn.Module):
             self.student_overlap_token_ids = student_overlap_token_ids.cpu()
             print_master(f"DSKDv2 projector init overlap tokens: {len(overlap_tokens)}")
 
-        topk_vocab = int(getattr(self.training_args, "dskd_topk_vocab", getattr(self.training_args, "topk_vocab", -1)) or -1)
+        topk_vocab = _resolve_dskd_topk_vocab(self.training_args)
         if topk_vocab != -1:
             part_student_head = part_student_head[:, :topk_vocab]
             part_teacher_head = part_teacher_head[:, :topk_vocab]
@@ -281,6 +333,10 @@ class Distiller(nn.Module):
         if getattr(self.training_args, "init_s2t_projector", False):
             pinv_dtype = next(self.projectors["s2t"].parameters()).dtype
             self.part_teacher_head_pinv = torch.linalg.pinv(part_teacher_head).to(dtype=pinv_dtype).detach()
+            # The dynamic branch derives s2t from the frozen LM heads on every
+            # forward and never calls this configured module.  Keeping it
+            # trainable would allocate optimizer state for unused parameters.
+            self.projectors["s2t"].requires_grad_(False)
             print_master("DSKDv2 cached teacher-head pseudo-inverse for dynamic s2t projection.")
 
     @staticmethod
