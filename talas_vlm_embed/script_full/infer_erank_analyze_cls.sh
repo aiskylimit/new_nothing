@@ -76,8 +76,8 @@ D_MEAN=$(bool_to_int "$USE_MEAN")
 
 EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
 
-# MODEL="training/FastVLM-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
-MODEL="training/llava_ov-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
+MODEL="training/FastVLM-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
+# MODEL="training/llava_ov-0.5B_cls_${EXP_NAME}/checkpoint-epoch-0"
 
 
 
@@ -98,7 +98,7 @@ python $INFER_SCRIPT \
     --lora_r 64 \
     --lora_alpha 64 \
     --pooling eos \
-    --model_backbone llava_onevision \
+    --model_backbone llava_qwen2 \
     --normalize True \
     --bf16 \
     --dataset_name vlm2vec_eval/MMEB-eval \
@@ -109,8 +109,7 @@ python $INFER_SCRIPT \
     --encode_output_path "infer/FastVLM-0.5B_${EXP_NAME}" \
     --per_device_eval_batch_size 8 \
     --load_pretrained_lora True \
-    --report_to None \
-    --image_resolution "tiny"
+    --report_to None
 
 # analyze erank
 python ./er_statistic.py \
