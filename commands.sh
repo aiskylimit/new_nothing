@@ -1,4 +1,4 @@
-#1 +70
+#2 -0-10
 #reasoning_velocity_distill
 #v1
 
@@ -11,8 +11,7 @@
 # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-kill -9 515457 515460 515463 515466
-sleep 60
+# sleep 3
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
 
@@ -62,8 +61,8 @@ export NCCL_DEBUG=WARN
 # # # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 
 
-cd ./reasoning_velocity_distill
-bash ./project_commands.sh
+# cd ./reasoning_velocity_distill
+# bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=4,5 python3 ./../talas_vlm_embed/multi_gpu.py &
