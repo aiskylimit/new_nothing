@@ -6,15 +6,18 @@ The production entrypoint is:
 bash project_command.sh
 ```
 
-It sources `env.sh`, reuses the uv environment created by the platform from
-`requirements.txt`, validates all local assets and two scheduler-assigned
+It sources `env.sh`, activates the uv environment created by the platform from
+the root-level `sdxl-q3-offline-b200-2gpu.txt`, validates all local assets and two scheduler-assigned
 Blackwell GPUs, launches Accelerate DDP,
 evaluates the final model immediately, and writes `results/summary.json`.
 
-The platform must process the root-level `download.txt` manifest before the
-job starts. It downloads every model and dataset into `offline_assets/`; the
-runtime itself sets all Hugging Face libraries to offline mode and disables
-external reporting/upload.
+The environment specification lives outside this source directory at the
+repository root. Its filename exactly matches the environment directory:
+`source /mnt/local/uvenvs/sdxl-q3-offline-b200-2gpu/bin/activate`.
+The platform must also process this project's `download.txt` manifest before
+the job starts. It downloads every model and dataset into `offline_assets/`;
+the runtime itself sets all Hugging Face libraries to offline mode and
+disables external reporting/upload.
 
 Default production semantics:
 

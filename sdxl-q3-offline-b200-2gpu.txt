@@ -1,6 +1,6 @@
 # manager: uv
 # python: 3.11
-# Offline SDXL Q3/DSPO training and evaluation dependencies for B200.
+# Environment name: sdxl-q3-offline-b200-2gpu
 numpy==1.26.4
 torch==2.9.0
 torchvision==0.24.0

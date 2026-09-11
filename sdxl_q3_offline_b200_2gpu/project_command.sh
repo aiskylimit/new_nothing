@@ -30,8 +30,12 @@ log ENV "mode=$PIPELINE_MODE target=$TARGET_GPU_FAMILY gpu_ids=$GPU_IDS num_gpus
 log ENV "offline=1 effective_batch=$EFFECTIVE_BATCH model=$MODEL_DIR data=$DATA_DIR"
 
 log SETUP "using platform-managed uv environment at $VENV_DIR"
-[[ -x "$VENV_DIR/bin/python" ]] || fail \
-  "managed uv environment missing: $VENV_DIR; requirements.txt must be processed first" 12
+[[ -f "$VENV_DIR/bin/activate" && -x "$VENV_DIR/bin/python" ]] || fail \
+  "managed uv environment missing: $VENV_DIR; $VENV_NAME.txt must be processed first" 12
+# The platform contract requires activating the environment whose directory
+# name exactly matches the root-level dependency file name.
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
 log SETUP "python=$($VENV_DIR/bin/python --version 2>&1)"
 
 # download.txt materializes the Hugging Face dataset tree. Build the compact
