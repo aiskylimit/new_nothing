@@ -68,7 +68,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/Visual7W.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/OK-VQA.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/MSCOCO.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets
---hf-dataset VoCuc/en_core_web_sm /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm
+--url https://huggingface.co/VoCuc/en_core_web_sm/resolve/main/en_core_web_sm.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm.zip
 #models
 --hf VoCuc/B3_Qwen2_2B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_2B_full
 --hf raghavlite/B3_Qwen2_7B /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/models/B3_Qwen2_7B
