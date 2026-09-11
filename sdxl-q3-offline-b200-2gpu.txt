@@ -21,4 +21,4 @@ pytest==8.3.2
 open-clip-torch==2.26.1
 hpsv2==1.2.0
 image-reward==1.5
-clip @ git+https://github.com/openai/CLIP.git
+# OpenAI CLIP is vendored in sdxl_q3_offline_b200_2gpu/clip.

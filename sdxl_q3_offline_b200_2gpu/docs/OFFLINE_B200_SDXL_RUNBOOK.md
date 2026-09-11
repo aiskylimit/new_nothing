@@ -19,6 +19,10 @@ the job starts. It downloads every model and dataset into `offline_assets/`;
 the runtime itself sets all Hugging Face libraries to offline mode and
 disables external reporting/upload.
 
+The OpenAI `clip` Python module and tokenizer vocabulary are vendored under
+`clip/`. The environment specification intentionally contains no `git+https`
+dependency, so uv never needs to contact GitHub.
+
 Default production semantics:
 
 - GPUs: `0,1` (the two GPUs visible inside the allocation)

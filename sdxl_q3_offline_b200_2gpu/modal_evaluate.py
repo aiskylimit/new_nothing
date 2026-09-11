@@ -115,12 +115,7 @@ score_image = (
             "python -m pip install transformers==4.44.2 huggingface_hub==0.24.7 "
             "pillow==10.4.0 numpy==1.26.4 pandas==2.2.2 tqdm==4.66.5 "
             "open_clip_torch==2.26.1 hpsv2==1.2.0 image-reward==1.5 "
-            "git+https://github.com/openai/CLIP.git"
-        ),
-        (
-            "python -c \"import pathlib,site,urllib.request; "
-            "p=pathlib.Path(site.getsitepackages()[0])/'hpsv2/src/open_clip/bpe_simple_vocab_16e6.txt.gz'; "
-            "urllib.request.urlretrieve('https://raw.githubusercontent.com/tgxs002/HPSv2/master/hpsv2/src/open_clip/bpe_simple_vocab_16e6.txt.gz', p)\""
+            "openai-clip==1.0.1"
         ),
     )
     .env(COMMON_ENV)

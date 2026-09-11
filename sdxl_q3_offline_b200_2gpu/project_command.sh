@@ -36,13 +36,22 @@ log SETUP "using platform-managed uv environment at $VENV_DIR"
 # name exactly matches the root-level dependency file name.
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
+export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 log SETUP "python=$($VENV_DIR/bin/python --version 2>&1)"
+vendored_clip="$($VENV_DIR/bin/python - <<'PY'
+import clip
+print(clip.__file__)
+PY
+)"
+[[ "$vendored_clip" == "$PROJECT_ROOT"/clip/* ]] || fail \
+  "vendored OpenAI CLIP was not selected: $vendored_clip" 13
+log SETUP "vendored_clip=$vendored_clip"
 
 # download.txt materializes the Hugging Face dataset tree. Build the compact
 # binary-label manifest locally once; this step performs no network access.
 if [[ ! -s "$STREAM_MANIFEST" ]]; then
   log 'CHECK ASSETS' "building local Pick-a-Pic manifest"
-  [[ -d "$DATA_DIR" ]] || fail "dataset directory missing: $DATA_DIR" 13
+  [[ -d "$DATA_DIR" ]] || fail "dataset directory missing: $DATA_DIR" 14
   "$VENV_DIR/bin/python" "$PROJECT_ROOT/hessian/prepare_binary_local_manifest.py" \
     --data-dir "$DATA_DIR" --output "$STREAM_MANIFEST" \
     --target-rows 851293 --workers "${MANIFEST_WORKERS:-16}" \
