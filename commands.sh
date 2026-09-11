@@ -1,4 +1,4 @@
-#1 +120
+#i sdxl-q3-offline-b200-2gpu.txt
 #test-talas
 #v1
 
