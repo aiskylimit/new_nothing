@@ -4,7 +4,7 @@
 NUM_GPUS_PER_NODE=1
 
 # Đường dẫn tới file script training của bạn
-TRAIN_SCRIPT="train_distill_ddp.py"
+TRAIN_SCRIPT="train_distill_ddp_2.py"
 
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
@@ -68,7 +68,7 @@ EVAL_SUBSETS=(
 )
 
 
-python eval_mmeb.py \
+python eval_mmeb_2.py \
   --model_name "training/span_propose_llava_ov_cls_v3/checkpoint-epoch-0" \
   --encode_output_path "./MMEB-eval_outputs_v3/span_propose_llava_ov_cls_v3" \
   --lora True \

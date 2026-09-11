@@ -49,6 +49,8 @@ POS_MOD_DICT = {
                 "MSCOCO_i2t":POS_MOD_IMAGE_CAPTION, "VisualNews_i2t":POS_MOD_IMAGE_CAPTION,
                 }
 
+
+
 def process_image(image, resolution, max_dim=1344):
     if image is None:
         return None
@@ -67,15 +69,11 @@ def process_image(image, resolution, max_dim=1344):
     else:
         target_max = max_dim
 
-    # Tính tỉ lệ scale sao cho cạnh lớn nhất = target_max
-    if max_side > target_max:
-        scale = target_max / max_side
-        new_width = int(width * scale)
-        new_height = int(height * scale)
-        image = image.resize((new_width, new_height))
+    # resize if larger than target_max
+    # if max_side > target_max:
+    image = image.resize((target_max, target_max))
 
     return image
-
 
 def create_semi_orthogonal_matrix(tensor):
     rows, cols = tensor.shape
