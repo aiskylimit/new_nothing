@@ -67,6 +67,15 @@ class VLMModel(nn.Module):
 
     @classmethod
     def _force_eager_attention(cls, config, vision_output_attentions=True, output_attentions=True):
+        sub_configs = {
+            name: getattr(config, name, None)
+            for name in ("text_config", "vision_config", "vision_config_2", "audio_config")
+        }
+        original_backends = {
+            name: getattr(sub_config, "_attn_implementation", None)
+            for name, sub_config in sub_configs.items()
+            if sub_config is not None
+        }
         config.use_cache = False
         if output_attentions:
             # Transformers generally needs eager attention when callers request
@@ -78,22 +87,38 @@ class VLMModel(nn.Module):
         config.output_attentions = output_attentions
         config.output_hidden_states = True
 
-        for sub_config_name in ("text_config", "vision_config", "vision_config_2", "audio_config"):
-            sub_config = getattr(config, sub_config_name, None)
+        for sub_config_name, sub_config in sub_configs.items():
             if sub_config is None:
                 continue
-            if output_attentions:
-                sub_config._attn_implementation = "eager"
-                sub_config.attn_implementation = "eager"
             sub_output_attentions = (
                 vision_output_attentions if sub_config_name.startswith("vision_config") else output_attentions
             )
+            if sub_output_attentions:
+                sub_config._attn_implementation = "eager"
+                sub_config.attn_implementation = "eager"
+            elif sub_config_name.startswith("vision_config"):
+                # Setting the composite config to eager recursively mutates all
+                # sub-configs in Transformers.  Restore a fast backend for the
+                # vision tower when the criterion only consumes text attention.
+                backend = original_backends.get(sub_config_name)
+                # FastVLM's vision_config is a TimmWrapperConfig.  Transformers
+                # treats its attention backend as eager-only even though timm
+                # internally owns the actual optimized vision implementation.
+                if getattr(sub_config, "model_type", None) == "timm_wrapper":
+                    backend = "eager"
+                elif backend in (None, "eager"):
+                    backend = "sdpa"
+                sub_config._attn_implementation = backend
+                sub_config.attn_implementation = backend
             cls._set_config_attr_if_present(
                 sub_config,
                 "output_attentions",
                 sub_output_attentions,
             )
-            cls._set_config_attr_if_present(sub_config, "output_hidden_states", True)
+            sub_hidden_states = not (
+                sub_config_name.startswith("vision_config") and not vision_output_attentions
+            )
+            cls._set_config_attr_if_present(sub_config, "output_hidden_states", sub_hidden_states)
             cls._set_config_attr_if_present(sub_config, "use_cache", False)
 
         return config
@@ -236,6 +261,7 @@ class VLMModel(nn.Module):
         model_args: ModelArguments,
         model_name_or_path: str,
         output_attentions: bool = True,
+        vision_output_attentions: bool | None = None,
         **kwargs,
     ):
         config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
@@ -258,9 +284,11 @@ class VLMModel(nn.Module):
                 fast_vlm_tokenizer.pad_token_id,
             )
 
+        if vision_output_attentions is None:
+            vision_output_attentions = output_attentions and model_backbone != FAST_VLM
         config = cls._force_eager_attention(
             config,
-            vision_output_attentions=output_attentions and model_backbone != FAST_VLM,
+            vision_output_attentions=vision_output_attentions,
             output_attentions=output_attentions,
         )
         config.padding_side = "left"
@@ -337,11 +365,18 @@ class VLMModel(nn.Module):
         return base_model
 
     @classmethod
-    def build(cls, model_args: ModelArguments, output_attentions: bool = True, **kwargs):
+    def build(
+        cls,
+        model_args: ModelArguments,
+        output_attentions: bool = True,
+        vision_output_attentions: bool | None = None,
+        **kwargs,
+    ):
         base_model, model_backbone = cls._load_base_model(
             model_args,
             model_args.model_name,
             output_attentions=output_attentions,
+            vision_output_attentions=vision_output_attentions,
             **kwargs,
         )
         encoder = cls._wrap_lora_if_needed(base_model, model_args, cls._model_path(model_args), is_trainable=True)
@@ -350,7 +385,14 @@ class VLMModel(nn.Module):
         return cls._place_model_for_distributed(model)
 
     @classmethod
-    def load(cls, model_args: ModelArguments, is_trainable=True, output_attentions: bool = True, **kwargs):
+    def load(
+        cls,
+        model_args: ModelArguments,
+        is_trainable=True,
+        output_attentions: bool = True,
+        vision_output_attentions: bool | None = None,
+        **kwargs,
+    ):
         model_name_or_path = cls._model_path(model_args)
 
         is_adapter_load = bool(model_args.load_pretrained_lora or (model_args.lora and model_args.checkpoint_path))
@@ -359,6 +401,7 @@ class VLMModel(nn.Module):
             model_args,
             base_load_path,
             output_attentions=output_attentions,
+            vision_output_attentions=vision_output_attentions,
             **kwargs,
         )
         encoder = cls._wrap_lora_if_needed(base_model, model_args, model_name_or_path, is_trainable=is_trainable)

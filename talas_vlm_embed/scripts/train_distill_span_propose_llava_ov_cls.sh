@@ -13,8 +13,8 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 # =========================================================================
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name "llava-hf/llava-onevision-qwen2-0.5b-ov-hf" \
-    --teacher_model_name "raghavlite/B3_Qwen2_2B" \
+    --model_name "models/llava-onevision-qwen2-0.5b-ov-hf" \
+    --teacher_model_name "models/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
     --lora_r 64 \
@@ -24,7 +24,7 @@ torchrun --standalone \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_onevision" \
     --pooling "eos" \
-    --dataset_name "TIGER-Lab/MMEB-train" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -70,7 +70,7 @@ EVAL_SUBSETS=(
 
 python eval_mmeb.py \
   --model_name "training/span_propose_llava_ov_cls_v2/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs/span_propose_llava_ov_cls_v2" \
+  --encode_output_path "./MMEB-eval_outputs_v3/span_propose_llava_ov_cls_v2" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \

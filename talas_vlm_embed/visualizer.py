@@ -402,7 +402,7 @@ class ClusterVisualizer:
     
     def __init__(self, figsize: Tuple[int, int] = (20, 16)):
         self.figsize = figsize
-        self.nlp = spacy.load("en_core_web_sm")
+        self.nlp = spacy.load("./en_core_web_sm")
         self.matcher = Matcher(self.nlp.vocab)
         
         # Add verb phrase pattern
@@ -889,7 +889,7 @@ class VisionTextClusteringVisualizationPipeline:
         self.device = device
         
         self.visualizer = ClusterVisualizer()
-        self.nlp = spacy.load("en_core_web_sm")
+        self.nlp = spacy.load("./en_core_web_sm")
         self.matcher = Matcher(self.nlp.vocab)
         
         VERB_PHRASE_PATTERN = [
@@ -1119,7 +1119,7 @@ def visualize_from_precomputed(
     img_width, img_height = image.size
     
     # Initialize spacy
-    nlp = spacy.load("en_core_web_sm")
+    nlp = spacy.load("./en_core_web_sm")
     matcher = Matcher(nlp.vocab)
     VERB_PHRASE_PATTERN = [
         {"POS": "AUX", "OP": "*"},

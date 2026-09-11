@@ -1,0 +1,45 @@
+cat > models/B3_Qwen2_2B/adapter_config.json <<'EOF'
+{
+  "alpha_pattern": {},
+  "auto_mapping": {
+    "base_model_class": "Qwen2VLForConditionalGeneration",
+    "parent_library": "src.model.vlm_backbone.qwen2_vl.modeling_qwen2_vl"
+  },
+  "base_model_name_or_path": "models/Qwen/Qwen2-VL-2B-Instruct",
+  "bias": "none",
+  "corda_config": null,
+  "eva_config": null,
+  "exclude_modules": null,
+  "fan_in_fan_out": false,
+  "inference_mode": true,
+  "init_lora_weights": "gaussian",
+  "layer_replication": null,
+  "layers_pattern": null,
+  "layers_to_transform": null,
+  "loftq_config": {},
+  "lora_alpha": 64,
+  "lora_bias": false,
+  "lora_dropout": 0.1,
+  "megatron_config": null,
+  "megatron_core": "megatron.core",
+  "modules_to_save": null,
+  "peft_type": "LORA",
+  "r": 8,
+  "rank_pattern": {},
+  "revision": null,
+  "target_modules": [
+    "out_proj",
+    "down_proj",
+    "k_proj",
+    "gate_up_proj",
+    "v_proj",
+    "q_proj",
+    "o_proj",
+    "qkv_proj"
+  ],
+  "task_type": null,
+  "trainable_token_indices": null,
+  "use_dora": true,
+  "use_rslora": false
+}
+EOF

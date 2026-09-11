@@ -67,7 +67,7 @@ EVAL_SUBSETS=(
 
 python eval_mmeb.py \
   --model_name "training/llava_ov-0.5B_eos_cls/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs/llava_ov-0.5B_eos_cls" \
+  --encode_output_path "./MMEB-eval_outputs_v3/llava_ov-0.5B_eos_cls" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \
@@ -78,7 +78,7 @@ python eval_mmeb.py \
   --dataset_name vlm2vec_eval/MMEB-eval \
   --subset_name "${EVAL_SUBSETS[@]}" \
   --dataset_split test \
-  --per_device_eval_batch_size 4 \
+  --per_device_eval_batch_size 2 \
   --image_dir eval_images/ \
   --image_resolution "low" \
   --tgt_prefix_mod \

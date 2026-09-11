@@ -4,6 +4,9 @@ set -e
 
 source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
+
+# bash set_base_model_path.sh
+# python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
 # python fix_lib.py
 
 # #
@@ -54,22 +57,23 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.05 &
 # wait
 
-CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.1 9 0.02 &
-CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 3.0 0.1 9 0.02 &
-CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 5.0 0.1 9 0.02 &
-CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.1 9 0.05 &
-# CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 0 0 1.0 0.1 &
-CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.1 9 0.1 &
-# wait
+CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 1.0 9 0.02 &
+# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 9 0.02 &
+# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.3 9 0.02 &
+# CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 50.0 1.0 9 0.1 &
+# # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 0 0 1.0 0.1 &
+# CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 10.0 1 9 0.1 &
+# # wait
 
-CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.1 9 0.02 &
-# CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.2 &
-# CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.01 &
-# CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.1 &
-# CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.2 &
-# wait
+# CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 10 9 0.02 &
+# # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.2 &
+# # CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.01 &
+# # CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.1 &
+# # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.2 &
+# # wait
 
-CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.1 9 0.1 &
+# CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 1.0 9 0.1 &
+# CUDA_VISIBLE_DEVICES=2 bash scripts/train_single_ov_eos_cls.sh &
 # CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 0.1 6 1&
 # CUDA_VISIBLE_DEVICES=2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=2,3 python3 multi_gpu.py &
@@ -77,11 +81,12 @@ CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.2 &
 # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
-
+# CUDA_VISIBLE_DEVICES=2 bash scripts/train_distill_span_propose_llava_ov_cls.sh &
+# CUDA_VISIBLE_DEVICES=3 bash scripts/train_distill_span_propose_llava_ov_cls_2.sh &
 
 wait
 
-# CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 0.1 10 1
+# CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 0.5 9 0.02
 
 # =========================
 # 9. Copy JSON eval outputs
