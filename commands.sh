@@ -1,5 +1,5 @@
-#2
-#erank
+#1 +10
+#vlm-eval
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
@@ -23,10 +23,10 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-cd ./talas_vlm_embed
+# cd ./talas_vlm_embed
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-bash ./project_commands.sh
+# bash ./project_commands.sh
 # # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
 # # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
@@ -45,9 +45,9 @@ bash ./project_commands.sh
 # cd ./reward-guidance-main
 # bash ./project_command.sh
 
-# cd ./VLM_Distillation-main
-# bash ./project_commands_collect_eval_summary.sh
-# bash scripts/eval/collect_base_model_summaries.sh
+cd ./VLM_Distillation-main
+bash ./project_commands_collect_eval_summary.sh
+bash scripts/eval/collect_base_model_summaries.sh
 # ls outputs/eval/
 # ls outputs/eval/base_models
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
