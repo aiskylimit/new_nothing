@@ -28,6 +28,7 @@ from schema_grounding.inference.data import default_dataset_specs  # noqa: E402
 from schema_grounding.inference.model import ModelRunner  # noqa: E402
 from schema_grounding.inference.pipeline import (  # noqa: E402
     InferenceOptions,
+    inference_run_complete,
     model_runner_required,
     prepare_run_directory,
     run_dataset_pipeline,
@@ -252,8 +253,16 @@ def main() -> None:
             if group_seed != seed:
                 continue
             checkpoint = checkpoints[method]
+            pending_runs = [
+                planned_run
+                for planned_run in planned_runs
+                if not inference_run_complete(planned_run[1])
+            ]
+            if not pending_runs:
+                print(f"[seed{seed}/{method}] inference already completed; skipping")
+                continue
             runner = None
-            if any(model_runner_required(output_directory) for _, output_directory, _ in planned_runs):
+            if any(model_runner_required(output_directory) for _, output_directory, _ in pending_runs):
                 runner = ModelRunner.from_checkpoint(
                     checkpoint_paths[method],
                     dtype=args.dtype,
@@ -264,7 +273,7 @@ def main() -> None:
             else:
                 print(f"[seed{seed}/{method}] all model-backed stages are complete; skipping model load")
             try:
-                for dataset_name, output_directory, seed_options in planned_runs:
+                for dataset_name, output_directory, seed_options in pending_runs:
                     seed_everything(seed, rank_offset=False)
                     print(f"[seed{seed}/{method}/{dataset_name}] starting")
                     run_dataset_pipeline(

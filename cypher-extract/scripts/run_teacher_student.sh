@@ -15,6 +15,7 @@ RUN_SETTINGS="${RUN_SETTINGS:-all}"
 RUN_PHASE="${RUN_PHASE:-all}"
 INFERENCE_SEEDS="${INFERENCE_SEEDS:-42}"
 INFERENCE_DATASETS="${INFERENCE_DATASETS:-}"
+SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
 TRAIN_OVERRIDES=()
 
 SUPPORTED_MODEL_FAMILIES=(
@@ -60,12 +61,15 @@ Options:
   --phase VALUE           train, infer, or all (default: all)
   --seeds CSV             Inference seeds (default: 42)
   --datasets CSV          Optional inference dataset selection
+  --skip-completed        Skip completed training/inference work (default)
+  --no-skip-completed     Always invoke training, even if outputs are complete
   -h, --help              Show this help
 
 Examples:
   bash scripts/run_teacher_student.sh --families qwen3 --phase train
   bash scripts/run_teacher_student.sh --student-methods all --phase train
   bash scripts/run_teacher_student.sh --families llama3 -- num_train_epochs=1
+  bash scripts/run_teacher_student.sh --families qwen3 --no-skip-completed
 EOF
 }
 
@@ -113,6 +117,14 @@ while (( $# > 0 )); do
       shift 2
       ;;
     --datasets=*) INFERENCE_DATASETS="${1#*=}"; shift ;;
+    --skip-completed)
+      SKIP_COMPLETED=1
+      shift
+      ;;
+    --no-skip-completed)
+      SKIP_COMPLETED=0
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -134,6 +146,14 @@ case "${RUN_PHASE}" in
   all | train | infer) ;;
   *)
     echo "Unsupported RUN_PHASE=${RUN_PHASE}; expected all, train, or infer." >&2
+    exit 2
+    ;;
+esac
+
+case "${SKIP_COMPLETED}" in
+  0 | 1) ;;
+  *)
+    echo "Unsupported SKIP_COMPLETED=${SKIP_COMPLETED}; expected 0 or 1." >&2
     exit 2
     ;;
 esac
@@ -313,6 +333,87 @@ fi
 
 cd "${PROJECT_ROOT}"
 
+training_output_dir() {
+  local config_path="$1"
+  local output_dir=""
+  local override
+
+  # Command-line overrides have the same precedence as the training CLI.
+  for override in "${TRAIN_OVERRIDES[@]}"; do
+    if [[ "${override}" == output_dir=* ]]; then
+      output_dir="${override#output_dir=}"
+    fi
+  done
+
+  if [[ -z "${output_dir}" ]]; then
+    output_dir="$(
+      sed -n 's/^[[:space:]]*output_dir:[[:space:]]*//p' "${config_path}" \
+        | tail -n 1 \
+        | sed -e 's/[[:space:]]*$//'
+    )"
+    output_dir="${output_dir#\"}"
+    output_dir="${output_dir%\"}"
+    output_dir="${output_dir#\'}"
+    output_dir="${output_dir%\'}"
+  fi
+
+  if [[ -z "${output_dir}" ]]; then
+    echo "Could not resolve output_dir from ${config_path}" >&2
+    return 2
+  fi
+
+  if [[ "${output_dir}" == /* ]]; then
+    printf '%s\n' "${output_dir}"
+  else
+    printf '%s/%s\n' "${PROJECT_ROOT}" "${output_dir#./}"
+  fi
+}
+
+has_final_model_weights() {
+  local output_dir="$1"
+  local filename
+  local weight_files=(
+    adapter_model.safetensors
+    adapter_model.bin
+    model.safetensors
+    model.safetensors.index.json
+    pytorch_model.bin
+    pytorch_model.bin.index.json
+  )
+
+  for filename in "${weight_files[@]}"; do
+    if [[ -s "${output_dir}/${filename}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+training_is_complete() {
+  local output_dir="$1"
+
+  # These root-level files are written only after Trainer.train() returns,
+  # the final model is saved, and metrics/state are published successfully.
+  [[ -s "${output_dir}/train_results.json" ]] || return 1
+  [[ -s "${output_dir}/trainer_state.json" ]] || return 1
+  has_final_model_weights "${output_dir}"
+}
+
+run_training() {
+  local label="$1"
+  local config_path="$2"
+  local output_dir
+
+  output_dir="$(training_output_dir "${config_path}")"
+  if [[ "${SKIP_COMPLETED}" == "1" ]] && training_is_complete "${output_dir}"; then
+    echo "Training already completed; skipping ${label}"
+    echo "Output: ${output_dir}"
+    return 0
+  fi
+
+  bash scripts/train.sh "${config_path}" "${TRAIN_OVERRIDES[@]}"
+}
+
 run_inference() {
   local model_family="$1"
   local setting="$2"
@@ -345,7 +446,9 @@ if [[ "${RUN_PHASE}" == "all" || "${RUN_PHASE}" == "train" ]]; then
       echo "Training ${model_family} teacher: ${setting}"
       echo "Config: configs/distillation/${TEACHER_CONFIG}"
       echo "============================================================"
-      bash scripts/train.sh "configs/distillation/${TEACHER_CONFIG}" "${TRAIN_OVERRIDES[@]}"
+      run_training \
+        "${model_family} teacher: ${setting}" \
+        "configs/distillation/${TEACHER_CONFIG}"
       if [[ "${RUN_PHASE}" == "all" ]]; then
         run_inference "${model_family}" "${setting}" "${TEACHER_METHOD}"
       fi
@@ -357,7 +460,9 @@ if [[ "${RUN_PHASE}" == "all" || "${RUN_PHASE}" == "train" ]]; then
           echo "Training ${model_family} student: ${setting}/${method}"
           echo "Config: configs/${CONFIG_DIRECTORY}/${method}.yaml"
           echo "============================================================"
-          bash scripts/train.sh "configs/${CONFIG_DIRECTORY}/${method}.yaml" "${TRAIN_OVERRIDES[@]}"
+          run_training \
+            "${model_family} student: ${setting}/${method}" \
+            "configs/${CONFIG_DIRECTORY}/${method}.yaml"
           if [[ "${RUN_PHASE}" == "all" ]]; then
             run_inference "${model_family}" "${setting}" "${method}"
           fi

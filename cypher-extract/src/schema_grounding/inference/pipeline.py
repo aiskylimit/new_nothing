@@ -563,6 +563,20 @@ def model_runner_required(output_directory: Path) -> bool:
     ).is_file()
 
 
+def inference_run_complete(output_directory: Path) -> bool:
+    """Return whether a dataset run atomically published all final artifacts."""
+
+    required_files = (
+        "run_config.json",
+        "selector_predictions.jsonl",
+        "predicted_subschemas.jsonl",
+        "generator_predictions.jsonl",
+        "metrics.json",
+        "manifest.json",
+    )
+    return all((output_directory / filename).is_file() for filename in required_files)
+
+
 def run_dataset_pipeline(
     *,
     method: str,

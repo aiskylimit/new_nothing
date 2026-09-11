@@ -24,6 +24,7 @@ from schema_grounding.inference.parsing import parse_selector_label
 from schema_grounding.inference.pipeline import (
     InferenceOptions,
     compute_inference_metrics,
+    inference_run_complete,
     model_runner_required,
     prepare_run_directory,
     run_dataset_pipeline,
@@ -59,6 +60,24 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
         encoding="utf-8",
     )
+
+
+def test_inference_run_complete_requires_every_final_artifact(tmp_path: Path) -> None:
+    required_files = (
+        "run_config.json",
+        "selector_predictions.jsonl",
+        "predicted_subschemas.jsonl",
+        "generator_predictions.jsonl",
+        "metrics.json",
+        "manifest.json",
+    )
+    for filename in required_files:
+        (tmp_path / filename).write_text("{}\n", encoding="utf-8")
+
+    assert inference_run_complete(tmp_path)
+
+    (tmp_path / "metrics.json").unlink()
+    assert not inference_run_complete(tmp_path)
 
 
 def write_resume_manifest(
