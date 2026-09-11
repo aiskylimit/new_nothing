@@ -49,6 +49,34 @@ POS_MOD_DICT = {
                 "MSCOCO_i2t":POS_MOD_IMAGE_CAPTION, "VisualNews_i2t":POS_MOD_IMAGE_CAPTION,
                 }
 
+# def process_image(image, resolution, max_dim=1344):
+#     if image is None:
+#         return None
+
+#     width, height = image.size
+#     max_side = max(width, height)
+
+#     if resolution == "high":
+#         target_max = 1344
+#     elif resolution == "mid":
+#         target_max = 672
+#     elif resolution == "low":
+#         target_max = 448
+#     elif resolution == "tiny":
+#         target_max = 128
+#     else:
+#         target_max = max_dim
+
+#     # Tính tỉ lệ scale sao cho cạnh lớn nhất = target_max
+#     if max_side > target_max:
+#         scale = target_max / max_side
+#         new_width = int(width * scale)
+#         new_height = int(height * scale)
+#         image = image.resize((new_width, new_height))
+
+#     return image
+
+
 def process_image(image, resolution, max_dim=1344):
     if image is None:
         return None
@@ -63,16 +91,13 @@ def process_image(image, resolution, max_dim=1344):
     elif resolution == "low":
         target_max = 448
     elif resolution == "tiny":
-        target_max = 128
+        target_max = 336
     else:
         target_max = max_dim
 
-    # Tính tỉ lệ scale sao cho cạnh lớn nhất = target_max
-    if max_side > target_max:
-        scale = target_max / max_side
-        new_width = int(width * scale)
-        new_height = int(height * scale)
-        image = image.resize((new_width, new_height))
+    # resize if larger than target_max
+    # if max_side > target_max:
+    image = image.resize((target_max, target_max))
 
     return image
 
