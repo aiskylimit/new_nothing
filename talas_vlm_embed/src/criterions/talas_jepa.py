@@ -290,6 +290,12 @@ class TalasJepa(nn.Module):
         if not valid.any():
             return zL_padded.sum() * 0.0  # graph hợp lệ, gradient = 0, không crash
 
+        norms = zL_padded.norm(dim=-1)  # [B, N_max]
+        for b in range(min(B, 5)):
+            valid_norms = norms[b][maskL[b]]
+            print(f"sample {b}: mean={valid_norms.mean():.2f}, std={valid_norms.std():.2f}, "
+                f"max/median={valid_norms.max()/valid_norms.median():.2f}")
+
         # ==========================================
         # 2. UNPAIRED CF-MATCHING (Epps-Pulley) — vector hoá theo batch
         # ==========================================
