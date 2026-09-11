@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-10_06-50-46-vlm-eval.log
+#2
 #hierd
 #v1
 
