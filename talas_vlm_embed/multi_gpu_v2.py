@@ -24,10 +24,17 @@ DEFAULT_TARGET_POWER_W = 900.0  # Dùng cho GPU không được liệt kê ở t
 GPU_MAX_POWER_W = None
 
 POWER_CHECK_INTERVAL = 0.2  # Giây, tần suất đo lại công suất & điều chỉnh duty
-MICRO_CYCLE_S = 0.005       # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
+MICRO_CYCLE_S = 0.02        # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
 DUTY_MIN = 0.02             # Duty cycle tối thiểu (không tắt hẳn để tránh dao động mạnh)
 DUTY_MAX = 1.0              # Duty cycle tối đa (luôn tính, không nghỉ)
 DUTY_STEP = 0.05            # Bước điều chỉnh duty cycle mỗi lần đo
+
+# --- Giới hạn VRAM cho ma trận burn (KHÔNG dùng đa luồng/nhiều stream) ---
+MAX_VRAM_GB = 6.0          # Tổng VRAM tối đa dùng cho x, y, z (fp32)
+NUM_MATRICES = 3           # x, y, z (out buffer) mỗi cái là 1 ma trận NxN
+BYTES_PER_ELEM = 4         # fp32
+MIN_MM_TIME_S = 0.002      # 1 lần mm nên tốn tối thiểu ~2ms để overhead không đáng kể
+MIN_MATRIX_SIZE = 1524     # kích thước khởi điểm để dò
 # ======================================================================
 
 
@@ -58,36 +65,34 @@ def worker(rank, world_size, master_port):
     # Target công suất riêng cho GPU này (fallback về default nếu không cấu hình)
     target_power_w = TARGET_POWER_PER_GPU_W.get(rank, DEFAULT_TARGET_POWER_W)
 
-    # Xác định mức công suất tối đa để hiển thị % (tự lấy TDP thật nếu không set cứng)
-    if GPU_MAX_POWER_W is not None:
-        gpu_max_power_w = GPU_MAX_POWER_W
-    else:
-        try:
-            gpu_max_power_w = (
-                pynvml.nvmlDeviceGetEnforcedPowerLimit(handle) / 1000.0
-            )
-        except pynvml.NVMLError:
-            gpu_max_power_w = target_power_w  # fallback an toàn nếu không đọc được
+    # --- Tính kích thước ma trận tối đa cho phép trong ngân sách VRAM ---
+    max_vram_bytes = MAX_VRAM_GB * (1024 ** 3)
+    max_elems = max_vram_bytes / (NUM_MATRICES * BYTES_PER_ELEM)
+    hard_cap_size = int(max_elems ** 0.5)
 
-    print(
-        f"[GPU {rank}] target={target_power_w:.0f}W "
-        f"(TDP phát hiện ~{gpu_max_power_w:.0f}W)",
-        flush=True
-    )
+    matrix_size = min(MIN_MATRIX_SIZE, hard_cap_size)
+    per_mm_s = None
 
-    x = torch.randn(1524, 1524, device=device)
-    y = torch.randn(1524, 1524, device=device)
+    while True:
+        x = torch.randn(matrix_size, matrix_size, device=device)
+        y = torch.randn(matrix_size, matrix_size, device=device)
+        z = torch.empty(matrix_size, matrix_size, device=device)
 
-    warmup_iters = 20
-    torch.cuda.synchronize()
-    t0 = time.time()
-    for _ in range(warmup_iters):
-        z = torch.mm(x, y)
-    torch.cuda.synchronize()
-    per_mm_s = (time.time() - t0) / warmup_iters
-    
+        torch.cuda.synchronize()
+        t0 = time.time()
+        for _ in range(5):
+            torch.mm(x, y, out=z)
+        torch.cuda.synchronize()
+        per_mm_s = (time.time() - t0) / 5
+
+        if per_mm_s >= MIN_MM_TIME_S or matrix_size >= hard_cap_size:
+            break
+
+        del x, y, z
+        torch.cuda.empty_cache()
+        matrix_size = min(matrix_size * 2, hard_cap_size)
+
     max_iters_per_micro = max(1, int(MICRO_CYCLE_S / per_mm_s))
-
 
     duty = 0.5  # bắt đầu ở giữa, feedback loop sẽ tự điều chỉnh
     last_check = time.time()
@@ -102,7 +107,7 @@ def worker(rank, world_size, master_port):
             n_iters = max(1, round(duty * max_iters_per_micro))
 
             for _ in range(n_iters):
-                z = torch.mm(x, y)
+                torch.mm(x, y, out=z)
             torch.cuda.synchronize()  # đảm bảo GPU thực sự rảnh trước khi sleep
             step_count += n_iters
 
@@ -110,7 +115,6 @@ def worker(rank, world_size, master_port):
             remaining_micro = MICRO_CYCLE_S - elapsed
             if remaining_micro > 0:
                 time.sleep(remaining_micro)
-
 
         dist.all_reduce(z, op=dist.ReduceOp.SUM)
         torch.cuda.synchronize()
