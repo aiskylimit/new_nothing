@@ -1,4 +1,4 @@
-#i reasoning-velocity-distill-eval.txt
+#1 +10
 #test
 #v1
 
@@ -23,8 +23,8 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 ./talas_vlm_embed/multi_gpu_v2.py
+# source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 ./talas_vlm_embed/multi_gpu_v2.py
 
 # cd ./talas_vlm_embed
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
