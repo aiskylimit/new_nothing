@@ -1,5 +1,5 @@
-#2 +a
-#hierd
+#1 +120
+#vlm
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
@@ -11,6 +11,7 @@
 # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
+kill -9 621275 621274
 # sleep 3
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
@@ -23,10 +24,10 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-cd ./talas_vlm_embed
+# cd ./talas_vlm_embed
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-bash ./project_commands.sh
+# bash ./project_commands.sh
 # # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
 # # CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
@@ -45,14 +46,14 @@ bash ./project_commands.sh
 # cd ./reward-guidance-main
 # bash ./project_command.sh
 
-# cd ./VLM_Distillation-main
+cd ./VLM_Distillation-main
 # bash ./project_commands_collect_eval_summary.sh
 # bash scripts/eval/collect_base_model_summaries.sh
 # ls outputs/eval/
 # ls outputs/eval/base_models
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
-# # # bash ./project_commands.sh
+bash ./project_commands.sh
 # bash ./project_commands_eval_base_model_1.sh &
 # bash ./project_commands_eval_base_model_2.sh &
 # wait
