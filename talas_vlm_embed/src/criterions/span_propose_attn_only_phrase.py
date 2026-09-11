@@ -1110,12 +1110,13 @@ class SpanProposeCriterionWeightedOnlyPhrase(nn.Module):
         all_tensors = torch.cat(all_tensors, dim=0)
         return all_tensors
     
-    def forward(self, distiller, input_data, tokenizer):
-        # print_rank("Start SpanProposeCriterion forward)
+    def forward(self, distiller, input_data):
+        # print_rank("Start SpanProposeCriterionWeightedLLavaOV forward")
         
         self.distiller = distiller
         student_model = distiller.student
         teacher_model = distiller.teacher
+        tokenizer = distiller.tokenizer
         projectors = distiller.projectors  # Giả sử projectors được lưu trong distiller
         
         student_qry_input = input_data['student_inputs']['qry']
