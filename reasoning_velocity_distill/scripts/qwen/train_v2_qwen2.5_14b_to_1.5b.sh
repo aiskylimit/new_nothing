@@ -45,7 +45,8 @@ DEV_NUM="${DEV_NUM:-512}"
 SEED="${SEED:-10}"
 
 # Adaptive OFF -> privileged, with randomly mixed ON-policy batches.
-KD_LOSS="${KD_LOSS:-fkl}"
+KD_LOSS="${KD_LOSS:-sfkl}"
+SKEW_ALPHA="${SKEW_ALPHA:-0.1}"
 KD_RATIO="${KD_RATIO:-0.5}"
 MAG_WEIGHT="${MAG_WEIGHT:-1.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-1.0}"
@@ -85,6 +86,7 @@ OPTS+=(--adaptive-on-policy --do-sample --progress-signal loss)
 OPTS+=(--rho-min "${RHO_MIN:-0.1}" --rho-max "${RHO_MAX:-0.8}" --rho-increment "${RHO_INCREMENT:-0.05}")
 OPTS+=(--privileged-trajectory canonical --privileged-context-field context)
 OPTS+=(--kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO")
+OPTS+=(--skew-alpha "$SKEW_ALPHA")
 OPTS+=(--mag-weight "$MAG_WEIGHT" --gram-weight "$GRAM_WEIGHT")
 OPTS+=(--distill-top-k "$DISTILL_TOP_K" --distill-temperature "$DISTILL_TEMPERATURE")
 OPTS+=(--step-separator "$STEP_SEPARATOR" --step-pooling "$STEP_POOLING")
