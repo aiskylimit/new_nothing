@@ -229,7 +229,7 @@ class TalasJepa(nn.Module):
         return loss_sigreg.mean()
 
     def sigreg_erank(self, z_list_first: list[torch.Tensor], z_list_last: list[torch.Tensor],
-                     num_slices: int = 512, T: int = 17, R: float = 5.0,
+                     num_slices: int = 128, T: int = 17, R: float = 5.0,
                      min_valid_tokens: int = 4, eps: float = 1e-8):
 
         B = len(z_list_last)
@@ -314,7 +314,7 @@ class TalasJepa(nn.Module):
         err = (phi0_real - phiL_real) ** 2 + (phi0_imag - phiL_imag) ** 2  # [B, T]
         err = err * w
 
-        loss_per_sample = torch.trapezoid(err, t, dim=-1)  # [B]
+        loss_per_sample = torch.trapezoid(err, t, dim=-1) * num_slices / 2  # [B]
         return loss_per_sample[valid].mean().to(dtype)
 
     def _compute_modality_distill(self, student_hidden_states, image_features, 
@@ -375,7 +375,7 @@ class TalasJepa(nn.Module):
             sigreg_erank_loss = self.sigreg_erank(stu_img_tokens[0], stu_img_tokens[last_layer_idx])
             print("sigreg_erank_loss: ", sigreg_erank_loss)
             
-            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + 10 * sigreg_erank_loss
+            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
 
         return stacked_stu_text_reps, stu_img_final_reps, sigreg_final
     
