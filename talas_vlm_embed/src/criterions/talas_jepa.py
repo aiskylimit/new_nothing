@@ -143,7 +143,7 @@ class TalasJepa(nn.Module):
         return sigreg_per_slice.mean()
 
     def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
-                        concept_queries: torch.Tensor, num_slices=128,
+                        concept_queries: torch.Tensor, num_slices=256,
                         tau: float = 0.05, n_iters: int = 3, alpha: float = 0.9):
         B = len(z_list)
         if B == 0: return 0.0
@@ -229,7 +229,7 @@ class TalasJepa(nn.Module):
         return loss_sigreg.mean()
 
     def sigreg_erank(self, z_list_first: list[torch.Tensor], z_list_last: list[torch.Tensor],
-                     num_slices: int = 128, T: int = 17, R: float = 5.0,
+                     num_slices: int = 256, T: int = 17, R: float = 5.0,
                      min_valid_tokens: int = 4, eps: float = 1e-8):
 
         B = len(z_list_last)
