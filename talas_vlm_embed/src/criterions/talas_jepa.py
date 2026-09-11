@@ -263,8 +263,11 @@ class TalasJepa(nn.Module):
         # ==========================================
         # 1. SLICED SPECTRAL FINGERPRINT — projected energies, vector hoá theo batch
         # ==========================================
-        A = torch.randn(D, num_slices, device=device, dtype=dtype)
+        A = torch.randn(D, num_slices, device=device, dtype=torch.float32)
         A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(eps)  # [D, M], dùng chung 2 phía
+
+        z0_padded = z0_padded.float()
+        zL_padded = zL_padded.float()
 
         def _projected_energies(z_padded, mask, lengths):
             mask_f = mask.unsqueeze(-1).to(dtype)                          # [B, N_max, 1]
@@ -299,7 +302,7 @@ class TalasJepa(nn.Module):
         # ==========================================
         # 2. UNPAIRED CF-MATCHING (Epps-Pulley) — vector hoá theo batch
         # ==========================================
-        t = torch.linspace(-R, R, T, device=device, dtype=dtype)   # [T]
+        t = torch.linspace(-R, R, T, device=device, dtype=torch.float32)   # [T]
         w = torch.exp(-0.5 * t ** 2)                                # [T]
 
         x0t = energies_0.unsqueeze(-1) * t   # [B, M, T]
@@ -312,7 +315,7 @@ class TalasJepa(nn.Module):
         err = err * w
 
         loss_per_sample = torch.trapezoid(err, t, dim=-1)  # [B]
-        return loss_per_sample[valid].mean()
+        return loss_per_sample[valid].mean().to(dtype)
 
     def _compute_modality_distill(self, student_hidden_states, image_features, 
                                   text_token_counts, attention_mask, concept_queries):
