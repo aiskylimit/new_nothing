@@ -60,14 +60,14 @@ fi
 printf '\n[3/4] Train v2: adaptive OFF -> privileged + random ON-policy\n'
 CHECKPOINT_FILE="$(mktemp)"
 trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
-CUDA_DEVICES=4,5 PRIVILEGED_DATA_PATH= FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+CUDA_DEVICES=4,5,6,7 PRIVILEGED_DATA_PATH= FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
     bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
 
 # 4. Evaluate this run's final checkpoint only after training succeeds.
 LORA_PATH="$(cat "$CHECKPOINT_FILE")"
 [[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
 printf '\n[4/4] Evaluate checkpoint: %s\n' "$LORA_PATH"
-CUDA_DEVICES=4,5 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
+CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
     SAVE_PATH="$(dirname -- "$LORA_PATH")" \
     EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
     bash scripts/eval/eval.sh run
