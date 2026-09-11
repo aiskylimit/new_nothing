@@ -293,12 +293,6 @@ class TalasJepa(nn.Module):
         if not valid.any():
             return zL_padded.sum() * 0.0  # graph hợp lệ, gradient = 0, không crash
 
-        norms = zL_padded.norm(dim=-1)  # [B, N_max]
-        for b in range(min(B, 5)):
-            valid_norms = norms[b][maskL[b]]
-            print(f"sample {b}: mean={valid_norms.mean():.2f}, std={valid_norms.std():.2f}, "
-                f"max/median={valid_norms.max()/valid_norms.median():.2f}")
-
         # ==========================================
         # 2. UNPAIRED CF-MATCHING (Epps-Pulley) — vector hoá theo batch
         # ==========================================
@@ -326,7 +320,7 @@ class TalasJepa(nn.Module):
         k_layers = self.args.num_layers
         batch_size = attention_mask.size(0)
         last_layer_idx = len(student_hidden_states) - 1
-        layers = [0, int(last_layer_idx / 4), int(last_layer_idx / 2), last_layer_idx]
+        layers = [0, int(last_layer_idx / 10), int(last_layer_idx / 5), last_layer_idx]
         
         stu_img_tokens = {l: [] for l in layers}
         stu_text_reps = []
@@ -373,7 +367,6 @@ class TalasJepa(nn.Module):
                 total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
 
             sigreg_erank_loss = self.sigreg_erank(stu_img_tokens[0], stu_img_tokens[last_layer_idx])
-            print("sigreg_erank_loss: ", sigreg_erank_loss)
             
             sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
 
