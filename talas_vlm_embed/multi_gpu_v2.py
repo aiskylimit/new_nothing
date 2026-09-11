@@ -12,14 +12,23 @@ except ImportError:
         "Cần cài pynvml để đo công suất GPU: pip install nvidia-ml-py3"
     )
 
-# ============ CẤU HÌNH MỤC TIÊU CÔNG SUẤT ============
-TARGET_POWER_W = 600.0      # Công suất mục tiêu (W) trên mỗi GPU
-GPU_MAX_POWER_W = 1000.0    # Công suất tối đa (TDP) của GPU, chỉ để hiển thị %
-POWER_CHECK_INTERVAL = 0.2  # Giây, tần suất đo lại công suất để điều chỉnh
-DUTY_MIN = 0.02             # Duty cycle tối thiểu (tránh vòng lặp busy 100% CPU khi idle)
+# ============ CẤU HÌNH MỤC TIÊU CÔNG SUẤT (THEO TỪNG GPU) ============
+TARGET_POWER_PER_GPU_W = {
+    # 0: 500.0,
+    # 1: 300.0,
+    # 2: 700.0,
+    # 3: 700.0,
+}
+DEFAULT_TARGET_POWER_W = 600.0  # Dùng cho GPU không được liệt kê ở trên
+
+GPU_MAX_POWER_W = None
+
+POWER_CHECK_INTERVAL = 0.2  # Giây, tần suất đo lại công suất & điều chỉnh duty
+MICRO_CYCLE_S = 0.005       # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
+DUTY_MIN = 0.02             # Duty cycle tối thiểu (không tắt hẳn để tránh dao động mạnh)
 DUTY_MAX = 1.0              # Duty cycle tối đa (luôn tính, không nghỉ)
 DUTY_STEP = 0.05            # Bước điều chỉnh duty cycle mỗi lần đo
-# ======================================================
+# ======================================================================
 
 
 def find_free_port():
@@ -46,10 +55,40 @@ def worker(rank, world_size, master_port):
     pynvml.nvmlInit()
     handle = pynvml.nvmlDeviceGetHandleByIndex(rank)
 
+    # Target công suất riêng cho GPU này (fallback về default nếu không cấu hình)
+    target_power_w = TARGET_POWER_PER_GPU_W.get(rank, DEFAULT_TARGET_POWER_W)
+
+    # Xác định mức công suất tối đa để hiển thị % (tự lấy TDP thật nếu không set cứng)
+    if GPU_MAX_POWER_W is not None:
+        gpu_max_power_w = GPU_MAX_POWER_W
+    else:
+        try:
+            gpu_max_power_w = (
+                pynvml.nvmlDeviceGetEnforcedPowerLimit(handle) / 1000.0
+            )
+        except pynvml.NVMLError:
+            gpu_max_power_w = target_power_w  # fallback an toàn nếu không đọc được
+
+    print(
+        f"[GPU {rank}] target={target_power_w:.0f}W "
+        f"(TDP phát hiện ~{gpu_max_power_w:.0f}W)",
+        flush=True
+    )
+
     x = torch.randn(1524, 1524, device=device)
     y = torch.randn(1524, 1524, device=device)
 
-    # duty = tỉ lệ thời gian "bận tính toán" trên mỗi chu kỳ điều khiển
+    warmup_iters = 20
+    torch.cuda.synchronize()
+    t0 = time.time()
+    for _ in range(warmup_iters):
+        z = torch.mm(x, y)
+    torch.cuda.synchronize()
+    per_mm_s = (time.time() - t0) / warmup_iters
+    
+    max_iters_per_micro = max(1, int(MICRO_CYCLE_S / per_mm_s))
+
+
     duty = 0.5  # bắt đầu ở giữa, feedback loop sẽ tự điều chỉnh
     last_check = time.time()
 
@@ -57,21 +96,24 @@ def worker(rank, world_size, master_port):
 
     while True:
         cycle_start = time.time()
-        # Thời gian "bận" trong chu kỳ này, dựa trên duty hiện tại
-        busy_deadline = cycle_start + duty * POWER_CHECK_INTERVAL
 
-        # Vòng lặp tính toán cho tới khi hết thời gian "bận" trong chu kỳ
-        while time.time() < busy_deadline:
-            z = torch.mm(x, y)
-            dist.all_reduce(z, op=dist.ReduceOp.SUM)
-            step_count += 1
+        while time.time() - cycle_start < POWER_CHECK_INTERVAL:
+            micro_start = time.time()
+            n_iters = max(1, round(duty * max_iters_per_micro))
 
+            for _ in range(n_iters):
+                z = torch.mm(x, y)
+            torch.cuda.synchronize()  # đảm bảo GPU thực sự rảnh trước khi sleep
+            step_count += n_iters
+
+            elapsed = time.time() - micro_start
+            remaining_micro = MICRO_CYCLE_S - elapsed
+            if remaining_micro > 0:
+                time.sleep(remaining_micro)
+
+
+        dist.all_reduce(z, op=dist.ReduceOp.SUM)
         torch.cuda.synchronize()
-
-        # Phần còn lại của chu kỳ: nghỉ (nếu duty < 1.0)
-        remaining = POWER_CHECK_INTERVAL - (time.time() - cycle_start)
-        if remaining > 0:
-            time.sleep(remaining)
 
         # Đo công suất thực tế và điều chỉnh duty cycle (feedback control)
         now = time.time()
@@ -79,7 +121,7 @@ def worker(rank, world_size, master_port):
             power_mw = pynvml.nvmlDeviceGetPowerUsage(handle)  # milliwatt
             power_w = power_mw / 1000.0
 
-            error = TARGET_POWER_W - power_w
+            error = target_power_w - power_w
             # Điều chỉnh duty theo sai số, giới hạn trong [DUTY_MIN, DUTY_MAX]
             if error > 0:
                 duty = min(DUTY_MAX, duty + DUTY_STEP)
@@ -88,15 +130,6 @@ def worker(rank, world_size, master_port):
 
             last_check = now
 
-            if rank == 0:
-                pct = 100.0 * power_w / GPU_MAX_POWER_W
-                print(
-                    f"[GPU {rank}] power={power_w:.1f}W "
-                    f"({pct:.1f}% of {GPU_MAX_POWER_W:.0f}W) "
-                    f"target={TARGET_POWER_W:.0f}W duty={duty:.2f}",
-                    flush=True
-                )
-
 
 if __name__ == "__main__":
     num_gpus = torch.cuda.device_count()
@@ -104,8 +137,6 @@ if __name__ == "__main__":
     if num_gpus == 0:
         raise RuntimeError("Không tìm thấy GPU CUDA")
 
-    print(f"Detected {num_gpus} GPU")
-    print(f"Mục tiêu công suất: {TARGET_POWER_W}W / {GPU_MAX_POWER_W}W mỗi GPU")
     free_port = find_free_port()
     print(f"Khởi tạo DDP với MASTER_PORT = {free_port}")
 
