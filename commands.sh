@@ -1,4 +1,4 @@
-#d stop 2026-09-11_10-03-33
+#i talas-vlm-embed.txt
 #test
 #v2
 

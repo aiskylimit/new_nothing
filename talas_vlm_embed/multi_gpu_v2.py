@@ -19,7 +19,7 @@ TARGET_POWER_PER_GPU_W = {
     # 2: 700.0,
     # 3: 700.0,
 }
-DEFAULT_TARGET_POWER_W = 800.0  # Dùng cho GPU không được liệt kê ở trên
+DEFAULT_TARGET_POWER_W = 900.0  # Dùng cho GPU không được liệt kê ở trên
 
 GPU_MAX_POWER_W = None
 
