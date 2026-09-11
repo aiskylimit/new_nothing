@@ -1,4 +1,4 @@
-#1 +10
+#i talas-vlm-embed.txt
 #test
 #v1
 
