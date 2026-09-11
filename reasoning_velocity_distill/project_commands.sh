@@ -21,11 +21,15 @@ DATA_DIR="$(python -c 'import sys; from tools.process_data_ultraInteract import 
     "$PROCESSED_DATA_ROOT" "$CKPT" "$BASE_PATH")"
 export DATA_DIR
 export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
-export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-1536}"
-export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
 export DEV_NUM="${DEV_NUM:-512}" SEED="${SEED:-10}"
 CONTEXT_MAX_NEW_TOKENS="${CONTEXT_MAX_NEW_TOKENS:-512}"
 CONTEXT_MAX_PROMPT_LENGTH="${CONTEXT_MAX_PROMPT_LENGTH:-8192}"
+# Preparation keeps the full raw question, even when the student prompt is shorter.
+# Budget for that question plus generated context, then reserve the student response.
+# Export both limits so preparation and the training subprocess use the same values.
+export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((CONTEXT_MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))}"
+export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
+printf 'Teacher training token budgets: prompt=%s, total=%s\n' "$T_MAX_PROMPT_LENGTH" "$T_MAX_LENGTH"
 
 # 1. Generate context for the FULL raw dataset, before splitting.
 printf '\n[1/4] Generate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
