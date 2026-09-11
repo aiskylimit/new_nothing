@@ -1,7 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/VoCuc/en_core_web_sm/resolve/main/en_core_web_sm.zip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm.zip
-
+#2
 #erank
 #v1
 
