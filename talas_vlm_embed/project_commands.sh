@@ -6,7 +6,6 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 
 bash set_base_model_path.sh
-ls -lh /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm-3.8.0-py3-none-any.whl
 # python fix_lib.py
 
 # #
@@ -81,17 +80,17 @@ ls -lh /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm-3.8.0-py
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
 # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.2 &
 # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
-CUDA_VISIBLE_DEVICES=4 bash scripts/train_distill_span_propose_llava_ov_cls.sh &
-CUDA_VISIBLE_DEVICES=5 bash scripts/train_distill_span_propose_llava_ov_cls_2.sh &
+# CUDA_VISIBLE_DEVICES=4 bash scripts/train_distill_span_propose_llava_ov_cls.sh &
+# CUDA_VISIBLE_DEVICES=5 bash scripts/train_distill_span_propose_llava_ov_cls_2.sh &
 
 wait
 
-# CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 0.1 10 1
+CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 0.5 9 0.02
 
 # =========================
 # 9. Copy JSON eval outputs
 # =========================
 
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v3}"
+# JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v3}"
 
-python json_filter.py ./MMEB-eval_outputs_v3 "${JSON_FILTER_DESTINATION}" --overwrite
+# python json_filter.py ./MMEB-eval_outputs_v3 "${JSON_FILTER_DESTINATION}" --overwrite
