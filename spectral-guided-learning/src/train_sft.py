@@ -6,39 +6,23 @@ only the loss mask in the dataset differs. Settings come from CLI flags or --con
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import torch
 import yaml
 from peft import LoraConfig, get_peft_model
-from torch.utils.data import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    Trainer,
+    TrainingArguments,
+)
 
 from data_collator import MaskedSFTCollator
+from masked_dataset import MaskedSFTDataset, VolumeCommitCallback
 from masked_loss import masked_cross_entropy
-
-
-class MaskedSFTDataset(Dataset):
-    """JSONL records of {input_ids, loss_mask} produced by build_masks.py."""
-
-    def __init__(self, path: str, max_seq_len: int | None = None):
-        with open(path) as handle:
-            self.records = [json.loads(line) for line in handle]
-        if max_seq_len is not None:
-            before = len(self.records)
-            self.records = [r for r in self.records if len(r["input_ids"]) <= max_seq_len]
-            dropped = before - len(self.records)
-            if dropped:
-                print(f"--max-seq-len {max_seq_len}: dropped {dropped}/{before} samples (too long to fit in GPU memory at batch size 1)")
-
-    def __len__(self) -> int:
-        return len(self.records)
-
-    def __getitem__(self, index: int) -> dict:
-        return self.records[index]
-
-    def supervised_token_count(self) -> int:
-        return sum(sum(record["loss_mask"]) for record in self.records)
+from training_utils import compensate_global_token_mean, set_training_seed
 
 
 class MaskedSFTTrainer(Trainer):
@@ -57,8 +41,20 @@ class MaskedSFTTrainer(Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None, **kwargs):
         labels = inputs.pop("labels")
+        token_weights = inputs.pop("loss_weights", None)
         outputs = model(**inputs)
-        loss = masked_cross_entropy(outputs.logits, labels, denominator=num_items_in_batch)
+        loss = masked_cross_entropy(
+            outputs.logits, labels, denominator=num_items_in_batch, token_weights=token_weights
+        )
+        # ``num_items_in_batch`` is a token count gathered across DDP ranks.  Gradients are
+        # averaged by DDP, so mirror Trainer.compute_loss's compensation and recover the
+        # global sum/Z objective instead of shrinking it by world size.
+        loss = compensate_global_token_mean(
+            loss,
+            average_tokens_across_devices=self.args.average_tokens_across_devices,
+            num_items_in_batch=num_items_in_batch,
+            num_processes=self.accelerator.num_processes,
+        )
         return (loss, outputs) if return_outputs else loss
 
 
@@ -109,6 +105,11 @@ def main() -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--logging-steps", type=int)
     parser.add_argument(
+        "--metrics-log",
+        help="write the full training metric history (trainer.state.log_history: per-step loss, "
+        "grad_norm, learning_rate, epoch + final summary) to this JSON file after training",
+    )
+    parser.add_argument(
         "--deepspeed-config",
         help="path to a DeepSpeed json config (e.g. configs/deepspeed/ds_config_zero2_offload.json); "
         "batch size/grad accum/bf16 fields there are \"auto\", filled in from the flags above. "
@@ -126,6 +127,11 @@ def main() -> None:
     parser.add_argument("--save-strategy", choices=["epoch", "steps", "no"])
     parser.add_argument("--save-steps", type=int, help="interval when --save-strategy=steps")
     parser.add_argument("--save-total-limit", type=int)
+    parser.add_argument(
+        "--resume", action=argparse.BooleanOptionalAction,
+        help="resume from the last checkpoint in --output-dir if one exists (else start fresh); "
+        "pair with per-epoch volume commits so an interrupted run continues instead of restarting",
+    )
     # LoRA (optional): trains low-rank adapters instead of full weights. Merged back into the
     # base model before saving, so output_dir is a normal full checkpoint either way.
     parser.add_argument("--use-lora", action=argparse.BooleanOptionalAction)
@@ -155,11 +161,13 @@ def main() -> None:
         "attn_implementation": args.attn_implementation,
         "seed": args.seed,
         "logging_steps": args.logging_steps,
+        "metrics_log": args.metrics_log,
         "deepspeed_config": args.deepspeed_config,
         "max_seq_len": args.max_seq_len,
         "save_strategy": args.save_strategy,
         "save_steps": args.save_steps,
         "save_total_limit": args.save_total_limit,
+        "resume": args.resume,
         "use_lora": args.use_lora,
         "lora_merge": args.lora_merge,
         "lora_r": args.lora_r,
@@ -173,6 +181,9 @@ def main() -> None:
     if missing:
         parser.error(f"missing required settings (pass via --config or CLI flags): {missing}")
 
+    # Trainer sets this later in its constructor, which is too late for LoRA's random
+    # adapter initialization.  Do it before loading or wrapping the model.
+    set_training_seed(config.get("seed", 42))
     tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
     dataset = MaskedSFTDataset(config["data_path"], max_seq_len=config.get("max_seq_len"))
 
@@ -209,6 +220,13 @@ def main() -> None:
         model.enable_input_require_grads()
         model.print_trainable_parameters()
 
+    # On Modal, commit the volume after each epoch's save so an interrupted run keeps finished epochs.
+    callbacks = []
+    commit_volume = os.environ.get("MODAL_COMMIT_VOLUME")
+    if commit_volume:
+        callbacks.append(VolumeCommitCallback(commit_volume))
+        print(f"per-epoch volume commits enabled (volume: {commit_volume})")
+
     trainer = MaskedSFTTrainer(
         model=model,
         args=build_training_arguments(config),
@@ -217,8 +235,55 @@ def main() -> None:
         # lets Trainer write tokenizer files into every checkpoint-N/, not just output_dir at the
         # end — otherwise intermediate checkpoints aren't loadable by vLLM (evaluate.py) on their own.
         processing_class=tokenizer,
+        callbacks=callbacks,
     )
-    result = trainer.train()
+
+    # --resume: pick up the last checkpoint in output_dir if one is present (a re-run after a crash),
+    # otherwise start fresh. Guarded so a first run with an empty/absent output_dir doesn't error.
+    resume_from = None
+    if config.get("resume"):
+        from transformers.trainer_utils import get_last_checkpoint
+
+        out_dir = config["output_dir"]
+        last = get_last_checkpoint(out_dir) if os.path.isdir(out_dir) else None
+        if last:
+            print(f"--resume: continuing from {last}")
+            resume_from = last
+        else:
+            print("--resume: no existing checkpoint found, starting fresh")
+
+    result = trainer.train(resume_from_checkpoint=resume_from)
+
+    # Persist every logged metric (per-step loss/grad_norm/lr/epoch + the final train_* summary)
+    # to a standalone JSON so the full training curve survives independently of the stdout log.
+    if config.get("metrics_log"):
+        metrics_path = Path(config["metrics_log"])
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        metrics_path.write_text(
+            json.dumps(
+                {
+                    "config": {
+                        "model_name": config["model_name"],
+                        "data_path": config["data_path"],
+                        "epochs": config["epochs"],
+                        "learning_rate": config["learning_rate"],
+                        "min_learning_rate": config.get("min_learning_rate"),
+                        "per_device_batch_size": config["per_device_batch_size"],
+                        "gradient_accumulation_steps": config["gradient_accumulation_steps"],
+                        "effective_batch_size": config["per_device_batch_size"]
+                        * config["gradient_accumulation_steps"],
+                        "warmup_ratio": config.get("warmup_ratio"),
+                        "seed": config.get("seed", 42),
+                        "use_lora": bool(config.get("use_lora")),
+                    },
+                    "final_metrics": result.metrics,
+                    "log_history": trainer.state.log_history,
+                },
+                indent=2,
+            )
+        )
+        print(f"metric history ({len(trainer.state.log_history)} entries) -> {metrics_path}")
+
     if config.get("use_lora") and config.get("lora_merge", True):
         # merge adapters into the base weights so output_dir is a normal full checkpoint,
         # loadable by evaluate.py/vLLM exactly like a non-LoRA run.

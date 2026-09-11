@@ -18,9 +18,13 @@ dependencies = [
     "numpy>=2.0,<2.5",
     "pandas>=2.2",
     "pyarrow",
+    "matplotlib",
     "pyyaml",
     "tqdm",
-    "math-verify",
+    # P-ALIGN's grader: math_verify at their pinned version, OR-ed with oat_math_grader.
+    # oat_math_grader is imported by their evaluation.py but absent from their requirements
+    # and not resolvable from PyPI -- src/palign_grader.py reports when it is missing.
+    "math-verify==0.8.0",
     "json-repair",
     "pytest",
 ]

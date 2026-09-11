@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from data_collator import MaskedSFTCollator
 from masked_loss import IGNORE_INDEX, masked_cross_entropy
+from training_utils import compensate_global_token_mean, set_training_seed
 
 
 def _random_batch(batch_size=2, seq_len=12, vocab=17, seed=0):
@@ -66,6 +67,27 @@ def test_explicit_denominator_overrides_batch_count():
     )
 
 
+def test_uniform_token_weights_recover_the_spectral_loss_exactly():
+    logits, labels = _random_batch()
+    labels[:, 7:] = IGNORE_INDEX
+    weights = (labels != IGNORE_INDEX).float()
+    assert torch.allclose(
+        masked_cross_entropy(logits, labels, token_weights=weights),
+        masked_cross_entropy(logits, labels),
+        atol=1e-6,
+    )
+
+
+def test_token_weights_redistribute_loss_without_changing_denominator():
+    logits = torch.zeros(1, 4, 2)
+    labels = torch.tensor([[0, 0, 1, IGNORE_INDEX]])
+    weights = torch.tensor([[0.0, 2.0, 0.5, 0.0]])
+    # Both selected targets have CE=log(2), so the numerator has coefficient 2.5
+    # while Z remains the two selected tokens.
+    expected = 1.25 * torch.tensor(2.0).log()
+    assert torch.allclose(masked_cross_entropy(logits, labels, token_weights=weights), expected)
+
+
 def test_shared_denominator_makes_microbatches_sum_to_the_full_batch_loss():
     """Gradient accumulation: two microbatches under one Z must equal the single-batch loss."""
     logits, labels = _random_batch(batch_size=4, seq_len=10)
@@ -101,3 +123,32 @@ def test_collator_builds_labels_from_loss_mask_and_pads():
 def test_collator_rejects_mask_length_mismatch():
     with pytest.raises(ValueError):
         MaskedSFTCollator(pad_token_id=0)([{"input_ids": [1, 2, 3], "loss_mask": [1, 1]}])
+
+
+def test_collator_pads_optional_loss_weights():
+    batch = MaskedSFTCollator(pad_token_id=0)(
+        [
+            {"input_ids": [5, 6, 7], "loss_mask": [0, 1, 1], "loss_weights": [0.0, 0.5, 1.5]},
+            {"input_ids": [8, 9], "loss_mask": [0, 1], "loss_weights": [0.0, 1.0]},
+        ]
+    )
+    assert batch["loss_weights"].tolist() == [[0.0, 0.5, 1.5], [0.0, 1.0, 0.0]]
+
+
+def test_trainer_recovers_global_token_mean_under_ddp_averaging():
+    # The gathered global Z is 4 but this rank contributes two selected tokens. DDP
+    # averages gradients later, so a custom sum/global-Z loss must multiply by world size.
+    assert torch.allclose(
+        compensate_global_token_mean(
+            torch.tensor(0.5), average_tokens_across_devices=True,
+            num_items_in_batch=4, num_processes=2,
+        ),
+        torch.tensor(1.0),
+    )
+
+
+def test_training_seed_is_repeatable_before_adapter_construction():
+    set_training_seed(42)
+    first = torch.rand(5)
+    set_training_seed(42)
+    assert torch.equal(first, torch.rand(5))

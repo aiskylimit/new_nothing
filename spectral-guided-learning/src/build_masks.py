@@ -27,12 +27,18 @@ def emit_masked_dataset(records: list[dict], strengths: dict[int, list[float]], 
             else:
                 selected = select_steps_by_energy(strengths[record["id"]], threshold)
 
+            loss_mask = build_loss_mask(len(record["input_ids"]), step_spans, selected)
+            # Tokens past the response text are the turn's stop token, not a reasoning step:
+            # both arms must learn to emit it, so it is supervised regardless of selection.
+            for position in range(record["response_token_span"][1], len(loss_mask)):
+                loss_mask[position] = 1
+
             handle.write(
                 json.dumps(
                     {
                         "id": record["id"],
                         "input_ids": record["input_ids"],
-                        "loss_mask": build_loss_mask(len(record["input_ids"]), step_spans, selected),
+                        "loss_mask": loss_mask,
                     }
                 )
                 + "\n"

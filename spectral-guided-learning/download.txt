@@ -1,14 +1,15 @@
 #d
 #datasets
---hf-dataset VoCuc/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B /mnt/local/_data/@PROJECT@/s1K-1.1-DeepSeek-R1-Distill-Qwen-32B
+--hf-dataset simplescaling/s1K-1.1 /mnt/local/_data/@PROJECT@/s1K-1.1
+--hf-dataset GAIR/LIMO /mnt/local/_data/@PROJECT@/LIMO
 --hf-dataset math-ai/aime24 /mnt/local/_data/@PROJECT@/aime24
 --hf-dataset math-ai/aime25 /mnt/local/_data/@PROJECT@/aime25
 --hf-dataset HuggingFaceH4/MATH-500 /mnt/local/_data/@PROJECT@/MATH-500
 --hf-dataset AI-MO/aimo-validation-amc /mnt/local/_data/@PROJECT@/aimo-validation-amc
 #models
---hf Qwen/Qwen3-1.7B /mnt/local/_models/@PROJECT@/Qwen3-1.7B
---hf Qwen/Qwen3-4B /mnt/local/_models/@PROJECT@/Qwen3-4B
---hf Qwen/Qwen2.5-3B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-3B-Instruct
---hf Qwen/Qwen2.5-1.5B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-1.5B-Instruct
+--hf deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B /mnt/local/_models/@PROJECT@/DeepSeek-R1-Distill-Qwen-1.5B
+--hf deepseek-ai/DeepSeek-R1-Distill-Qwen-7B /mnt/local/_models/@PROJECT@/DeepSeek-R1-Distill-Qwen-7B
+--hf Qwen/Qwen2.5-7B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-7B-Instruct
+--hf Qwen/Qwen3-8B /mnt/local/_models/@PROJECT@/Qwen3-8B
 
 (this line and below are ignored)

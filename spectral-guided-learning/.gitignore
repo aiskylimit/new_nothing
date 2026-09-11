@@ -18,7 +18,10 @@ __pycache__/
 # tracking them here would create a broken gitlink instead of their actual files.
 P-ALIGN/
 Pru-CoT/
+SegmentSelectiveSFT/
 ThoughtFold/
 
 # transient run log at repo root (logs/ dir is already ignored)
 logs-data-prep.txt
+/_data/
+/_models/

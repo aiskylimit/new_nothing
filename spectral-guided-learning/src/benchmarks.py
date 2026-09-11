@@ -11,7 +11,9 @@ from datasets import load_dataset
 
 from answer_scoring import extract_boxed
 
-MATH_PROMPT = "{question}\n\nPlease reason step by step, and put your final answer within \\boxed{{}}.\n\n"
+# Instruction first, no separator, no trailing newline -- P-ALIGN/src/test.py builds its eval
+# prompt as f"Please reason step by step, and put your final answer within \boxed{{}}.{problem}".
+MATH_PROMPT = "Please reason step by step, and put your final answer within \\boxed{{}}.{question}"
 MCQ_PROMPT = (
     "{question}\n\n"
     "A) {a}\nB) {b}\nC) {c}\nD) {d}\n\n"
@@ -84,6 +86,18 @@ def load_amc12() -> list[dict]:
     return _math_records(rows, "problem", "answer")
 
 
+def load_amc23() -> list[dict]:
+    """math-ai/amc23: 40 problems (2023 AMC 12A/12B) -- the AMC set the long-CoT papers report."""
+    rows = load_dataset(_dataset_path("math-ai/amc23", "amc23"), split="test")
+    return _math_records(rows, "question", "answer")
+
+
+def load_minerva() -> list[dict]:
+    """math-ai/minervamath: 272 undergraduate quantitative-reasoning problems."""
+    rows = load_dataset(_dataset_path("math-ai/minervamath", "minervamath"), split="test")
+    return _math_records(rows, "question", "answer")
+
+
 def load_gpqa_diamond() -> list[dict]:
     rows = load_dataset(_dataset_path("Idavidrein/gpqa", "gpqa"), "gpqa_diamond", split="train")
     records = []
@@ -123,4 +137,6 @@ BENCHMARKS = {
     "olympiadbench": load_olympiadbench,
     "gpqa": load_gpqa_diamond,
     "amc12": load_amc12,
+    "amc23": load_amc23,
+    "minerva": load_minerva,
 }

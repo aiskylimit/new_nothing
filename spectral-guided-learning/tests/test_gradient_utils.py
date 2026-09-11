@@ -5,7 +5,14 @@ import pytest
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM
 
-from gradient_utils import analytic_hidden_gradients, capture_sequence_gradients, shift_for_causal_lm
+from gradient_utils import (
+    analytic_hidden_gradients,
+    analytic_hidden_gradients_and_entropies,
+    capture_sequence_gradients,
+    capture_sequence_gradients_and_entropies,
+    shift_for_causal_lm,
+)
+from gradient_capture import step_mean_entropies, to_gradient_rows
 
 
 @pytest.fixture(scope="module")
@@ -50,6 +57,38 @@ def test_chunking_does_not_change_result(tiny_model):
     single_chunk = capture_sequence_gradients(tiny_model, input_ids, (4, 20), chunk_size=1024)
     many_chunks = capture_sequence_gradients(tiny_model, input_ids, (4, 20), chunk_size=3)
     assert torch.allclose(single_chunk, many_chunks, atol=1e-6)
+
+
+def test_gradient_and_entropy_capture_reuses_the_same_causal_rows(tiny_model):
+    torch.manual_seed(3)
+    input_ids = torch.randint(0, 64, (1, 20))
+    gradients, entropies = capture_sequence_gradients_and_entropies(
+        tiny_model, input_ids, (4, 20), chunk_size=3
+    )
+    reference = capture_sequence_gradients(tiny_model, input_ids, (4, 20), chunk_size=3)
+    assert torch.allclose(gradients, reference, atol=1e-6)
+    assert entropies.shape == (16,)
+    assert torch.all(entropies >= 0)
+
+
+def test_captured_entropy_matches_the_direct_softmax_definition(tiny_model):
+    torch.manual_seed(4)
+    input_ids = torch.randint(0, 64, (1, 12))
+    hidden = tiny_model.model(input_ids=input_ids).last_hidden_state[0]
+    rows, targets = shift_for_causal_lm(hidden, input_ids[0], (4, 12))
+    _, entropies = analytic_hidden_gradients_and_entropies(
+        rows, targets, tiny_model.get_output_embeddings().weight, chunk_size=2
+    )
+    logits = tiny_model.lm_head(rows).float()
+    expected = -(torch.softmax(logits, -1) * torch.log_softmax(logits, -1)).sum(-1)
+    assert torch.allclose(entropies, expected, atol=1e-6)
+
+
+def test_step_entropy_aggregation_uses_response_relative_spans():
+    assert to_gradient_rows([(7, 9), (9, 12)], response_start=7) == [(0, 2), (2, 5)]
+    assert step_mean_entropies(
+        torch.tensor([1.0, 3.0, 2.0, 6.0, 5.0]), [(0, 2), (2, 5)]
+    ) == pytest.approx([2.0, 13 / 3])
 
 
 def test_hidden_states_are_post_norm_so_recomputed_logits_match(tiny_model):

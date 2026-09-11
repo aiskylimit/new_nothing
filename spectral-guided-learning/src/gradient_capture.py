@@ -16,7 +16,11 @@ import torch
 import yaml
 from transformers import AutoModelForCausalLM
 
-from gradient_utils import analytic_hidden_gradients, capture_sequence_gradients, shift_for_causal_lm
+from gradient_utils import (
+    analytic_hidden_gradients,
+    capture_sequence_gradients_and_entropies,
+    shift_for_causal_lm,
+)
 from segmentation import record_step_spans
 from spectral_utils import analyze_gradient_matrix
 
@@ -37,6 +41,16 @@ def load_records(path: str, limit: int | None) -> list[dict]:
 def to_gradient_rows(step_spans: list[tuple[int, int]], response_start: int) -> list[tuple[int, int]]:
     """Convert absolute token spans to row indices of the gradient matrix G."""
     return [(start - response_start, end - response_start) for start, end in step_spans]
+
+
+def step_mean_entropies(
+    token_entropies: torch.Tensor, step_spans: list[tuple[int, int]]
+) -> list[float]:
+    """Mean frozen-student predictive entropy for every response-relative step."""
+    return [
+        float(token_entropies[start:end].float().mean().item()) if end > start else 0.0
+        for start, end in step_spans
+    ]
 
 
 def verify_against_autograd(
@@ -61,6 +75,150 @@ def verify_against_autograd(
 
     analytic = analytic_hidden_gradients(rows, targets, model.get_output_embeddings().weight)
     return float((analytic - reference).abs().max().item())
+
+
+def run_capture(
+    model,
+    config: dict,
+    limit: int | None,
+    verify: bool,
+    num_shards: int,
+    shard_index: int,
+) -> None:
+    """Corpus capture loop against an already-loaded, eval-mode causal LM.
+
+    Split out of main() so the model-loading step stays independent of the capture loop itself.
+    """
+    device = config["device"]
+    records = load_records(config["data_path"], limit)
+    output_dir = Path(config["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sharded = num_shards > 1
+    if sharded:
+        records = records[shard_index::num_shards]
+        print(f"shard {shard_index}/{num_shards}: {len(records)} records assigned")
+
+    # Cast once for the whole corpus so the (V x d) matrix (V=151936 for Qwen3) isn't re-cast per sequence.
+    unembedding = model.get_output_embeddings().weight.float()
+
+    if verify and shard_index == 0:
+        for record in records[:3]:  # paper-fidelity check on 3 samples before the corpus run
+            input_ids = torch.tensor([record["input_ids"]], device=device)
+            span = tuple(record["response_token_span"])
+            deviation = verify_against_autograd(model, input_ids, span)
+            print(f"analytic vs autograd max|diff| = {deviation:.3e}")
+            assert deviation < 1e-2, "analytic gradient does not match autograd"
+
+    rows, started, computed, resumed = [], time.time(), 0, 0
+    grad_times, svd_times = [], []  # per-computed-sample; SVD isolated (paper omits its cost, R3)
+    for index, record in enumerate(records):
+        response_start, response_end = record["response_token_span"]
+        step_spans = record_step_spans(record)
+        npz_path = output_dir / f"{record['id']}.npz"
+
+        # Resume: reuse an existing .npz instead of recomputing, so an interrupted run restarts from N, not 0.
+        if npz_path.exists():
+            cached = np.load(npz_path)
+            # Old spectral checkpoints predate the IWC signal.  They remain valid for
+            # spectral-only training, but must be recomputed once before an IWC run.
+            if "step_entropies" in cached.files:
+                rows.append(
+                    {
+                        "id": record["id"],
+                        "k_star": int(cached["k_star"]),
+                        "n_response_tokens": response_end - response_start,
+                        "n_steps": len(step_spans),
+                        "step_strengths": [float(x) for x in cached["step_strengths"]],
+                        "step_entropies": [float(x) for x in cached["step_entropies"]],
+                    }
+                )
+                resumed += 1
+                continue
+            print(f"recomputing {record['id']}: cached spectrum has no IWC entropy signal")
+
+        input_ids = torch.tensor([record["input_ids"]], device=device)
+        sync_if_cuda(device)
+        grad_start = time.perf_counter()
+        gradient_matrix, token_entropies = capture_sequence_gradients_and_entropies(
+            model, input_ids, (response_start, response_end),
+            chunk_size=config["chunk_size"], unembedding=unembedding,
+        )
+        sync_if_cuda(device)
+        grad_times.append(time.perf_counter() - grad_start)
+
+        result = analyze_gradient_matrix(
+            gradient_matrix,
+            to_gradient_rows(step_spans, response_start),
+            energy_cutoff=config["energy_cutoff"],
+        )
+        entropies = step_mean_entropies(
+            token_entropies, to_gradient_rows(step_spans, response_start)
+        )
+        svd_times.append(result.svd_seconds)  # SVD wall time, cuda-synchronized inside
+        del gradient_matrix, token_entropies
+
+        # Write the .npz before appending the row: it's the durable progress unit the resume path above keys on.
+        np.savez_compressed(
+            npz_path,
+            k_star=result.k_star,
+            singular_values=result.singular_values.numpy(),
+            step_strengths=np.asarray(result.step_strengths, dtype=np.float32),
+            step_entropies=np.asarray(entropies, dtype=np.float32),
+        )
+        rows.append(
+            {
+                "id": record["id"],
+                "k_star": result.k_star,
+                "n_response_tokens": response_end - response_start,
+                "n_steps": len(step_spans),
+                "step_strengths": result.step_strengths,
+                "step_entropies": entropies,
+            }
+        )
+        computed += 1
+        if computed % 50 == 0:
+            elapsed = time.time() - started
+            print(f"{computed} computed (+{resumed} resumed, {index + 1}/{len(records)} seen), "
+                  f"{elapsed / computed:.2f}s/sample")
+
+    if resumed:
+        print(f"resumed {resumed} samples from existing npz; computed {computed} fresh")
+
+    if sharded:
+        print(f"shard {shard_index}/{num_shards} done ({len(rows)} rows) -- not writing "
+              f"{config['strengths_path']} from a partial shard. Once every shard has finished, "
+              f"rerun with --num-shards 1 (default) to merge: all .npz already exist, so that "
+              f"pass hits the resume path for every record and just rebuilds the full parquet.")
+        return
+
+    frame = pd.DataFrame(rows)
+    frame.to_parquet(config["strengths_path"])
+    print(f"wrote {len(frame)} rows -> {config['strengths_path']} (+ per-sample npz in {output_dir})")
+    print(f"runtime: {time.time() - started:.0f}s total, "
+          f"{(time.time() - started) / max(computed, 1):.2f}s/computed-sample")
+    if svd_times:  # timing summary — the paper never reports the SVD cost (R3)
+        total_grad, total_svd = sum(grad_times), sum(svd_times)
+        print(
+            f"gradient: mean={statistics.mean(grad_times) * 1e3:.0f}ms/sample "
+            f"median={statistics.median(grad_times) * 1e3:.0f}ms total={total_grad:.0f}s"
+        )
+        print(
+            f"SVD: mean={statistics.mean(svd_times) * 1e3:.0f}ms/sample "
+            f"median={statistics.median(svd_times) * 1e3:.0f}ms max={max(svd_times) * 1e3:.0f}ms "
+            f"total={total_svd:.0f}s  ({100 * total_svd / max(total_grad + total_svd, 1e-9):.0f}% of gradient+SVD)"
+        )
+    print(f"k* : mean={frame.k_star.mean():.1f} median={frame.k_star.median():.0f} max={frame.k_star.max()}")
+    ratio = (frame.k_star / frame.n_response_tokens).mean()
+    print(f"k*/T mean ratio = {ratio:.4f}  (low-rank premise holds if << 1)")
+
+    strengths = np.concatenate([np.asarray(row) for row in frame.step_strengths])
+    quantiles = np.quantile(strengths, [0.1, 0.5, 0.9])
+    print(
+        f"step strength: mean={strengths.mean():.4f} p10={quantiles[0]:.4f} "
+        f"median={quantiles[1]:.4f} p90={quantiles[2]:.4f} max={strengths.max():.4f}"
+    )
+    print(f"strength spread (p90/p10) = {quantiles[2] / max(quantiles[0], 1e-12):.1f}x  (flat => selection drops little)")
 
 
 def main() -> None:
@@ -107,132 +265,13 @@ def main() -> None:
     config.setdefault("device", "cuda")
     config.setdefault("attn_implementation", "sdpa")
 
-    device = config["device"]
     model = AutoModelForCausalLM.from_pretrained(
         config["model_name"],
         dtype=getattr(torch, config["dtype"]),
         attn_implementation=config["attn_implementation"],
-    ).to(device).eval()
+    ).to(config["device"]).eval()
 
-    records = load_records(config["data_path"], args.limit)
-    output_dir = Path(config["output_dir"])
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    sharded = args.num_shards > 1
-    if sharded:
-        records = records[args.shard_index :: args.num_shards]
-        print(f"shard {args.shard_index}/{args.num_shards}: {len(records)} records assigned")
-
-    # Cast once for the whole corpus so the (V x d) matrix (V=151936 for Qwen3) isn't re-cast per sequence.
-    unembedding = model.get_output_embeddings().weight.float()
-
-    if args.verify and args.shard_index == 0:
-        for record in records[:3]:  # paper-fidelity check on 3 samples before the corpus run
-            input_ids = torch.tensor([record["input_ids"]], device=device)
-            span = tuple(record["response_token_span"])
-            deviation = verify_against_autograd(model, input_ids, span)
-            print(f"analytic vs autograd max|diff| = {deviation:.3e}")
-            assert deviation < 1e-2, "analytic gradient does not match autograd"
-
-    rows, started, computed, resumed = [], time.time(), 0, 0
-    grad_times, svd_times = [], []  # per-computed-sample; SVD isolated (paper omits its cost, R3)
-    for index, record in enumerate(records):
-        response_start, response_end = record["response_token_span"]
-        step_spans = record_step_spans(record)
-        npz_path = output_dir / f"{record['id']}.npz"
-
-        # Resume: reuse an existing .npz instead of recomputing, so an interrupted run restarts from N, not 0.
-        if npz_path.exists():
-            cached = np.load(npz_path)
-            rows.append(
-                {
-                    "id": record["id"],
-                    "k_star": int(cached["k_star"]),
-                    "n_response_tokens": response_end - response_start,
-                    "n_steps": len(step_spans),
-                    "step_strengths": [float(x) for x in cached["step_strengths"]],
-                }
-            )
-            resumed += 1
-            continue
-
-        input_ids = torch.tensor([record["input_ids"]], device=device)
-        sync_if_cuda(device)
-        grad_start = time.perf_counter()
-        gradient_matrix = capture_sequence_gradients(
-            model, input_ids, (response_start, response_end),
-            chunk_size=config["chunk_size"], unembedding=unembedding,
-        )
-        sync_if_cuda(device)
-        grad_times.append(time.perf_counter() - grad_start)
-
-        result = analyze_gradient_matrix(
-            gradient_matrix,
-            to_gradient_rows(step_spans, response_start),
-            energy_cutoff=config["energy_cutoff"],
-        )
-        svd_times.append(result.svd_seconds)  # SVD wall time, cuda-synchronized inside
-        del gradient_matrix
-
-        # Write the .npz before appending the row: it's the durable progress unit the resume path above keys on.
-        np.savez_compressed(
-            npz_path,
-            k_star=result.k_star,
-            singular_values=result.singular_values.numpy(),
-            step_strengths=np.asarray(result.step_strengths, dtype=np.float32),
-        )
-        rows.append(
-            {
-                "id": record["id"],
-                "k_star": result.k_star,
-                "n_response_tokens": response_end - response_start,
-                "n_steps": len(step_spans),
-                "step_strengths": result.step_strengths,
-            }
-        )
-        computed += 1
-        if computed % 50 == 0:
-            elapsed = time.time() - started
-            print(f"{computed} computed (+{resumed} resumed, {index + 1}/{len(records)} seen), "
-                  f"{elapsed / computed:.2f}s/sample")
-
-    if resumed:
-        print(f"resumed {resumed} samples from existing npz; computed {computed} fresh")
-
-    if sharded:
-        print(f"shard {args.shard_index}/{args.num_shards} done ({len(rows)} rows) -- not writing "
-              f"{config['strengths_path']} from a partial shard. Once every shard has finished, "
-              f"rerun with --num-shards 1 (default) to merge: all .npz already exist, so that "
-              f"pass hits the resume path for every record and just rebuilds the full parquet.")
-        return
-
-    frame = pd.DataFrame(rows)
-    frame.to_parquet(config["strengths_path"])
-    print(f"wrote {len(frame)} rows -> {config['strengths_path']} (+ per-sample npz in {output_dir})")
-    print(f"runtime: {time.time() - started:.0f}s total, "
-          f"{(time.time() - started) / max(computed, 1):.2f}s/computed-sample")
-    if svd_times:  # timing summary — the paper never reports the SVD cost (R3)
-        total_grad, total_svd = sum(grad_times), sum(svd_times)
-        print(
-            f"gradient: mean={statistics.mean(grad_times) * 1e3:.0f}ms/sample "
-            f"median={statistics.median(grad_times) * 1e3:.0f}ms total={total_grad:.0f}s"
-        )
-        print(
-            f"SVD: mean={statistics.mean(svd_times) * 1e3:.0f}ms/sample "
-            f"median={statistics.median(svd_times) * 1e3:.0f}ms max={max(svd_times) * 1e3:.0f}ms "
-            f"total={total_svd:.0f}s  ({100 * total_svd / max(total_grad + total_svd, 1e-9):.0f}% of gradient+SVD)"
-        )
-    print(f"k* : mean={frame.k_star.mean():.1f} median={frame.k_star.median():.0f} max={frame.k_star.max()}")
-    ratio = (frame.k_star / frame.n_response_tokens).mean()
-    print(f"k*/T mean ratio = {ratio:.4f}  (low-rank premise holds if << 1)")
-
-    strengths = np.concatenate([np.asarray(row) for row in frame.step_strengths])
-    quantiles = np.quantile(strengths, [0.1, 0.5, 0.9])
-    print(
-        f"step strength: mean={strengths.mean():.4f} p10={quantiles[0]:.4f} "
-        f"median={quantiles[1]:.4f} p90={quantiles[2]:.4f} max={strengths.max():.4f}"
-    )
-    print(f"strength spread (p90/p10) = {quantiles[2] / max(quantiles[0], 1e-12):.1f}x  (flat => selection drops little)")
+    run_capture(model, config, args.limit, args.verify, args.num_shards, args.shard_index)
 
 
 if __name__ == "__main__":

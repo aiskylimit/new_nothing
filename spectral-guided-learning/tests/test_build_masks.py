@@ -8,14 +8,19 @@ from build_masks import emit_masked_dataset, sweep_thresholds
 
 
 def _record(record_id: int, step_lengths: list[int]) -> dict:
-    """A record whose steps are each `length` tokens long, back to back, no prompt."""
+    """A record whose steps are each `length` tokens long, back to back, no prompt.
+
+    Mirrors data_prep's schema: one stop token trails the response text, so input_ids runs
+    one past response_token_span.
+    """
     spans, cursor = [], 0
     for length in step_lengths:
         spans.append({"token_start": cursor, "token_end": cursor + length})
         cursor += length
     return {
         "id": record_id,
-        "input_ids": list(range(cursor)),
+        "input_ids": list(range(cursor + 1)),
+        "response_token_span": [0, cursor],
         "steps": spans,
     }
 
@@ -64,4 +69,24 @@ def test_sweep_and_emit_agree_on_the_same_threshold(tmp_path):
     assert swept["step_drop_mean"] == emitted_stats["step_drop"]
 
     written = json.loads(output_path.read_text().strip())
-    assert sum(written["loss_mask"]) == 30 - emitted_stats["n_tokens_dropped"]
+    # 30 response tokens minus the dropped ones, plus the always-supervised stop token
+    assert sum(written["loss_mask"]) == 30 - emitted_stats["n_tokens_dropped"] + 1
+
+
+def test_stop_token_is_supervised_in_both_arms(tmp_path):
+    """The trailing stop token must be supervised whether or not its step was selected."""
+    records = [_record(0, [10, 10, 10])]
+    strengths = {0: [3.0, 2.0, 1.0]}
+
+    vanilla = tmp_path / "train-vanilla.jsonl"
+    spectral = tmp_path / "train-spectral.jsonl"
+    emit_masked_dataset(records, strengths, None, vanilla)
+    emit_masked_dataset(records, strengths, 0.4, spectral)
+
+    masks = {}
+    for name, path in (("vanilla", vanilla), ("spectral", spectral)):
+        masks[name] = json.loads(path.read_text())["loss_mask"]
+        assert masks[name][-1] == 1, f"{name} does not supervise the stop token"
+
+    # the mask must still be what separates the two arms
+    assert sum(masks["spectral"]) < sum(masks["vanilla"])

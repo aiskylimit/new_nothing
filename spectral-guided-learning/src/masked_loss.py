@@ -19,6 +19,7 @@ def masked_cross_entropy(
     logits: torch.Tensor,
     labels: torch.Tensor,
     denominator: torch.Tensor | int | None = None,
+    token_weights: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Cross-entropy over unmasked positions only, normalized by supervised-token count.
 
@@ -28,6 +29,8 @@ def masked_cross_entropy(
         denominator: Z to divide the summed loss by. Defaults to this batch's own
             supervised-token count; pass a wider count to keep gradient-accumulation
             microbatches on one common normalizer.
+        token_weights: optional non-negative coefficients aligned with unshifted labels.
+            They redistribute loss over selected tokens, but do not change Z.
 
     Returns:
         Scalar loss.
@@ -35,12 +38,25 @@ def masked_cross_entropy(
     shift_logits = logits[:, :-1].float()
     shift_labels = labels[:, 1:]
 
-    token_loss = F.cross_entropy(
-        shift_logits.reshape(-1, shift_logits.size(-1)),
-        shift_labels.reshape(-1),
-        ignore_index=IGNORE_INDEX,
-        reduction="sum",
-    )
+    if token_weights is None:
+        token_loss = F.cross_entropy(
+            shift_logits.reshape(-1, shift_logits.size(-1)),
+            shift_labels.reshape(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="sum",
+        )
+    else:
+        if token_weights.shape != labels.shape:
+            raise ValueError("token_weights must have the same shape as labels")
+        if not torch.isfinite(token_weights).all() or (token_weights < 0).any():
+            raise ValueError("token_weights must be finite and non-negative")
+        per_token_loss = F.cross_entropy(
+            shift_logits.reshape(-1, shift_logits.size(-1)),
+            shift_labels.reshape(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="none",
+        ).view_as(shift_labels)
+        token_loss = (per_token_loss * token_weights[:, 1:].to(per_token_loss.dtype)).sum()
 
     if denominator is None:
         denominator = (shift_labels != IGNORE_INDEX).sum()

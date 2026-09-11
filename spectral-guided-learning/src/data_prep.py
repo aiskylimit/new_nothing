@@ -18,7 +18,9 @@ from transformers import AutoTokenizer
 
 from segmentation import encode_with_offsets, step_token_spans
 
-PROMPT_TEMPLATE = "{problem}\n\nPlease reason step by step, and put your final answer within \\boxed{{}}.\n\n"
+# Must stay byte-identical to benchmarks.MATH_PROMPT so the student sees the same instruction
+# at train and eval time; the shape is P-ALIGN's (instruction first, no separator).
+PROMPT_TEMPLATE = "Please reason step by step, and put your final answer within \\boxed{{}}.{problem}"
 SHUFFLE_BUFFER = 5_000
 
 
@@ -39,6 +41,22 @@ def build_prompt(tokenizer, problem: str, chat_template: bool, enable_thinking: 
     )
 
 
+def reconcile_thinking_markers(prompt: str, response: str) -> str:
+    """Never let the response open a thinking block the prompt did not open.
+
+    s1K-1.1 responses carry their own `<think>` wrapper, but templates differ in what they
+    leave open: R1-Distill opens `<think>` (so the response must only close it), while Qwen3
+    with enable_thinking=False emits a closed empty block and Qwen2.5-Instruct emits nothing
+    (so the response reasons in plain prose, matching P-ALIGN Table 8). Keyed on the rendered
+    prompt rather than the model name, and applied to every track, so the supervision format
+    cannot silently differ between two students the comparison treats as equivalent.
+    """
+    body = response.lstrip()
+    if prompt.rstrip().endswith("<think>"):
+        return body[len("<think>") :].lstrip("\n") if body.startswith("<think>") else response
+    return body.replace("<think>", "", 1).replace("</think>", "", 1).lstrip("\n")
+
+
 def build_record(
     tokenizer, problem: str, response: str, max_tokens: int,
     chat_template: bool = False, enable_thinking: bool = True,
@@ -55,18 +73,24 @@ def build_record(
     response = unicodedata.normalize("NFC", response)
 
     prompt = build_prompt(tokenizer, problem, chat_template, enable_thinking)
+    response = reconcile_thinking_markers(prompt, response)
     prompt_ids = tokenizer(prompt, add_special_tokens=False)["input_ids"]
     response_ids, token_starts = encode_with_offsets(tokenizer, response)
     if len(prompt_ids) + len(response_ids) > max_tokens:
         return None
 
     step_spans = step_token_spans(response, token_starts, offset=len(prompt_ids))
-    input_ids = prompt_ids + response_ids
+    # The stop token has to be part of the target, or the model is only ever supervised to
+    # continue past its final answer and never to end the turn. It sits outside
+    # response_token_span (which stays text-only so step spans still round-trip) and outside
+    # every step span, so build_masks supervises it separately in both arms.
+    stop_ids = [tokenizer.eos_token_id] if tokenizer.eos_token_id is not None else []
+    input_ids = prompt_ids + response_ids + stop_ids
     return {
         "prompt": prompt,
         "response": response,
         "input_ids": input_ids,
-        "response_token_span": [len(prompt_ids), len(input_ids)],
+        "response_token_span": [len(prompt_ids), len(prompt_ids) + len(response_ids)],
         "steps": [{"token_start": start, "token_end": end} for start, end in step_spans],
         "n_tokens": len(input_ids),
     }
@@ -107,7 +131,17 @@ def iter_samples(config: dict):
             # write-up}", just missing the opening "<think>\n".
             response = f"<think>\n{row['generated_response'].strip()}"
         else:
-            response = row.get("solution") or row.get("response") or row.get("output")
+            # LIMO-style sources: bare reasoning `solution` + short final `answer`, no <think>
+            # markup. For a thinking student the response closes </think> and states the \boxed
+            # answer outside it; reconcile_thinking_markers handles the opener.
+            solution = row.get("solution") or row.get("response") or row.get("output")
+            answer = row.get("answer")
+            if solution and config.get("enable_thinking", True):
+                ans = str(answer).strip() if answer not in (None, "") else ""
+                tail = f"\n\nThe final answer is \\boxed{{{ans}}}." if ans else ""
+                response = f"{solution.strip()}\n</think>{tail}"
+            else:
+                response = solution
         if problem and response:
             yield problem, response
 

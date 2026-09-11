@@ -1,106 +1,49 @@
 #!/usr/bin/env bash
-# Pipeline driver. Two phases: TRAIN everything, then EVAL everything.
-#   TRAIN: data (shared) -> spectral -> vanilla -> prucot   (per method, per model)
-#   EVAL : only after all training is done; only checkpoints that trained OK.
-# Isolation: a failed block is recorded and the driver keeps going. A `data` failure skips that
-# model's later blocks; a training failure skips only that (method, model)'s eval.
-set -uo pipefail
+# Spectral experiment driver -- TRAIN everything, then EVAL, then compare.
+# Models: qwen25-7b, qwen3-8b (P-ALIGN's two student models). Dataset: s1K-1.1.
+# Comment out any line you don't want to run.
+#
+# The r1-qwen-1.5b / r1-qwen-7b scripts are still in scripts/ but are out of the driver:
+# they train on LIMO and are not part of the P-ALIGN comparison.
+set -euo pipefail
+BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${BASE}"
 
-BASE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODELS=(qwen3-1.7b qwen3-4b)
-METHODS=(spectral vanilla prucot)
-FAILED_TRACKS=()
-declare -A BROKEN      # model -> data prep failed
-declare -A TRAINED     # "<method>-<model>" -> checkpoint trained OK (eligible for eval)
+# ============================ TRAIN ============================
+# per model: data -> capture (spectral + entropy) -> masks -> four matched SFT arms.
+# IWC and IWC-Stable share exactly the spectral-selected token set; only weights differ.
 
-run_step() {
-  local label="$1"
-  shift
-  ( "$@" )
-  local status=$?
-  if [[ ${status} -eq 0 ]]; then
-    echo ">>> ${label}: OK"
-    return 0
-  fi
-  echo ">>> ${label}: FAILED (exit ${status}) -- continuing" >&2
-  FAILED_TRACKS+=("${label}")
-  return 1
-}
+scripts/data/data_qwen25-7b.sh
+scripts/capture/capture_qwen25-7b.sh
+scripts/masks/masks_qwen25-7b.sh
+bash scripts/masks/iwc_qwen25-7b.sh
+# scripts/spectral/spectral_qwen25-7b.sh
+# scripts/sft/sft_qwen25-7b.sh
+bash scripts/iwc/train_iwc.sh qwen25-7b iwc
+bash scripts/iwc/train_iwc.sh qwen25-7b iwc-stable
 
-# ---- training blocks (NO eval; each phase in order) ----
-prep() {
-  set -e
-  "${BASE_PATH}/scripts/qwen3/data/data_$1.sh"
-}
+scripts/data/data_qwen3-8b.sh
+scripts/capture/capture_qwen3-8b.sh
+scripts/masks/masks_qwen3-8b.sh
+bash scripts/masks/iwc_qwen3-8b.sh
+# scripts/spectral/spectral_qwen3-8b.sh
+# scripts/sft/sft_qwen3-8b.sh
+bash scripts/iwc/train_iwc.sh qwen3-8b iwc
+bash scripts/iwc/train_iwc.sh qwen3-8b iwc-stable
 
-spectral_train() {
-  set -e
-  "${BASE_PATH}/scripts/qwen3/data/capture_$1.sh"
-  "${BASE_PATH}/scripts/qwen3/data/masks_$1.sh"
-  "${BASE_PATH}/scripts/qwen3/spectral/spectral_$1.sh"
-}
+# ============================ EVAL =============================
+# only the iwc / iwc-stable checkpoints (vanilla/spectral training is commented out above)
 
-vanilla_train() {
-  set -e
-  "${BASE_PATH}/scripts/qwen3/sft/sft_$1.sh"
-}
+# scripts/eval/eval_qwen25-7b.sh
+# scripts/eval/eval_qwen25-7b.sh checkpoints/vanilla-qwen25-7b vanilla-qwen25-7b
+scripts/eval/eval_qwen25-7b.sh checkpoints/iwc-qwen25-7b iwc-qwen25-7b
+scripts/eval/eval_qwen25-7b.sh checkpoints/iwc-stable-qwen25-7b iwc-stable-qwen25-7b
 
-prucot_train() {
-  set -e
-  "${BASE_PATH}/scripts/qwen3/prucot/weight_$1.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/prune_$1.sh"
-  "${BASE_PATH}/scripts/qwen3/prucot/prucot_$1.sh"
-}
+# scripts/eval/eval_qwen3-8b.sh
+# scripts/eval/eval_qwen3-8b.sh checkpoints/vanilla-qwen3-8b vanilla-qwen3-8b
+scripts/eval/eval_qwen3-8b.sh checkpoints/iwc-qwen3-8b iwc-qwen3-8b
+scripts/eval/eval_qwen3-8b.sh checkpoints/iwc-stable-qwen3-8b iwc-stable-qwen3-8b
 
-# eval one (method, model). Default (no args) evaluates the spectral checkpoint.
-eval_ckpt() {
-  local method="$1" m="$2"
-  if [[ "${method}" == spectral ]]; then
-    "${BASE_PATH}/scripts/qwen3/eval/eval_$m.sh"
-  else
-    "${BASE_PATH}/scripts/qwen3/eval/eval_$m.sh" "${BASE_PATH}/checkpoints/${method}-$m" "${method}-$m"
-  fi
-}
-
-# ================= TRAIN PHASE =================
-echo "===== TRAIN PHASE ====="
-
-for m in "${MODELS[@]}"; do
-  run_step "data-${m}" prep "${m}" || BROKEN[$m]=1
-done
-
-for m in "${MODELS[@]}"; do
-  [[ -n "${BROKEN[$m]:-}" ]] && { echo ">>> spectral-train-${m}: SKIPPED (data failed)" >&2; continue; }
-  run_step "spectral-train-${m}" spectral_train "${m}" && TRAINED[spectral-$m]=1
-done
-
-for m in "${MODELS[@]}"; do
-  [[ -n "${BROKEN[$m]:-}" ]] && { echo ">>> vanilla-train-${m}: SKIPPED (data failed)" >&2; continue; }
-  run_step "vanilla-train-${m}" vanilla_train "${m}" && TRAINED[vanilla-$m]=1
-done
-
-# Pru-CoT baseline disabled for now -- uncomment this loop to re-enable (eval auto-includes it).
-# for m in "${MODELS[@]}"; do
-#   [[ -n "${BROKEN[$m]:-}" ]] && { echo ">>> prucot-train-${m}: SKIPPED (data failed)" >&2; continue; }
-#   run_step "prucot-train-${m}" prucot_train "${m}" && TRAINED[prucot-$m]=1
-# done
-
-# ================= EVAL PHASE =================
-echo "===== EVAL PHASE (all training complete) ====="
-
-for m in "${MODELS[@]}"; do
-  for method in "${METHODS[@]}"; do
-    if [[ -z "${TRAINED[${method}-$m]:-}" ]]; then
-      echo ">>> eval-${method}-${m}: SKIPPED (${method}-${m} did not train)" >&2
-      continue
-    fi
-    run_step "eval-${method}-${m}" eval_ckpt "${method}" "${m}"
-  done
-done
-
-python "${BASE_PATH}/src/compare_results.py" || echo ">>> compare_results.py failed" >&2
-
-if [[ ${#FAILED_TRACKS[@]} -gt 0 ]]; then
-  echo ">>> failed blocks: ${FAILED_TRACKS[*]}" >&2
-  exit 1
-fi
+# =========================== COMPARE ==========================
+# writes results/comparison-table.md and results/eval-summary.json
+python "${BASE}/src/compare_results.py"
