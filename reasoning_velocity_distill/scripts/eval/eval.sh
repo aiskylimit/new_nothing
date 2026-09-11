@@ -8,7 +8,7 @@ unset PYTHONPATH
 EVAL_VENV_PATH="${EVAL_VENV_PATH:-/mnt/local/uvenvs/reasoning-velocity-distill-eval}"
 PYTHON_BIN="${EVAL_PYTHON:-$EVAL_VENV_PATH/bin/python}"
 
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-4,5}"
+export CUDA_VISIBLE_DEVICES="${CUDA_DEVICES:-${CUDA_VISIBLE_DEVICES:-4,5}}"
 MODEL_PATH="${MODEL_PATH:-${CKPT:-$BASE_PATH/models/Qwen2.5_1.5B-Instruct}}"
 SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-rvd}"
 LORA_PATH="${LORA_PATH:-}"
@@ -19,11 +19,17 @@ MAX_MODEL_LENGTH="${EVAL_MAX_LENGTH:-8192}"
 MAX_GEN_TOKS="${EVAL_MAX_NEW_TOKENS:-5120}"
 MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-16}"
 
-TASKS_GENERAL="sciq,bbh_cot_fewshot"
-TASKS_CODE="mbpp_instruct"
-TASKS_MATH="gsm8k_cot,gsm_plus,minerva_math,mmlu_pro_math"
-TASKS_MMLU="mmlu_stem"
-ALL_TASKS="$TASKS_GENERAL,$TASKS_CODE,$TASKS_MATH,$TASKS_MMLU"
+TASK_SCIQ="sciq"
+TASK_BBH="bbh_cot_fewshot"
+TASK_MBPP="mbpp"
+TASK_MBPP_INSTRUCT="mbpp_instruct"
+TASK_GSM8K="gsm8k_cot"
+TASK_GSM_PLUS="gsm_plus"
+TASK_MINERVA="minerva_math"
+TASK_MMLU_PRO_MATH="mmlu_pro_math"
+TASK_MMLU="mmlu_stem"
+TASK_Hendrycks_Math="hendrycks_math"
+ALL_TASKS="$TASK_GSM8K,$TASK_MINERVA,$TASK_SCIQ,$TASK_BBH,$TASK_MMLU,$TASK_GSM_PLUS,$TASK_MMLU_PRO_MATH,$TASK_MBPP,$TASK_Hendrycks_Math"
 
 IFS=',' read -r -a GPU_LIST <<< "$CUDA_VISIBLE_DEVICES"
 DATA_PARALLEL_SIZE=${#GPU_LIST[@]}
@@ -61,6 +67,18 @@ BASE_ARGS=(
     --model_args "$MODEL_ARGS"
     --batch_size auto
     --log_samples
+    --apply_chat_template
+    --fewshot_as_multiturn
+    --output_path "$OUT/general"
+    --gen_kwargs "max_gen_toks=$MAX_GEN_TOKS,temperature=0.0"
+)
+
+BASE_ARGS_no_chat=(
+    --model vllm
+    --model_args "$MODEL_ARGS"
+    --batch_size auto
+    # --fewshot_as_multiturn
+    --log_samples
     --output_path "$OUT/general"
     --gen_kwargs "max_gen_toks=$MAX_GEN_TOKS,temperature=0.0"
 )
@@ -71,9 +89,20 @@ BASE_ARGS_CODE=(
     --model_args "$MODEL_ARGS"
     --batch_size auto
     --log_samples
+    --confirm_run_unsafe_code
     --output_path "$OUT/code"
     --gen_kwargs "max_gen_toks=$MAX_GEN_TOKS,temperature=0.0"
+)
+
+BASE_ARGS_CODE_1=(
+    --model vllm
+    --model_args "$MODEL_ARGS"
+    --batch_size auto
+    --log_samples
     --confirm_run_unsafe_code
+    --apply_chat_template
+    --output_path "$OUT/code"
+    --gen_kwargs "max_gen_toks=$MAX_GEN_TOKS,temperature=0.0"
 )
 
 # Math: no fewshot_as_multiturn.
@@ -82,6 +111,16 @@ BASE_ARGS_MATH=(
     --model_args "$MODEL_ARGS"
     --batch_size auto
     --log_samples
+    --output_path "$OUT/math"
+    --gen_kwargs "max_gen_toks=$MAX_GEN_TOKS,temperature=0.0"
+)
+
+BASE_ARGS_MATH_1=(
+    --model vllm
+    --model_args "$MODEL_ARGS"
+    --batch_size auto
+    --log_samples
+    --fewshot_as_multiturn
     --output_path "$OUT/math"
     --gen_kwargs "max_gen_toks=$MAX_GEN_TOKS,temperature=0.0"
 )
@@ -96,7 +135,21 @@ run_eval() {
     "$PYTHON_BIN" scripts/eval/local_lm_eval.py run --tasks "$tasks" "$@"
 }
 
-run_eval "$TASKS_GENERAL" "${BASE_ARGS[@]}"
-run_eval "$TASKS_CODE" "${BASE_ARGS_CODE[@]}"
-run_eval "$TASKS_MATH" "${BASE_ARGS_MATH[@]}"
-run_eval "$TASKS_MMLU" --num_fewshot 5 "${BASE_ARGS[@]}"
+
+run_eval "$TASK_GSM8K" "${BASE_ARGS[@]}"
+run_eval "$TASK_MINERVA" "${BASE_ARGS[@]}"
+run_eval "$TASK_SCIQ" "${BASE_ARGS[@]}"
+run_eval "$TASK_BBH" "${BASE_ARGS[@]}"
+run_eval "$TASK_MMLU" --num_fewshot 5 "${BASE_ARGS[@]}"
+run_eval "$TASK_GSM_PLUS" "${BASE_ARGS[@]}"
+run_eval "$TASK_MMLU_PRO_MATH" "${BASE_ARGS[@]}"
+
+# Code
+run_eval "$TASK_MBPP" "${BASE_ARGS_CODE[@]}"
+printf 'Run setting 2 for code\n'
+run_eval "$TASK_MBPP" "${BASE_ARGS_CODE_1[@]}"
+
+# Math
+run_eval "$TASK_Hendrycks_Math" "${BASE_ARGS_MATH[@]}"
+printf 'Run setting 2 for math\n'
+run_eval "$TASK_Hendrycks_Math" "${BASE_ARGS_MATH_1[@]}"

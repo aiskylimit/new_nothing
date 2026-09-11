@@ -11,6 +11,9 @@ import torch
 from torch.utils.data import Dataset
 
 from utils import print_rank
+from .privileged import build_privileged_teacher_input, DEFAULT_CONTEXT_TEMPLATE
+from .prepared_privileged import load_prepared_contexts
+from .records import get_response, get_references
 
 def _count_indexed_steps(response_ids, marker_ids):
     marker_count = 0
@@ -70,10 +73,7 @@ def _add_step_spans(sample, tokenizer, separator, response=None):
 
 
 def _references(record):
-    response = record.get("output", record.get("response"))
-    answers = response if isinstance(response, list) else [response]
-    if not answers or any(not isinstance(answer, str) or not answer.strip() for answer in answers):
-        raise ValueError("'output' or 'response' must contain nonempty text references")
+    answers = get_references(record)
     return [answer.replace("\r\n", "\n").replace("\r", "\n") for answer in answers]
 
 
@@ -95,9 +95,9 @@ def _pack_example(prompt_ids, response_ids, max_length, max_prompt_length, respo
 def encode_causal_example(record, tokenizer, max_length, max_prompt_length, separator="\n"):
     if not isinstance(record, dict):
         raise TypeError("Each JSONL record must be an object")
-    response = record.get("output", record.get("response"))
+    response = get_response(record)
     if not isinstance(response, str) or not response.strip():
-        raise ValueError("'output' or 'response' must be a nonempty string")
+        raise ValueError("'output', 'response' or 'generated_text' must be a nonempty string")
     response = response.replace("\r\n", "\n").replace("\r", "\n")
     if not isinstance(separator, str) or not separator:
         raise ValueError("step separator must be a nonempty string")
@@ -164,12 +164,17 @@ def _indexed_example(data, tokenizer, max_length, max_prompt_length, marker_ids,
 class LMTrainDataset(Dataset):
     def __init__(self, args, tokenizer, path, split, num=-1, ratio=1.0,
                  rng_sample=None, teacher_tokenizer=None, with_teacher=True,
-                 *, prefer_indexed=False):
+                 *, prefer_indexed=False, distill_mode=None, geometry=False):
         del rng_sample
         self.args = args
         self.tokenizer = tokenizer
         self.teacher_tokenizer = teacher_tokenizer or tokenizer
         self.with_teacher = with_teacher
+        self.distill_mode = distill_mode
+        self.needs_privileged_context = distill_mode == "privileged" or (
+            distill_mode is not None and with_teacher and getattr(args, "adaptive_on_policy", False))
+        self.prepared_privileged = self.needs_privileged_context and bool(getattr(args, "privileged_data_path", None))
+        self.geometry = geometry
         self.split = split
         self.separator = getattr(args, "step_separator", "\n\n")
         if not isinstance(self.separator, str) or not self.separator:
@@ -221,6 +226,12 @@ class LMTrainDataset(Dataset):
         total = len(self.lm_ctx) if self.lm_ctx is not None else len(self.raw)
         if self.lm_ctx is not None and self.raw and len(self.raw) != total:
             raise ValueError("JSONL references and indexed data must contain the same number of examples")
+        if self.prepared_privileged:
+            if len(self.raw) != total:
+                raise ValueError("Prepared privileged training requires full JSONL metadata alongside indexed data")
+            field = getattr(args, "privileged_context_field", "context")
+            contexts = load_prepared_contexts(args.privileged_data_path, self.raw, field)
+            self.raw = [dict(row, **{field: context}) for row, context in zip(self.raw, contexts)]
         self.num = min(int(total * ratio), num if num != -1 else total)
         if self.num == 0:
             raise ValueError(f"No examples selected from {source}")
@@ -232,6 +243,9 @@ class LMTrainDataset(Dataset):
             for index, record in enumerate(self.raw):
                 canonical = dict(record, output=self.answers[index][0])
                 student = encode_causal_example(canonical, tokenizer, self.max_length, self.max_prompt_length, self.separator)
+                if self.distill_mode is not None:
+                    self.samples.append(self._prepare_distillation_pair(student, record))
+                    continue
                 teacher = None
                 if with_teacher:
                     teacher = encode_causal_example(canonical, self.teacher_tokenizer, args.t_max_length, args.t_max_prompt_length, self.separator)
@@ -242,6 +256,31 @@ class LMTrainDataset(Dataset):
 
     def __len__(self):
         return self.num
+
+    def _prepare_distillation_pair(self, student, record):
+        # Explicit KD modes use the exact student canonical trajectory. Separate
+        # teacher indexed answers/length limits must not change its prefixes.
+        student["step_spans"] = []
+        student["marker_count"] = 0
+        if self.geometry:
+            indexed_response = None
+            if self.lm_ctx is not None and record:
+                indexed_response = get_response(record)
+                if isinstance(indexed_response, list):
+                    indexed_response = indexed_response[0]
+            _add_step_spans(student, self.tokenizer, self.separator, indexed_response)
+        if self.needs_privileged_context:
+            if not record:
+                raise ValueError("Privileged indexed training requires matching JSONL metadata")
+            ids, count = build_privileged_teacher_input(
+                record, self.teacher_tokenizer,
+                getattr(self.args, "privileged_context_field", "context"),
+                getattr(self.args, "privileged_context_template", DEFAULT_CONTEXT_TEMPLATE),
+                self.args.t_max_prompt_length,
+            )
+            student["privileged_prompt_ids"] = ids
+            student["privileged_context_tokens"] = count
+        return student, student if self.with_teacher else None
 
     def __getitem__(self, index):
         if index < 0:
@@ -257,6 +296,8 @@ class LMTrainDataset(Dataset):
             self.student_marker_ids, response, marker_count,
             prompt_only=getattr(self.args, "only_prompt", False),
         )
+        if self.distill_mode is not None:
+            return self._prepare_distillation_pair(student, self.raw[index] if self.raw else None)
         teacher = None
         if self.with_teacher:
             if self.t_lm_ctx is not None:
@@ -277,7 +318,7 @@ class LMTrainDataset(Dataset):
             # offsets relative to the tokens already written by preprocessing.
             indexed_response = None
             if self.raw:
-                indexed_response = self.raw[index].get("output", self.raw[index].get("response"))
+                indexed_response = get_response(self.raw[index])
                 if isinstance(indexed_response, list):
                     indexed_response = indexed_response[0]
             _add_step_spans(student, self.tokenizer, self.separator, indexed_response)
@@ -311,6 +352,11 @@ class LMTrainDataset(Dataset):
             if "position_ids" in model_data:
                 model_data["position_ids"][index, :size] = torch.arange(size)
         no_model_data["loss_mask"] = (no_model_data["label"] != -100).float()
+        if self.needs_privileged_context:
+            no_model_data["privileged_prompt_ids"] = [sample["privileged_prompt_ids"] for sample in samples]
+            no_model_data["privileged_context_tokens"] = torch.tensor(
+                [sample["privileged_context_tokens"] for sample in samples], dtype=torch.long
+            )
         return model_data, no_model_data
 
     def collate(self, samples):

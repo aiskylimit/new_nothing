@@ -3,6 +3,7 @@ import torch
 import os
 from torch.utils.data import Dataset
 from .distributed_indexed import DistributedMMapIndexedDataset
+from .records import get_references
 
 from torch.distributed import get_rank, get_world_size
 from utils import print_rank
@@ -34,11 +35,11 @@ class PromptDataset(Dataset):
         if os.path.exists(os.path.join(data_path, f"{self.split}_{self.args.model_type}.jsonl")):
             with open(os.path.join(data_path, f"{self.split}_{self.args.model_type}.jsonl")) as f:
                 self.raw = [json.loads(line) for line in f.readlines()]
-                self.answers = [x["output"] if isinstance(x["output"], list) else [x["output"]] for x in self.raw]
+                self.answers = [get_references(x) for x in self.raw]
         elif os.path.exists(os.path.join(data_path, f"{split}.jsonl")):
             with open(os.path.join(data_path, f"{split}.jsonl")) as f:
                 self.raw = [json.loads(line) for line in f.readlines()]
-                self.answers = [x["output"] if isinstance(x["output"], list) else [x["output"]] for x in self.raw]
+                self.answers = [get_references(x) for x in self.raw]
         else:
             print_rank("WARNING: No answers exist")
             
@@ -64,12 +65,7 @@ class PromptDataset(Dataset):
         for d in tqdm(data_origin, disable=(get_rank() != 0)):
             prompt = d["prompt"].replace("<n>", "\n")
             prompt_ids = self.tokenizer.encode(prompt)
-            output_ids = None
-            if "output" in d:
-                if isinstance(d["output"], list):
-                    output_ids = self.tokenizer.encode(d["output"][0])
-                else:
-                    output_ids = self.tokenizer.encode(d["output"])
+            output_ids = self.tokenizer.encode(get_references(d)[0])
             data.append({
                 "prompt_ids": prompt_ids,
                 "output_ids": output_ids[:self.max_length - self.max_prompt_length]

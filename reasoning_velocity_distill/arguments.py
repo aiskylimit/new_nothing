@@ -192,11 +192,42 @@ def add_distillation_args(parser: argparse.ArgumentParser):
     group.add_argument("--gram-weight", type=float, default=1.0)
     group.add_argument("--logit-weight", type=float, default=1.0)
     group.add_argument("--distill-top-k", type=int, default=32,
-                       help="Teacher vocabulary candidates per response prediction position")
-    group.add_argument("--distill-temperature", type=float, default=1.0)
+                       help="Teacher top-k vocabulary candidates per response position (RVD and all v2 modes; at least 2 for v2)")
+    group.add_argument("--distill-temperature", type=float, default=1.0,
+                       help="Temperature for top-k distillation (RVD and all v2 modes)")
 
-    # Retain this flag only to reject obsolete on-policy invocations clearly.
+    # Explicit modes belong to finetune_v2; the original RVD entrypoint is unchanged.
+    group.add_argument("--distill-mode", choices=["off_policy", "on_policy", "privileged"], default=None)
+    group.add_argument("--kd-loss", choices=["fkl", "rkl", "sfkl", "srkl", "jsd", "tvd"], default=None)
+    group.add_argument("--skew-alpha", type=float, default=0.1)
+    group.add_argument("--off-policy-geometry", action="store_true",
+                       help="Enable existing magnitude/Gram losses only for off_policy")
+    group.add_argument("--disable-lm-loss", action="store_true",
+                       help="Optimize distillation alone, without kd-ratio scaling")
+    group.add_argument("--privileged-trajectory", choices=["canonical", "student"], default="canonical")
+    group.add_argument("--privileged-data-path", default=None,
+                       help="Full JSONL from prepare_privileged_data.py; uses cached teacher context with unchanged canonical responses")
+    group.add_argument("--privileged-context-field", default="context",
+                       help="JSONL field containing the context appended to the privileged teacher prompt")
+    group.add_argument("--privileged-context-template",
+                       default="\n\nAdditional context:\n{privileged_context}\n\n")
+    # Legacy alias for on_policy in finetune_v2.
     group.add_argument("--student-gen", action="store_true", help=argparse.SUPPRESS)
+
+    from distillm.adaptive import AdaptiveConfig
+    defaults = AdaptiveConfig()
+    group.add_argument("--adaptive-on-policy", action="store_true",
+                       help="Route each finetune_v2 micro-batch between OFF/PRIV and ON")
+    group.add_argument("--progress-signal", choices=["loss", "metric", "either"],
+                       default=defaults.progress_signal)
+    group.add_argument("--scheduler-metric", choices=["exact_match", "rougeL"], default="exact_match",
+                       help="Existing dev generation metric (0-100, higher is better); requires --eval-gen")
+    for name in ("rho_min", "rho_max", "rho_increment", "loss_improvement_threshold",
+                 "metric_improvement_threshold", "eval_ema_beta", "off_ema_beta",
+                 "off_min_absorption", "off_plateau_threshold"):
+        group.add_argument("--" + name.replace("_", "-"), type=float, default=getattr(defaults, name))
+    for name in ("min_evals_between_rho_updates", "off_transition_patience"):
+        group.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
 
     return parser
 

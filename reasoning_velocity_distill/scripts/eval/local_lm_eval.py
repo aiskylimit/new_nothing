@@ -29,6 +29,7 @@ TASK_DATASETS = {
     "gsm8k_cot": {"openai/gsm8k"},
     "gsm_plus": {"qintongli/GSM-Plus"},
     "minerva_math": {"EleutherAI/hendrycks_math"},
+    "mbpp": {"google-research-datasets/mbpp"},
     "mbpp_instruct": {"google-research-datasets/mbpp"},
     "sciq": {"allenai/sciq"},
     "mmlu_stem": {"cais/mmlu"},
@@ -153,7 +154,7 @@ def check_local_tasks(argv: list[str]) -> None:
 
     for repo_id in sorted(datasets_for_tasks(tasks)):
         require_path(local_dataset_path(repo_id), f"dataset mirror for {repo_id}")
-    if "mbpp_instruct" in tasks:
+    if {"mbpp", "mbpp_instruct"}.intersection(tasks):
         metric_dir = eval_data_root() / "code_eval"
         require_path(metric_dir / "code_eval.py", "local code_eval metric")
         require_path(metric_dir / "execute.py", "local code_eval executor")

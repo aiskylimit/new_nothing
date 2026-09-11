@@ -1,87 +1,52 @@
+"""Uniform CPU replay of generated trajectories and their paired metadata."""
+
+import copy
 import random
+from collections import deque
+
 import torch
-import os
-import json
-import pickle
-import numpy as np
-from torch.utils.data import Dataset
-
-from torch.distributed import get_rank, get_world_size, barrier
-from utils import print_rank
-from utils import save_rank
-
-from collections import namedtuple, deque
+from torch.nn.utils.rnn import pad_sequence
 
 
 class ReplayBuffer:
     def __init__(self, args):
-        self.args = args
         self.replay_memory = deque(maxlen=args.capacity)
         self.bs = args.batch_size
-        if args.model_type in ["gpt2", "llama"]:
-            self.data = namedtuple("Generation", \
-               field_names=["input_ids", "attention_mask", "position_ids", "label", "loss_mask", "prompt_attention_mask"])
-        else:
-            self.data = namedtuple("Generation", \
-               field_names=["input_ids", "attention_mask", "label", "loss_mask", "prompt_attention_mask"])
-            
+        self.pad_id = getattr(args, "pad_token_id", 0)
+
     def __len__(self):
         return len(self.replay_memory)
-    
-    def sample(self):
-        data = random.sample(self.replay_memory, k=self.bs)
-        input_ids = torch.stack([d.input_ids for d in data], dim=0)
-        attention_mask = torch.stack([d.attention_mask for d in data], dim=0)
-        label = torch.stack([d.label for d in data], dim=0)
-        loss_mask = torch.stack([d.loss_mask for d in data], dim=0)
-        prompt_attention_mask = torch.stack([d.prompt_attention_mask for d in data], dim=0)
-        
-        if self.args.model_type in ["gpt2", "llama"]:
-            position_ids = torch.stack([d.position_ids for d in data], dim=0)
-            model_data = {
-                "input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids
-            }
-        else:
-            model_data = {
-                "input_ids": input_ids, "attention_mask": attention_mask
-            }
-            
-        no_model_data = {
-            "label": label, "loss_mask": loss_mask
-        }
-        gen_data = {"attention_mask": prompt_attention_mask}
-        
+
+    def move_to_memory(self, model_data, no_model_data, gen_data=None):
+        for index in range(model_data["input_ids"].shape[0]):
+            entry = []
+            for batch in (model_data, no_model_data, gen_data or {}):
+                entry.append({key: (value[index].detach().cpu().clone()
+                                   if isinstance(value, torch.Tensor)
+                                   else copy.deepcopy(value[index]))
+                              for key, value in batch.items()})
+            self.replay_memory.append(entry)
+
+    def sample(self, batch_size=None):
+        entries = random.sample(self.replay_memory, batch_size or self.bs)
+        result = []
+        for column in zip(*entries):
+            batch = {}
+            for key in column[0]:
+                values = [row[key] for row in column]
+                if isinstance(values[0], torch.Tensor):
+                    padding = -100 if key == "label" else self.pad_id if key == "input_ids" else 0
+                    batch[key] = (torch.stack(values) if values[0].ndim == 0 else
+                                  pad_sequence(values, batch_first=True, padding_value=padding))
+                else:
+                    batch[key] = copy.deepcopy(values)
+            result.append(batch)
+        return tuple(result)
+
+    @staticmethod
+    def move_to_device(model_data, no_model_data, gen_data, device):
+        for batch in (model_data, no_model_data, gen_data):
+            for key, value in batch.items():
+                if isinstance(value, torch.Tensor):
+                    batch[key] = value.to(device)
         return model_data, no_model_data, gen_data
-        
-    
-    def move_to_device(self, model_data, no_model_data, gen_data, device):
-        for k in model_data:
-            model_data[k] = model_data[k].to(device)
-
-        for k in no_model_data:
-            no_model_data[k] = no_model_data[k].to(device)
-
-        for k in gen_data:
-            gen_data[k] = gen_data[k].to(device)
-
-        return model_data, no_model_data, gen_data
-    
-    def move_to_memory(self, model_data, no_model_data, gen_data):
-        device = torch.device("cpu")
-        model_data_cpu, no_model_data_cpu = {}, {}
-        for k in model_data:
-            model_data_cpu[k] = model_data[k].to(device)
-        
-        for k in no_model_data:
-            no_model_data_cpu[k] = no_model_data[k].to(device)
-
-        prompt_attention_mask = gen_data["attention_mask"].to(device)
-        
-        for idx in range(model_data_cpu["input_ids"].size(0)):
-            if self.args.model_type in ["gpt2", "llama"]:
-                e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx], model_data_cpu["position_ids"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
-            else:
-                e = self.data(model_data_cpu["input_ids"][idx], model_data_cpu["attention_mask"][idx],
-                              no_model_data_cpu["label"][idx], no_model_data_cpu["loss_mask"][idx], prompt_attention_mask[idx])
-            self.replay_memory.append(e)

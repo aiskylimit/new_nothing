@@ -3,66 +3,71 @@ set -euo pipefail
 
 export BASE_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$BASE_PATH"
-
 VENV_PATH="${VENV_PATH:-/mnt/local/uvenvs/reasoning-velocity-distill}"
 source "$VENV_PATH/bin/activate"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES-4,5}"
-
-export CKPT="${CKPT:-$BASE_PATH/models/Qwen2.5_1.5B-Instruct}"
-export TEACHER_CKPT="${TEACHER_CKPT:-$BASE_PATH/models/Qwen2.5_14B-Instruct}"
-export DATA_DIR="${DATA_DIR:-$BASE_PATH/processed_data/ultraInteract/models/$(basename -- "$CKPT")}"
-export RAW_DATA="${RAW_DATA:-$BASE_PATH/data/raw/Qwen/Qwen2.5-14B-Instruct/generated_train.jsonl}"
-export SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-rvd}"
-export BATCH_SIZE="${BATCH_SIZE:-8}" GRAD_ACC="${GRAD_ACC:-2}"
 export EVAL_VENV_PATH="${EVAL_VENV_PATH:-/mnt/local/uvenvs/reasoning-velocity-distill-eval}"
-export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
-export SEED="${SEED:-10}"
+export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
 export TOKENIZERS_PARALLELISM=false
 
-# # 1. Validate assets downloaded from download.txt.
-# [[ -f "$RAW_DATA" ]] || { printf 'Training data not found: %s\n' "$RAW_DATA" >&2; exit 1; }
-# [[ -d "$CKPT" ]] || { printf 'Student model not found: %s\n' "$CKPT" >&2; exit 1; }
-# [[ -d "$TEACHER_CKPT" ]] || { printf 'Teacher model not found: %s\n' "$TEACHER_CKPT" >&2; exit 1; }
+# Models and source data
+export CKPT="${CKPT:-$BASE_PATH/models/Qwen2.5_1.5B-Instruct}"
+export TEACHER_CKPT="${TEACHER_CKPT:-$BASE_PATH/models/Qwen2.5_14B-Instruct}"
+RAW_DATA="${RAW_DATA:-$BASE_PATH/data/raw/Qwen/Qwen2.5-14B-Instruct/generated_train.jsonl}"
+CONTEXT_DATA_PATH="${CONTEXT_DATA_PATH:-${RAW_DATA%.jsonl}_with_context.jsonl}"
+PROCESSED_DATA_ROOT="${PROCESSED_DATA_ROOT:-$BASE_PATH/processed_data/ultraInteract-v2}"
 
-# if [[ "${RUN_EVAL:-1}" == "1" ]]; then
-#     bash scripts/eval/eval.sh check
-# fi
+# Use the preprocessor's own path resolution for local and Hugging Face models.
+DATA_DIR="$(python -c 'import sys; from tools.process_data_ultraInteract import resolve_processed_data_dir; print(resolve_processed_data_dir(*sys.argv[1:]))' \
+    "$PROCESSED_DATA_ROOT" "$CKPT" "$BASE_PATH")"
+export DATA_DIR
+export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
+export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-1536}"
+export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
+export DEV_NUM="${DEV_NUM:-512}" SEED="${SEED:-10}"
+CONTEXT_MAX_NEW_TOKENS="${CONTEXT_MAX_NEW_TOKENS:-512}"
+CONTEXT_MAX_PROMPT_LENGTH="${CONTEXT_MAX_PROMPT_LENGTH:-8192}"
 
-# # 2. Build the local train/validation JSONL files.
-# if [[ "${RUN_PREPROCESS:-1}" == "1" ]]; then
-#     PYTHONPATH="$BASE_PATH" python tools/process_data_ultraInteract.py \
-#         --base-path "$BASE_PATH" \
-#         --data-dir "$RAW_DATA" \
-#         --processed-data-dir "$BASE_PATH/processed_data/ultraInteract" \
-#         --model-path "$CKPT" \
-#         --model-type qwen \
-#         --max-length "$MAX_LENGTH" \
-#         --max-prompt-length "$MAX_PROMPT_LENGTH" \
-#         --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
-#         --dev-num "${DEV_NUM:-200}" \
-#         --seed "$SEED"
-# fi
-
-# # 3. Train and save the final checkpoint under SAVE_PATH/<step>.
-# if [[ "${RUN_TRAIN:-1}" == "1" ]]; then
-#     CUDA_VISIBLE_DEVICES=4,5 bash scripts/qwen/train_rvd_qwen2.5_14b_to_1.5b.sh &
-#     TRAIN_PID=$!
-# fi
-
-# # 4. Evaluate the final checkpoint using only local benchmark mirrors.
-# if [[ "${RUN_EVAL:-1}" == "1" ]]; then
-#     # The training command runs in the background. Wait for it before loading
-#     # the final checkpoint; wait also propagates a training failure.
-#     if [[ -n "$TRAIN_PID" ]]; then
-#         wait "$TRAIN_PID"
-#     fi
-#     CUDA_VISIBLE_DEVICES=4,5 bash scripts/eval/eval.sh run
-# fi
-
-if [[ "${RUN_EVAL:-1}" == "1" ]]; then
-    bash scripts/eval/eval.sh check
+# 1. Generate context for the FULL raw dataset, before splitting.
+printf '\n[1/4] Generate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
+if [[ ! -f "$CONTEXT_DATA_PATH" ]]; then
+    CUDA_VISIBLE_DEVICES=4,5 python prepare_privileged_data.py \
+        --data-dir "$RAW_DATA" --output "$CONTEXT_DATA_PATH" \
+        --teacher-model-path "$TEACHER_CKPT" --device-map auto --dtype bfloat16 \
+        --batch-size "${CONTEXT_BATCH_SIZE:-32}" \
+        --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
+        --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
+        --max-length "$((CONTEXT_MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))" \
+        --t-max-prompt-length "$T_MAX_PROMPT_LENGTH" --t-max-length "$T_MAX_LENGTH" \
+        --student-max-length "$MAX_LENGTH" \
+        --privileged-context-field context --seed "$SEED"
 fi
 
-CUDA_VISIBLE_DEVICES=4,5 \
-LORA_PATH="$PWD/results/qwen2.5-1.5B-Instruct-rvd/7455" \
-bash scripts/eval/eval.sh run
+# 2. Preprocess and split; each record retains its generated context.
+printf '\n[2/4] Preprocess dataset with context: %s\n' "$DATA_DIR"
+if [[ ! -f "$DATA_DIR/.context-preprocessed" || "$CONTEXT_DATA_PATH" -nt "$DATA_DIR/.context-preprocessed" || ! -f "$DATA_DIR/train.jsonl" || ! -f "$DATA_DIR/valid.jsonl" ]]; then
+    rm -f "$DATA_DIR/.context-preprocessed"
+    python tools/process_data_ultraInteract.py \
+        --base-path "$BASE_PATH" --data-dir "$CONTEXT_DATA_PATH" \
+        --processed-data-dir "$PROCESSED_DATA_ROOT" \
+        --model-path "$CKPT" --model-type qwen \
+        --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
+        --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
+        --dev-num "$DEV_NUM" --seed "$SEED"
+    touch "$DATA_DIR/.context-preprocessed"
+fi
+
+# 3. Train synchronously; context is already inside train.jsonl.
+printf '\n[3/4] Train v2: adaptive OFF -> privileged + random ON-policy\n'
+CHECKPOINT_FILE="$(mktemp)"
+trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
+CUDA_DEVICES=4,5 PRIVILEGED_DATA_PATH= FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+    bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
+
+# 4. Evaluate this run's final checkpoint only after training succeeds.
+LORA_PATH="$(cat "$CHECKPOINT_FILE")"
+[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
+printf '\n[4/4] Evaluate checkpoint: %s\n' "$LORA_PATH"
+CUDA_DEVICES=4,5 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
+    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
+    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
+    bash scripts/eval/eval.sh run
