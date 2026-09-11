@@ -1,4 +1,5 @@
 import os
+from types import MethodType
 
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
@@ -45,6 +46,9 @@ class VLMModel(nn.Module):
         self.encoder = encoder
         self.config = encoder.config
         self.output_attentions = output_attentions
+        self._selective_attention_layers = None
+        self._selective_attention_modules = {}
+        self._selective_attention_backend = None
 
     @staticmethod
     def _distributed_context():
@@ -192,6 +196,105 @@ class VLMModel(nn.Module):
             "use_cache": False,
         }
 
+    @staticmethod
+    def _text_decoder_layers(encoder):
+        """Find the decoder ModuleList without depending on one VLM layout."""
+        candidates = []
+        for name, module in encoder.named_modules():
+            if not isinstance(module, nn.ModuleList) or len(module) == 0:
+                continue
+            if not all(hasattr(layer, "self_attn") for layer in module):
+                continue
+            lowered = name.lower()
+            if "vision" in lowered or "visual" in lowered:
+                continue
+            priority = 2 if "language_model.layers" in lowered else 1
+            candidates.append((priority, len(module), name, module))
+        if not candidates:
+            return None
+        return max(candidates, key=lambda item: (item[0], item[1]))[3]
+
+    @staticmethod
+    def _hidden_to_attention_layer(layer: int, num_layers: int) -> int:
+        hidden_index = int(layer)
+        if hidden_index < 0:
+            hidden_index += num_layers + 1
+        return max(hidden_index - 1, 0)
+
+    @staticmethod
+    def _selective_attention_forward(module, *args, **kwargs):
+        config = module.config
+        previous_backend = getattr(config, "_attn_implementation", None)
+        config._attn_implementation = module._sre_attention_backend
+        try:
+            outputs = module._sre_original_forward(*args, **kwargs)
+        finally:
+            config._attn_implementation = previous_backend
+
+        sink = module._sre_attention_sink
+        if sink is not None and isinstance(outputs, tuple) and len(outputs) > 1:
+            attention = outputs[1]
+            if torch.is_tensor(attention) and attention.ndim == 4:
+                # SRE only consumes sum(heads) for the final query. Compress it
+                # immediately instead of retaining [B, H, L, L] in outputs.
+                sink[module._sre_attention_index] = attention.sum(dim=1)[:, -1].detach()
+        return outputs
+
+    def configure_selective_attentions(self, hidden_layers) -> bool:
+        """Capture SRE attention only at mapped text-decoder layers.
+
+        Selected layers temporarily use eager attention; all other layers use
+        SDPA. The wrapper is persistent
+        so gradient-checkpoint recomputation uses the same selected backend.
+        """
+        decoder_layers = self._text_decoder_layers(self.encoder)
+        if decoder_layers is None:
+            return False
+
+        requested = list(hidden_layers or [-1])
+        selected = {
+            self._hidden_to_attention_layer(layer, len(decoder_layers))
+            for layer in requested
+        }
+        if any(index < 0 or index >= len(decoder_layers) for index in selected):
+            return False
+
+        text_config = getattr(self.config, "text_config", None) or getattr(
+            decoder_layers[0].self_attn, "config", None
+        )
+        # Build one explicit 4D causal mask using eager semantics. It is valid
+        # for both eager and SDPA, while an SDPA-optimized `None` mask would be
+        # incorrect if temporarily consumed by a selected eager layer.
+        text_config._attn_implementation = "eager"
+
+        modules = {}
+        for index, decoder_layer in enumerate(decoder_layers):
+            attention = decoder_layer.self_attn
+            is_selected = index in selected
+            if not hasattr(attention, "_sre_original_forward"):
+                attention._sre_original_forward = attention.forward
+                attention.forward = MethodType(self._selective_attention_forward, attention)
+            attention._sre_attention_sink = None
+            attention._sre_attention_index = index
+            attention._sre_attention_backend = "eager" if is_selected else "sdpa"
+            if is_selected:
+                modules[index] = attention
+
+        self._selective_attention_backend = "sdpa"
+        self._selective_attention_layers = (len(decoder_layers), tuple(sorted(selected)))
+        self._selective_attention_modules = modules
+        self.output_attentions = False
+        return True
+
+    def enable_full_attention_outputs(self, vision_output_attentions: bool = False) -> None:
+        """Conservative fallback when selective decoder discovery is unsupported."""
+        self._force_eager_attention(
+            self.config,
+            vision_output_attentions=vision_output_attentions,
+            output_attentions=True,
+        )
+        self.output_attentions = True
+
     def forward(self, **model_inputs):
         model_inputs = self._clean_model_inputs(model_inputs)
         if "input_ids" in model_inputs and torch.is_tensor(model_inputs["input_ids"]):
@@ -205,7 +308,31 @@ class VLMModel(nn.Module):
         forward_kwargs["output_attentions"] = self.output_attentions
         forward_kwargs["use_cache"] = False
 
-        return self.encoder(**forward_kwargs)
+        attention_sink = None
+        if self._selective_attention_layers is not None:
+            attention_sink = {}
+            for module in self._selective_attention_modules.values():
+                module._sre_attention_sink = attention_sink
+
+        try:
+            outputs = self.encoder(**forward_kwargs)
+        finally:
+            for module in self._selective_attention_modules.values():
+                module._sre_attention_sink = None
+
+        if attention_sink is not None:
+            num_layers, selected = self._selective_attention_layers
+            missing = [index for index in selected if index not in attention_sink]
+            if missing:
+                raise RuntimeError(
+                    "Selective SRE attention capture failed for decoder layer(s): "
+                    + ", ".join(map(str, missing))
+                )
+            attentions = [None] * num_layers
+            for index, attention in attention_sink.items():
+                attentions[index] = attention
+            outputs.attentions = tuple(attentions)
+        return outputs
 
     def generate(self, **model_inputs):
         generation_kwargs = self._clean_model_inputs(model_inputs)

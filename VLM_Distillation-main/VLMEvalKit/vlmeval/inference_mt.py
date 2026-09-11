@@ -164,8 +164,6 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
             struct = dataset.build_prompt(data.iloc[i])
 
         response = chat_mt(model, struct, dataset_name)
-        torch.cuda.empty_cache()
-
         if verbose:
             print(response, flush=True)
 

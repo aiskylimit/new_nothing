@@ -45,6 +45,7 @@ torchrun \
   --image_resolution low \
   --resume_from none \
   --kd_loss_type "sre" \
+  --sre_selective_attention true \
   --sre_use_projector true \
   --teacher_layer_mapping -3 -1 \
   --student_layer_mapping -3 -1 \

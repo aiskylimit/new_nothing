@@ -52,6 +52,7 @@ class Distiller(nn.Module):
 
         self.student = self._load_student()
         self.teacher = self._load_teacher()
+        self._configure_selective_sre_attentions()
 
         self.student_hidden_dim = self._infer_text_hidden_dim(self.student, model_args.student_hidden_dim)
         self.teacher_hidden_dim = self._infer_text_hidden_dim(self.teacher, model_args.teacher_hidden_dim)
@@ -104,6 +105,39 @@ class Distiller(nn.Module):
         # SCVA, and their joint criteria consume attention matrices directly.
         return kd_loss_type not in attention_free_kd_losses
 
+    def _uses_selective_sre_attentions(self) -> bool:
+        kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
+        return kd_loss_type == "sre" and bool(
+            getattr(self.training_args, "sre_selective_attention", True)
+        )
+
+    def _standard_attention_outputs(self) -> bool:
+        return self._needs_attention_outputs() and not self._uses_selective_sre_attentions()
+
+    def _configure_selective_sre_attentions(self) -> None:
+        if not self._uses_selective_sre_attentions():
+            return
+
+        pairs = (
+            ("student", self.student, getattr(self.training_args, "student_layer_mapping", None)),
+            ("teacher", self.teacher, getattr(self.training_args, "teacher_layer_mapping", None)),
+        )
+        for name, model, mapping in pairs:
+            if model.configure_selective_attentions(mapping):
+                selected = model._selective_attention_layers[1]
+                print_master(
+                    f"SRE selective {name} attention enabled: decoder_layers={list(selected)}, "
+                    f"default_backend={model._selective_attention_backend}"
+                )
+            else:
+                # Never silently replace attention-derived SRE weights with
+                # uniform weights on an unsupported architecture.
+                model.enable_full_attention_outputs(vision_output_attentions=False)
+                print_master(
+                    f"WARNING: selective {name} attention is unsupported; "
+                    "falling back to full eager text attention."
+                )
+
     def _needs_vision_attention_outputs(self) -> bool:
         # SRE consumes text-decoder attention only.  Keeping the vision backend
         # on SDPA/Flash avoids eager vision attention without changing SRE.
@@ -136,7 +170,7 @@ class Distiller(nn.Module):
         )
         student = VLMModel.build(
             self.model_args,
-            output_attentions=self._needs_attention_outputs(),
+            output_attentions=self._standard_attention_outputs(),
             vision_output_attentions=self._needs_vision_attention_outputs(),
         )
         print_master("Student model built.")
@@ -151,7 +185,7 @@ class Distiller(nn.Module):
         teacher = VLMModel.load(
             teacher_model_args,
             is_trainable=False,
-            output_attentions=self._needs_attention_outputs(),
+            output_attentions=self._standard_attention_outputs(),
             vision_output_attentions=self._needs_vision_attention_outputs(),
         )
         for param in teacher.parameters():

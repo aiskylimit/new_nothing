@@ -212,8 +212,6 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
                 response = f'{FAIL_MSG}: {type(err)} {str(err)}'
         else:
             response = model.generate(message=struct, dataset=dataset_name)
-        torch.cuda.empty_cache()
-
         if verbose:
             print(response, flush=True)
 

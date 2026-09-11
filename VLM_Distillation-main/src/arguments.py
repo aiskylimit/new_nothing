@@ -156,6 +156,7 @@ class TrainingArguments(TrainingArguments):
     sre_skew_loss_weight: float = field(default=1.0, metadata={"help": "Weight of the SRA-v2 skewed-forward logit term inside SRE logit loss"})
     sre_skew_lambda: float = field(default=0.01, metadata={"help": "Teacher mixture coefficient for the SRA-v2 skewed-forward term"})
     sre_use_projector: bool = field(default=True, metadata={"help": "Use a learned student-to-teacher projector for the SRE span cosine loss."})
+    sre_selective_attention: bool = field(default=True, metadata={"help": "Use eager attention only at SRE-mapped decoder layers and keep the efficient backend elsewhere."})
     # joint criterion weights (Unit-Aligned = SRE + EM-KD)
     joint_ce_weight: float = field(default=0.5, metadata={"help": "CE weight inside the `joint` criterion; remaining weight goes to averaged KD terms."})
     joint_emkd_weight: float = field(default=1.0, metadata={"help": "Weight of EM-KD term inside the `joint` criterion."})

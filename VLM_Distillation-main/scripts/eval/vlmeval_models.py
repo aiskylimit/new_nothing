@@ -55,8 +55,15 @@ class _ProjectVLM(BaseModel):
             if torch.is_tensor(value):
                 inputs[key] = value.to(device)
         input_length = inputs["input_ids"].shape[1]
-        generated = self.model.generate(**inputs, max_new_tokens=self.generation_max_new_tokens(dataset),
-                                        do_sample=self.do_sample, use_cache=True)
+        generated = self.model.generate(
+            **inputs,
+            max_new_tokens=self.generation_max_new_tokens(dataset),
+            do_sample=self.do_sample,
+            use_cache=True,
+            output_hidden_states=False,
+            output_attentions=False,
+            return_dict_in_generate=False,
+        )
         tokenizer = getattr(self.processor, "tokenizer", self.processor)
         return tokenizer.batch_decode(generated[:, input_length:], skip_special_tokens=True,
                                       clean_up_tokenization_spaces=False)[0].strip()
