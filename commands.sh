@@ -1,4 +1,7 @@
-#1 +120
+#d
+#datasets
+--hf-dataset VoCuc/en_core_web_sm /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/en_core_web_sm
+
 #erank
 #v1
 

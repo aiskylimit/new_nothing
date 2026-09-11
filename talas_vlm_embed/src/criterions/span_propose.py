@@ -961,7 +961,7 @@ class SpanProposeCriterion(nn.Module):
         self.args = args
         
         # Khởi tạo spacy và matcher một lần
-        self.nlp = spacy.load("en_core_web_sm")
+        self.nlp = spacy.load("./en_core_web_sm")
         self.matcher = Matcher(self.nlp.vocab)
         VERB_PHRASE_PATTERN = [
             {"POS": "AUX", "OP": "*"},

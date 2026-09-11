@@ -32,12 +32,12 @@ def initialize():
         logging.critical('Please first `pip install rouge_score`.')
 
     try:
-        nlp_en = spacy.load('en_core_web_sm')
+        nlp_en = spacy.load('./en_core_web_sm')
     except Exception as e:
         logging.warning(f'{type(e)}: {e}')
-        logging.warning('Will automatically download en_core_web_sm via spacy.')
-        spacy.cli.download('en_core_web_sm')
-        nlp_en = spacy.load('en_core_web_sm')
+        logging.warning('Will automatically download ./en_core_web_sm via spacy.')
+        spacy.cli.download('./en_core_web_sm')
+        nlp_en = spacy.load('./en_core_web_sm')
 
     try:
         nlp_zh = spacy.load('zh_core_web_sm')
