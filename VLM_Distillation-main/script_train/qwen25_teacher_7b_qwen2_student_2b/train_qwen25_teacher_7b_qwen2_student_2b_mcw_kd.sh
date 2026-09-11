@@ -48,6 +48,7 @@ torchrun \
   --save_total_limit 2 \
   --logging_steps 10 \
   --dataloader_num_workers 2 \
+  --train_sampling_strategy group_by_length \
   --max_len 2048 \
   --image_resolution low \
   --resume_from none \

@@ -113,7 +113,14 @@ def _layer_attention(outputs, hidden_layer: int):
     if attentions is None:
         return None
 
-    attn_idx = max(int(hidden_layer) - 1, 0)
+    hidden_states = getattr(outputs, "hidden_states", None)
+    hidden_idx = int(hidden_layer)
+    if hidden_idx < 0 and hidden_states is not None:
+        hidden_idx += len(hidden_states)
+    # hidden_states[0] is the embedding output; attention[0] belongs to
+    # hidden_states[1].  This also makes an explicit mapping of -1 select the
+    # final block attention instead of accidentally selecting attention[0].
+    attn_idx = max(hidden_idx - 1, 0)
     try:
         if attn_idx >= len(attentions):
             return None
@@ -203,11 +210,14 @@ def _geometry_loss(
     student_hidden: torch.Tensor,
     teacher_hidden: torch.Tensor,
     pair_weights: torch.Tensor,
-    projector: Optional[nn.Module] = None,
 ) -> torch.Tensor:
-    student_hidden, teacher_hidden = _align_hidden_dims(student_hidden, teacher_hidden, projector)
+    # SRA-v2 compares the two within-model Gram matrices.  Their hidden
+    # dimensions do not need to match because both outputs are [B, N, N].
+    # Projecting/cropping here changes each model's native geometry.
     student_hidden = F.normalize(student_hidden.float(), dim=-1, eps=1e-5)
-    teacher_hidden = F.normalize(teacher_hidden.float(), dim=-1, eps=1e-5)
+    teacher_hidden = F.normalize(
+        teacher_hidden.to(device=student_hidden.device, dtype=torch.float32), dim=-1, eps=1e-5
+    )
     student_scores = torch.matmul(student_hidden, student_hidden.transpose(-1, -2))
     teacher_scores = torch.matmul(teacher_hidden, teacher_hidden.transpose(-1, -2))
     loss = F.mse_loss(student_scores, teacher_scores, reduction="none")
@@ -221,12 +231,46 @@ def _soft_label_loss(
     temperature: float,
 ) -> torch.Tensor:
     student_logits, teacher_logits = _crop_last_dim(student_logits, teacher_logits)
+    teacher_logits = teacher_logits.to(student_logits.device)
     temperature = max(float(temperature), 1e-6)
     log_probs_s = F.log_softmax(student_logits.float() / temperature, dim=-1)
     probs_t = F.softmax(teacher_logits.float() / temperature, dim=-1)
     per_token = F.kl_div(log_probs_s, probs_t, reduction="none").sum(dim=-1)
     valid_mask = valid_mask.to(device=per_token.device, dtype=per_token.dtype)
     return (per_token * valid_mask).sum() / student_logits.shape[0]
+
+
+def _skewed_forward_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    lam: float = 0.01,
+) -> torch.Tensor:
+    """SRA-v2's skewed-forward scalar (cross entropy H(q, mixture))."""
+    student_logits, teacher_logits = _crop_last_dim(student_logits, teacher_logits)
+    teacher_logits = teacher_logits.to(student_logits.device)
+    lam = min(max(float(lam), 0.0), 1.0)
+    student_probs = F.softmax(student_logits.float(), dim=-1)
+    teacher_probs = F.softmax(teacher_logits.float(), dim=-1)
+    mixed_probs = lam * teacher_probs + (1.0 - lam) * student_probs
+    mixed_log_probs = torch.log(mixed_probs)
+
+    valid_mask = student_logits.abs().sum(dim=-1).ne(0).to(dtype=torch.float32)
+    per_token = -(teacher_probs * mixed_log_probs).sum(dim=-1)
+    return (per_token * valid_mask).sum() / valid_mask.sum().clamp_min(1e-5)
+
+
+def _selected_output_logits(head: nn.Module, hidden: torch.Tensor, token_ids: torch.Tensor) -> torch.Tensor:
+    """Apply only selected LM-head rows instead of materializing full-vocab logits."""
+    weight = getattr(head, "weight", None)
+    if weight is None or weight.ndim != 2:
+        return head(hidden).index_select(-1, token_ids.to(hidden.device))
+
+    token_ids = token_ids.to(device=weight.device, dtype=torch.long)
+    selected_weight = weight.index_select(0, token_ids)
+    bias = getattr(head, "bias", None)
+    selected_bias = None if bias is None else bias.index_select(0, token_ids)
+    hidden = hidden.to(device=weight.device, dtype=weight.dtype)
+    return F.linear(hidden, selected_weight, selected_bias)
 
 
 class SRECriterion(nn.Module):
@@ -245,10 +289,12 @@ class SRECriterion(nn.Module):
         self.alpha = float(getattr(args, "sre_alpha", 0.5))
         self.p = max(float(getattr(args, "sre_p", 1.0)), 1e-5)
         self.span_loss_weight = float(getattr(args, "sre_span_loss_weight", 1.0))
-        self.geom_loss_weight = float(getattr(args, "sre_geom_loss_weight", 50))
+        self.geom_loss_weight = float(getattr(args, "sre_geom_loss_weight", 3.0))
         self.logit_loss_weight = float(getattr(args, "sre_logit_loss_weight", 1.0))
         self.temperature = float(getattr(args, "sre_temperature", 2.0))
-        self.use_projector = bool(getattr(args, "sre_use_projector", False))
+        self.skew_loss_weight = float(getattr(args, "sre_skew_loss_weight", 1.0))
+        self.skew_lambda = float(getattr(args, "sre_skew_lambda", 0.01))
+        self.use_projector = bool(getattr(args, "sre_use_projector", True))
         self._shared_vocab_cpu = None
         self._shared_vocab_cache = {}
 
@@ -324,7 +370,7 @@ class SRECriterion(nn.Module):
         self._shared_vocab_cache[cache_key] = mapped
         return mapped
 
-    def _aligned_soft_label_loss(
+    def _aligned_logit_loss(
         self,
         distiller,
         student_logits: torch.Tensor,
@@ -339,7 +385,35 @@ class SRECriterion(nn.Module):
         )
         student_logits = student_logits.index_select(-1, student_ids)
         teacher_logits = teacher_logits.to(student_logits.device).index_select(-1, teacher_ids)
-        return _soft_label_loss(student_logits, teacher_logits, valid_mask, self.temperature)
+        soft_loss = _soft_label_loss(student_logits, teacher_logits, valid_mask, self.temperature)
+        skew_loss = _skewed_forward_loss(student_logits, teacher_logits, self.skew_lambda)
+        return soft_loss + self.skew_loss_weight * skew_loss
+
+    def _pooled_logit_loss(self, distiller, student_hidden: torch.Tensor, teacher_hidden: torch.Tensor, valid_mask):
+        student_head = _get_output_head(distiller.student)
+        teacher_head = _get_output_head(distiller.teacher)
+        student_weight = getattr(student_head, "weight", None)
+        teacher_weight = getattr(teacher_head, "weight", None)
+        if student_weight is None or teacher_weight is None:
+            return self._aligned_logit_loss(
+                distiller,
+                student_head(student_hidden),
+                teacher_head(teacher_hidden),
+                valid_mask,
+            )
+
+        student_ids, teacher_ids = self._shared_vocab_indices(
+            distiller,
+            student_hidden.device,
+            student_weight.shape[0],
+            teacher_weight.shape[0],
+        )
+        student_logits = _selected_output_logits(student_head, student_hidden, student_ids)
+        teacher_logits = _selected_output_logits(teacher_head, teacher_hidden, teacher_ids)
+        teacher_logits = teacher_logits.to(student_logits.device)
+        soft_loss = _soft_label_loss(student_logits, teacher_logits, valid_mask, self.temperature)
+        skew_loss = _skewed_forward_loss(student_logits, teacher_logits, self.skew_lambda)
+        return soft_loss + self.skew_loss_weight * skew_loss
 
     @staticmethod
     def _hidden_layer_weights(n_layers: int, device: torch.device) -> torch.Tensor:
@@ -358,8 +432,15 @@ class SRECriterion(nn.Module):
             raise RuntimeError("teacher_inputs are missing while running SRE.")
 
         student_outputs = distiller.student(**student_inputs)
+        teacher_forward_inputs = dict(teacher_inputs)
+        # Teacher labels trigger an unused full-vocabulary CE.  In the pooled
+        # path even its sequence logits are unused, so retain only one logit to
+        # satisfy the common conditional-generation output contract.
+        teacher_forward_inputs.pop("labels", None)
+        if self._has_pooler(student_inputs, teacher_inputs):
+            teacher_forward_inputs["logits_to_keep"] = 1
         with torch.no_grad():
-            teacher_outputs = distiller.teacher(**teacher_inputs)
+            teacher_outputs = distiller.teacher(**teacher_forward_inputs)
 
         return self.compute_losses(distiller, student_outputs, teacher_outputs, student_inputs, teacher_inputs)
 
@@ -400,15 +481,12 @@ class SRECriterion(nn.Module):
         pair_weights = _pair_weights(token_weights)
 
         span_loss = self._span_loss(distiller, student_outputs, teacher_outputs, token_weights, seq_len)
-        # Geometry projects student to teacher_dim with the same last-layer
-        # projector used by the span loss; falls back to crop when missing.
-        geom_projector = self._get_projector(distiller, idx=-1)
         geom_loss = _geometry_loss(
-            student_last, teacher_last.to(student_last.device), pair_weights, projector=geom_projector
+            student_last, teacher_last.to(student_last.device), pair_weights
         )
 
         student_logits, teacher_logits, _ = _crop_seq_only(student_outputs.logits, teacher_outputs.logits)
-        logit_loss = self._aligned_soft_label_loss(distiller, student_logits, teacher_logits, token_weights.gt(0))
+        logit_loss = self._aligned_logit_loss(distiller, student_logits, teacher_logits, token_weights.gt(0))
 
         kd_loss = (
             self.span_loss_weight * span_loss
@@ -434,17 +512,15 @@ class SRECriterion(nn.Module):
         )
         span_weights = span_weights.to(student_last.device)
         pair_weights = _pair_weights(span_weights)
-        geom_projector = self._get_projector(distiller, idx=-1)
         geom_loss = _geometry_loss(
             student_last,
             teacher_last.to(student_last.device),
             pair_weights,
-            projector=geom_projector,
         )
 
-        student_logits = _get_output_head(distiller.student)(student_last)
-        teacher_logits = _get_output_head(distiller.teacher)(teacher_last)
-        logit_loss = self._aligned_soft_label_loss(distiller, student_logits, teacher_logits, span_weights.gt(0))
+        logit_loss = self._pooled_logit_loss(
+            distiller, student_last, teacher_last, span_weights.gt(0)
+        )
 
         kd_loss = (
             self.span_loss_weight * span_loss
@@ -520,8 +596,8 @@ class SRECriterion(nn.Module):
             )
             if idx == len(student_layers) - 1:
                 # Keep student_last in *student* hidden dim so the downstream
-                # logit head (student.lm_head) and a separately-applied geometry
-                # projector both see compatible inputs.
+                # logit head and native-dimension geometry term see compatible
+                # inputs.  Only the span cosine branch uses the projector.
                 student_last = student_hidden
                 teacher_last = teacher_hidden
                 span_weights = layer_weights

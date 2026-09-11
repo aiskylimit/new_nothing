@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any, Dict, List, Tuple
 
 import math
@@ -84,7 +85,9 @@ def edit_distance(left: str, right: str) -> int:
     return previous[-1]
 
 
+@lru_cache(maxsize=65536)
 def dist_fn_edit(left: str, right: str) -> int:
+    """Cache exact token-string distances across samples and training steps."""
     return edit_distance(left, right)
 
 
@@ -286,14 +289,24 @@ class MCWKDCriterion(VariousDivergence):
         if teacher_inputs is None:
             raise RuntimeError("teacher_inputs are missing while running MCW-KD.")
 
-        student_outputs = distiller.student(**student_inputs)
-        labels = student_inputs["labels"].to(device=student_outputs.logits.device)
-        supervised_loss = self.compute_cross_entropy_loss(student_outputs.logits, labels)
+        # MCW owns the supervised CE below. Passing labels into either backbone
+        # would compute an additional CE that is never consumed. Keep the
+        # original dictionaries intact because their labels define response
+        # positions and targets for every MCW branch.
+        student_forward_inputs = dict(student_inputs)
+        student_forward_inputs.pop("labels", None)
+        student_forward_inputs["logits_to_keep"] = 1
+        student_outputs = distiller.student(**student_forward_inputs)
+        student_device = get_hidden_states(student_outputs)[-1].device
+        labels = student_inputs["labels"].to(device=student_device)
 
+        teacher_forward_inputs = dict(teacher_inputs)
+        teacher_forward_inputs.pop("labels", None)
+        teacher_forward_inputs["logits_to_keep"] = 1
         with torch.no_grad():
-            teacher_outputs = distiller.teacher(**teacher_inputs)
+            teacher_outputs = distiller.teacher(**teacher_forward_inputs)
 
-        teacher_labels, _teacher_mask = self.teacher_targets(teacher_inputs, student_outputs.logits.device)
+        teacher_labels, _teacher_mask = self.teacher_targets(teacher_inputs, student_device)
         masks = self._shifted_targets_and_masks(
             student_inputs,
             teacher_inputs,
@@ -311,10 +324,11 @@ class MCWKDCriterion(VariousDivergence):
             teacher_mask,
         ) = masks
 
-        kd_loss, extra = self._dual_space_kd_loss(
+        response_batch, supervised_batch = self._build_response_batch(
             distiller,
             student_outputs,
             teacher_outputs,
+            labels,
             student_input,
             target,
             student_mask,
@@ -322,26 +336,31 @@ class MCWKDCriterion(VariousDivergence):
             teacher_target,
             teacher_mask,
         )
-        ot_logits_loss, ot_logits_extra = self._ot_logits_loss(
-            distiller,
-            student_outputs,
-            teacher_outputs,
-            student_mask,
-            teacher_mask,
-            target.shape[1],
-            teacher_target.shape[1],
+        supervised_loss = sum(
+            self.compute_cross_entropy_loss(item["student_logits"], item["student_target"], shift=False)
+            for item in supervised_batch
         )
-        ot_hidden_loss, ot_hidden_extra = self._ot_hidden_loss(
-            distiller,
-            student_inputs,
-            teacher_inputs,
-            student_outputs,
-            teacher_outputs,
-            student_mask,
-            teacher_mask,
-            target.shape[1],
-            teacher_target.shape[1],
-        )
+        if not supervised_batch:
+            supervised_loss = get_hidden_states(student_outputs)[-1].new_zeros(())
+
+        if response_batch:
+            kd_loss, extra = self._dual_space_kd_loss(
+                distiller,
+                response_batch,
+                student_input,
+                target,
+                student_mask,
+                teacher_input,
+                teacher_target,
+                teacher_mask,
+            )
+            ot_logits_loss, ot_logits_extra = self._ot_logits_loss(distiller, response_batch)
+            ot_hidden_loss, ot_hidden_extra = self._ot_hidden_loss(distiller, response_batch)
+        else:
+            kd_loss = supervised_loss.new_zeros(())
+            ot_logits_loss = supervised_loss.new_zeros(())
+            ot_hidden_loss = supervised_loss.new_zeros(())
+            extra = ot_logits_extra = ot_hidden_extra = {}
 
         loss = (
             supervised_loss
@@ -351,20 +370,113 @@ class MCWKDCriterion(VariousDivergence):
         )
         self._global_step += 1
 
+        student_correct = sum(
+            item["student_logits"].argmax(dim=-1).eq(item["student_target"]).sum()
+            for item in supervised_batch
+        )
+        student_count = sum(item["student_target"].numel() for item in supervised_batch)
+        if not supervised_batch:
+            student_correct = loss.new_zeros((), dtype=torch.long)
+        student_count_tensor = loss.new_tensor(student_count, dtype=torch.long)
         result = {
             "loss": loss,
             "supervised_loss": supervised_loss.detach(),
             "kd_loss": kd_loss.detach(),
             "mcw_ot_logits_loss": ot_logits_loss.detach(),
             "mcw_ot_hidden_loss": ot_hidden_loss.detach(),
-            "token_accuracy": self.compute_token_accuracy(student_outputs.logits, labels).detach(),
-            "token_correct": self.compute_token_correct(student_outputs.logits, labels).detach(),
-            "token_count": self.compute_token_count(student_outputs.logits, labels).detach(),
+            "token_accuracy": (student_correct.float() / student_count_tensor.float().clamp_min(1.0)).detach(),
+            "token_correct": student_correct.detach(),
+            "token_count": student_count_tensor.detach(),
         }
         result.update({name: value.detach() for name, value in extra.items()})
         result.update({name: value.detach() for name, value in ot_logits_extra.items()})
         result.update({name: value.detach() for name, value in ot_hidden_extra.items()})
         return result
+
+    def _build_response_batch(
+        self,
+        distiller: Any,
+        student_outputs,
+        teacher_outputs,
+        labels: torch.Tensor,
+        student_input: torch.Tensor,
+        target: torch.Tensor,
+        student_mask: torch.Tensor,
+        teacher_input: torch.Tensor,
+        teacher_target: torch.Tensor,
+        teacher_mask: torch.Tensor,
+    ) -> Tuple[List[Dict[str, torch.Tensor]], List[Dict[str, torch.Tensor]]]:
+        """Pack only positions that can influence the MCW objective."""
+        student_hidden = get_hidden_states(student_outputs)[-1][:, : target.shape[1]]
+        teacher_hidden = get_hidden_states(teacher_outputs)[-1][:, : teacher_target.shape[1]].to(
+            device=student_hidden.device
+        )
+        teacher_hidden_scale = safe_std(teacher_hidden)
+        student_head = get_output_head(distiller.student)
+        teacher_head = get_output_head(distiller.teacher)
+        full_lengths_match = student_hidden.shape[1] == teacher_hidden.shape[1]
+        interpolation_is_active = self.total_steps > 0 and (self._global_step + 1) < self.total_steps
+        packed: List[Dict[str, torch.Tensor]] = []
+        supervised: List[Dict[str, torch.Tensor]] = []
+
+        for index in range(student_hidden.shape[0]):
+            student_positions = student_mask[index].nonzero(as_tuple=False).flatten()
+            teacher_positions = teacher_mask[index].nonzero(as_tuple=False).flatten()
+            student_sequence = None
+            student_response_logits = None
+            if student_positions.numel() > 0:
+                student_sequence = student_hidden[index].index_select(0, student_positions)
+                student_response_logits = student_head(student_sequence)
+
+            supervised_target = labels[index, 1 : student_hidden.shape[1] + 1]
+            supervised_positions = supervised_target.ne(self.padding_id).nonzero(as_tuple=False).flatten()
+            if supervised_positions.numel() > 0:
+                if supervised_positions.numel() == student_positions.numel():
+                    supervised_logits = student_response_logits
+                else:
+                    supervised_sequence = student_hidden[index].index_select(0, supervised_positions)
+                    supervised_logits = student_head(supervised_sequence)
+                supervised.append(
+                    {
+                        "student_logits": supervised_logits,
+                        "student_target": supervised_target.index_select(0, supervised_positions),
+                    }
+                )
+
+            if student_positions.numel() == 0 or teacher_positions.numel() == 0:
+                continue
+
+            teacher_sequence = teacher_hidden[index].index_select(0, teacher_positions)
+            teacher_ot_sequence = self._project_teacher_hidden(
+                distiller, teacher_sequence, student_sequence.shape[-1]
+            )
+            student_logits_at_teacher_positions = None
+            if full_lengths_match and interpolation_is_active:
+                # Preserve the original interpolation semantics: teacher
+                # positions were blended with student logits at the same
+                # absolute sequence positions before response selection.
+                student_logits_at_teacher_positions = student_head(
+                    student_hidden[index].index_select(0, teacher_positions)
+                )
+            packed.append(
+                {
+                    "batch_index": index,
+                    "student_positions": student_positions,
+                    "teacher_positions": teacher_positions,
+                    "student_hidden": student_sequence,
+                    "teacher_hidden": teacher_sequence,
+                    "teacher_hidden_scale": teacher_hidden_scale,
+                    "teacher_ot_hidden": teacher_ot_sequence,
+                    "student_logits": student_response_logits,
+                    "student_logits_at_teacher_positions": student_logits_at_teacher_positions,
+                    "teacher_logits": teacher_head(teacher_sequence),
+                    "student_input": student_input[index].index_select(0, student_positions),
+                    "student_target": target[index].index_select(0, student_positions),
+                    "teacher_input": teacher_input[index].index_select(0, teacher_positions),
+                    "teacher_target": teacher_target[index].index_select(0, teacher_positions),
+                }
+            )
+        return packed, supervised
 
     def _shifted_targets_and_masks(
         self,
@@ -392,8 +504,7 @@ class MCWKDCriterion(VariousDivergence):
     def _dual_space_kd_loss(
         self,
         distiller: Any,
-        student_outputs,
-        teacher_outputs,
+        response_batch: List[Dict[str, torch.Tensor]],
         student_input: torch.Tensor,
         target: torch.Tensor,
         student_mask: torch.Tensor,
@@ -401,10 +512,9 @@ class MCWKDCriterion(VariousDivergence):
         teacher_target: torch.Tensor,
         teacher_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        student_hidden = get_hidden_states(student_outputs)[-1][:, : target.shape[1]]
-        teacher_hidden = get_hidden_states(teacher_outputs)[-1][:, : teacher_target.shape[1]].to(device=student_hidden.device)
-        student_logits = student_outputs.logits[:, : target.shape[1]]
-        teacher_logits = teacher_outputs.logits[:, : teacher_target.shape[1]].to(device=student_hidden.device)
+        if not response_batch:
+            zero = student_input.new_zeros((), dtype=torch.float32)
+            return zero, {}
 
         student_embed = get_input_embeddings(distiller.student)
         teacher_embed = get_input_embeddings(distiller.teacher)
@@ -414,35 +524,95 @@ class MCWKDCriterion(VariousDivergence):
         formal_teacher_target = torch.where(teacher_mask, teacher_target, torch.zeros_like(teacher_target))
         formal_teacher_input = torch.where(teacher_mask, teacher_input, torch.zeros_like(teacher_input))
 
+        device = response_batch[0]["student_hidden"].device
         student_input_embeds = student_embed(formal_student_input).detach()
         student_target_embeds = student_embed(formal_target).detach()
-        teacher_input_embeds = teacher_embed(formal_teacher_input).detach().to(device=student_hidden.device)
-        teacher_target_embeds = teacher_embed(formal_teacher_target).detach().to(device=student_hidden.device)
-
-        student_index_embeds = torch.cat([student_input_embeds, student_target_embeds], dim=-1)
+        teacher_input_embeds = teacher_embed(formal_teacher_input).detach().to(device=device)
+        teacher_target_embeds = teacher_embed(formal_teacher_target).detach().to(device=device)
         teacher_index_embeds = torch.cat([teacher_input_embeds, teacher_target_embeds], dim=-1)
+        teacher_index_scale = safe_std(teacher_index_embeds)
+        teacher_target_scale = safe_std(teacher_target_embeds)
+        # Match the old global normalization, including masked positions, while
+        # moving the expensive projectors/matmuls to packed response tensors.
+        teacher_hidden_scale = response_batch[0]["teacher_hidden_scale"]
 
-        student_query = project(require_projector(distiller.projectors, "query"), student_index_embeds)
-        teacher_key = (teacher_index_embeds / safe_std(teacher_index_embeds)).float()
-        student_value = project(require_projector(distiller.projectors, "s2t"), student_hidden)
-        teacher_value = project(
-            require_projector(distiller.projectors, "t2s"),
-            teacher_hidden / safe_std(teacher_hidden) + teacher_target_embeds / safe_std(teacher_target_embeds),
-        )
+        t2s_ce_loss = response_batch[0]["student_hidden"].new_zeros(())
+        t2s_kd_loss = t2s_ce_loss.clone()
+        s2t_kd_loss = t2s_ce_loss.clone()
+        t2s_acc = t2s_ce_loss.new_zeros((), dtype=torch.long)
+        s2t_acc = t2s_acc.clone()
+        max_t2s_prob = t2s_ce_loss.float().clone()
 
-        align = torch.matmul(student_query, teacher_key.transpose(-1, -2))
-        align = align / math.sqrt(max(float(teacher_hidden.shape[-1] * 2), 1.0))
-        align_mask = student_mask.float().unsqueeze(-1) * teacher_mask.float().unsqueeze(1)
-        align = align.masked_fill(align_mask.eq(0), -100000.0)
+        for item in response_batch:
+            index = item["batch_index"]
+            s_pos = item["student_positions"]
+            t_pos = item["teacher_positions"]
+            student_index = torch.cat(
+                [
+                    student_input_embeds[index].index_select(0, s_pos),
+                    student_target_embeds[index].index_select(0, s_pos),
+                ],
+                dim=-1,
+            )
+            teacher_index = torch.cat(
+                [
+                    teacher_input_embeds[index].index_select(0, t_pos),
+                    teacher_target_embeds[index].index_select(0, t_pos),
+                ],
+                dim=-1,
+            )
+            student_query = project(require_projector(distiller.projectors, "query"), student_index)
+            teacher_key = (teacher_index / teacher_index_scale).float()
+            student_value = project(
+                require_projector(distiller.projectors, "s2t"), item["student_hidden"]
+            )
+            teacher_target_sequence = teacher_target_embeds[index].index_select(0, t_pos)
+            teacher_value = project(
+                require_projector(distiller.projectors, "t2s"),
+                item["teacher_hidden"] / teacher_hidden_scale
+                + teacher_target_sequence / teacher_target_scale,
+            )
 
-        t2s_weight = torch.softmax(align, dim=-1)
-        t2s_hidden = torch.matmul(t2s_weight, teacher_value).to(dtype=student_hidden.dtype)
-        t2s_logits = get_output_head(distiller.student)(t2s_hidden)
-        t2s_ce_loss = self.compute_cross_entropy_loss(t2s_logits, target, shift=False)
+            align = student_query @ teacher_key.transpose(0, 1)
+            align = align / math.sqrt(max(float(item["teacher_hidden"].shape[-1] * 2), 1.0))
+            t2s_hidden = (torch.softmax(align, dim=-1) @ teacher_value).to(
+                dtype=item["student_hidden"].dtype
+            )
+            t2s_logits = get_output_head(distiller.student)(t2s_hidden)
+            t2s_ce_loss = t2s_ce_loss + self.compute_cross_entropy_loss(
+                t2s_logits, item["student_target"], shift=False
+            )
+            t2s_correct = t2s_logits.argmax(dim=-1).eq(item["student_target"])
+            t2s_acc = t2s_acc + t2s_correct.sum()
+            max_t2s_prob = max_t2s_prob + max_softmax_probability_sum(
+                t2s_logits.unsqueeze(0),
+                torch.ones((1, t2s_logits.shape[0]), dtype=torch.bool, device=device),
+            )
 
-        t2s_acc_mask = t2s_logits.argmax(dim=-1).eq(target) & student_mask
-        t2s_acc = t2s_acc_mask.sum()
-        max_t2s_prob = max_softmax_probability_sum(t2s_logits, student_mask)
+            if self.only_save_projector:
+                continue
+
+            t2s_kd_vec = self.dist_func(
+                item["student_logits"],
+                t2s_logits.detach(),
+                item["student_target"],
+                teacher_temperature=self.teacher_temperature,
+                reduction="none",
+            )
+            t2s_kd_loss = t2s_kd_loss + (t2s_kd_vec * t2s_correct.float()).sum()
+
+            s2t_hidden = (torch.softmax(align.transpose(0, 1), dim=-1) @ student_value).to(
+                dtype=item["teacher_hidden"].dtype
+            )
+            s2t_logits = get_output_head(distiller.teacher)(s2t_hidden)
+            s2t_kd_vec = self.compute_forward_kl_divergence(
+                s2t_logits,
+                item["teacher_logits"].to(device=s2t_logits.device),
+                item["teacher_target"],
+                reduction="none",
+            )
+            s2t_kd_loss = s2t_kd_loss + s2t_kd_vec.sum()
+            s2t_acc = s2t_acc + s2t_logits.argmax(dim=-1).eq(item["teacher_target"]).sum()
 
         if self.only_save_projector:
             return t2s_ce_loss, {
@@ -451,27 +621,6 @@ class MCWKDCriterion(VariousDivergence):
                 "max_t2s_prob": max_t2s_prob,
             }
 
-        t2s_kd_vec = self.dist_func(
-            student_logits,
-            t2s_logits.detach(),
-            target,
-            teacher_temperature=self.teacher_temperature,
-            reduction="none",
-        )
-        t2s_gate = student_mask.float() * t2s_acc_mask.float()
-        t2s_kd_loss = (t2s_kd_vec * t2s_gate).sum()
-
-        s2t_weight = torch.softmax(align.transpose(-1, -2), dim=-1)
-        s2t_hidden = torch.matmul(s2t_weight, student_value).to(dtype=teacher_hidden.dtype)
-        s2t_logits = get_output_head(distiller.teacher)(s2t_hidden)
-        s2t_kd_vec = self.compute_forward_kl_divergence(
-            s2t_logits,
-            teacher_logits.to(device=s2t_logits.device),
-            teacher_target,
-            reduction="none",
-        )
-        s2t_kd_loss = (s2t_kd_vec * teacher_mask.float()).sum()
-        s2t_acc = (s2t_logits.argmax(dim=-1).eq(teacher_target) * teacher_mask).sum()
         kd_loss = t2s_ce_loss + t2s_kd_loss + s2t_kd_loss
         return kd_loss, {
             "t2s_ce_loss": t2s_ce_loss,
@@ -485,116 +634,100 @@ class MCWKDCriterion(VariousDivergence):
     def _ot_logits_loss(
         self,
         distiller: Any,
-        student_outputs,
-        teacher_outputs,
-        student_mask: torch.Tensor,
-        teacher_mask: torch.Tensor,
-        student_len: int,
-        teacher_len: int,
+        response_batch: List[Dict[str, torch.Tensor]],
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        student_logits = student_outputs.logits[:, :student_len]
-        teacher_logits = teacher_outputs.logits[:, :teacher_len].to(device=student_logits.device)
-        student_hidden = get_hidden_states(student_outputs)[-1][:, :student_len]
-        teacher_hidden = get_hidden_states(teacher_outputs)[-1][:, :teacher_len].to(device=student_hidden.device)
-        teacher_hidden = self._project_teacher_hidden(distiller, teacher_hidden, student_hidden.shape[-1])
-        student_hidden, teacher_hidden = _crop_pair(student_hidden, teacher_hidden)
-
-        k = max(1, min(self.top_k_vocab, student_logits.shape[-1], teacher_logits.shape[-1]))
-        student_topk = topk_values_chunked(student_logits, k)
-        teacher_topk = topk_values_chunked(teacher_logits, k)
+        if not response_batch:
+            return torch.tensor(0.0), {}
+        total = response_batch[0]["student_hidden"].new_zeros(())
+        stats = {"mcw_avg_ot_logit_l2": [], "mcw_avg_ot_logit_kl": [], "mcw_avg_ot_logit_salience": []}
+        batches = 0
         tau = max(self.tau_seq, 1e-6)
         frac = 1.0 if self.total_steps <= 0 else min(float(self._global_step + 1) / float(self.total_steps), 1.0)
         interpolation_t = 0.1 + 0.9 * frac
-        if student_topk.shape == teacher_topk.shape:
-            interp_teacher = (1.0 - interpolation_t) * student_topk + interpolation_t * teacher_topk
-        else:
-            interp_teacher = teacher_topk
 
-        student_probs = F.softmax(student_topk / tau, dim=-1)
-        teacher_probs = F.softmax(interp_teacher / tau, dim=-1)
-        total = student_logits.new_zeros(())
-        stats = {"mcw_avg_ot_logit_l2": [], "mcw_avg_ot_logit_kl": [], "mcw_avg_ot_logit_salience": []}
-        batches = 0
-
-        for index in range(student_logits.shape[0]):
-            s_pos = student_mask[index].nonzero(as_tuple=False).flatten()
-            t_pos = teacher_mask[index].nonzero(as_tuple=False).flatten()
-            if s_pos.numel() == 0 or t_pos.numel() == 0:
-                continue
+        for item in response_batch:
             batches += 1
-            sp = student_probs[index].index_select(0, s_pos)
-            tp = teacher_probs[index].index_select(0, t_pos)
+            k = max(
+                1,
+                min(self.top_k_vocab, item["student_logits"].shape[-1], item["teacher_logits"].shape[-1]),
+            )
+            student_topk = torch.topk(item["student_logits"].float(), k, dim=-1).values
+            teacher_topk = torch.topk(item["teacher_logits"].float(), k, dim=-1).values
+            aligned_student_logits = item["student_logits_at_teacher_positions"]
+            if aligned_student_logits is not None:
+                aligned_student_topk = torch.topk(aligned_student_logits.float(), k, dim=-1).values
+                interp_teacher = (
+                    (1.0 - interpolation_t) * aligned_student_topk
+                    + interpolation_t * teacher_topk
+                )
+            else:
+                interp_teacher = teacher_topk
+            sp = F.softmax(student_topk / tau, dim=-1)
+            tp = F.softmax(interp_teacher / tau, dim=-1)
             c_l2 = torch.cdist(tp, sp, p=2)
             c_kl = pairwise_kl_cost(tp, sp)
-            s_seq = student_hidden[index].index_select(0, s_pos)
-            t_seq = teacher_hidden[index].index_select(0, t_pos)
+            s_seq, t_seq = _crop_pair(item["student_hidden"], item["teacher_ot_hidden"])
             sal_s, sal_t = self._salience_scores(distiller, s_seq, t_seq)
             c_sal = torch.abs(sal_t.unsqueeze(1) - sal_s.unsqueeze(0))
-            total = total + self.etp(self._weighted_cost([c_l2, c_kl, c_sal], self.cost_weights_logits, student_logits.device))[0].float()
+            total = total + self.etp(
+                self._weighted_cost([c_l2, c_kl, c_sal], self.cost_weights_logits, total.device)
+            )[0].float()
             stats["mcw_avg_ot_logit_l2"].append(c_l2.mean())
             stats["mcw_avg_ot_logit_kl"].append(c_kl.mean())
             stats["mcw_avg_ot_logit_salience"].append(c_sal.mean())
 
-        if batches == 0:
-            return student_logits.new_zeros(()), {}
         return total / batches, {name: torch.stack(values).mean() for name, values in stats.items() if values}
 
     def _ot_hidden_loss(
         self,
         distiller: Any,
-        student_inputs: Dict[str, torch.Tensor],
-        teacher_inputs: Dict[str, torch.Tensor],
-        student_outputs,
-        teacher_outputs,
-        student_mask: torch.Tensor,
-        teacher_mask: torch.Tensor,
-        student_len: int,
-        teacher_len: int,
+        response_batch: List[Dict[str, torch.Tensor]],
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        student_hidden = get_hidden_states(student_outputs)[-1][:, :student_len]
-        teacher_hidden = get_hidden_states(teacher_outputs)[-1][:, :teacher_len].to(device=student_hidden.device)
-        teacher_hidden = self._project_teacher_hidden(distiller, teacher_hidden, student_hidden.shape[-1])
-        student_hidden, teacher_hidden = _crop_pair(student_hidden, teacher_hidden)
-        total = student_hidden.new_zeros(())
+        if not response_batch:
+            return torch.tensor(0.0), {}
+        total = response_batch[0]["student_hidden"].new_zeros(())
         stats = {"mcw_avg_ot_hidden_edit": [], "mcw_avg_ot_hidden_l2": [], "mcw_avg_ot_hidden_cos": []}
         batches = 0
 
-        for index in range(student_hidden.shape[0]):
-            s_pos = student_mask[index].nonzero(as_tuple=False).flatten()
-            t_pos = teacher_mask[index].nonzero(as_tuple=False).flatten()
-            if s_pos.numel() == 0 or t_pos.numel() == 0:
-                continue
+        for item in response_batch:
             batches += 1
-            s_seq = student_hidden[index].index_select(0, s_pos)
-            t_seq = teacher_hidden[index].index_select(0, t_pos)
+            s_seq, t_seq = _crop_pair(item["student_hidden"], item["teacher_ot_hidden"])
             ctx_s = self._context_repr(s_seq, self.window_size)
             ctx_t = self._context_repr(t_seq, self.window_size)
-            student_tokens = self._tokens_for_positions(
-                distiller,
-                student_inputs["input_ids"].to(device=student_mask.device),
-                s_pos,
-                index,
-                teacher=False,
+            student_tokens = self._tokens_for_ids(distiller, item["student_input"], teacher=False)
+            teacher_tokens = self._tokens_for_ids(distiller, item["teacher_input"], teacher=True)
+            c_edit = self._dtw_edit_cost(
+                student_tokens, teacher_tokens, t_seq.shape[0], s_seq.shape[0], total.device
             )
-            teacher_tokens = self._tokens_for_positions(
-                distiller,
-                teacher_inputs["input_ids"].to(device=teacher_mask.device),
-                t_pos,
-                index,
-                teacher=True,
-            )
-            c_edit = self._dtw_edit_cost(student_tokens, teacher_tokens, t_pos.numel(), s_pos.numel(), student_hidden.device)
             c_l2 = torch.cdist(ctx_t.float(), ctx_s.float(), p=2)
             c_l2 = c_l2 / c_l2.detach().amax().clamp_min(1e-6)
             c_cos = pairwise_cosine_cost(ctx_t, ctx_s)
-            total = total + self.etp(self._weighted_cost([c_edit, c_l2, c_cos], self.cost_weights_hidden, student_hidden.device))[0].float()
+            total = total + self.etp(
+                self._weighted_cost([c_edit, c_l2, c_cos], self.cost_weights_hidden, total.device)
+            )[0].float()
             stats["mcw_avg_ot_hidden_edit"].append(c_edit.mean())
             stats["mcw_avg_ot_hidden_l2"].append(c_l2.mean())
             stats["mcw_avg_ot_hidden_cos"].append(c_cos.mean())
 
-        if batches == 0:
-            return student_hidden.new_zeros(()), {}
         return total / batches, {name: torch.stack(values).mean() for name, values in stats.items() if values}
+
+    def _tokens_for_ids(self, distiller: Any, token_ids: torch.Tensor, teacher: bool) -> List[str]:
+        ids = token_ids.detach().cpu().tolist()
+        tokenizer = self._tokenizer(distiller, teacher=teacher)
+        if tokenizer is None:
+            return [str(token_id) for token_id in ids]
+        try:
+            tokens = tokenizer.convert_ids_to_tokens(ids, skip_special_tokens=True)
+        except TypeError:
+            tokens = tokenizer.convert_ids_to_tokens(ids)
+        if tokens is None:
+            return [str(token_id) for token_id in ids]
+        if isinstance(tokens, str):
+            tokens = [tokens]
+        tokens = [str(token) for token in tokens]
+        if len(tokens) < len(ids):
+            tokens.extend(str(token_id) for token_id in ids[len(tokens):])
+        return tokens[: len(ids)]
 
     def _salience_scores(
         self,

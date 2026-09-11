@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SRE-only (text-span alignment + geometry + shared-vocab KL).
+# SRE-only (text-span alignment + geometry + shared-vocab KL + skewed-forward).
 set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
@@ -20,7 +20,7 @@ MASTER_PORT="${MASTER_PORT:-29501}"
 cd "${PROJECT_DIR}"
 
 
-# Qwen2-VL-2B has 28 transformer layers (indices 0..27); we map last layer to last.
+# -3/-1 select the text blocks two from last and last on both architectures.
 torchrun \
   --nproc_per_node gpu \
   --master_port "${MASTER_PORT}" \
@@ -47,19 +47,22 @@ torchrun \
   --save_total_limit 2 \
   --logging_steps 50 \
   --dataloader_num_workers "${DATALOADER_WORKERS}" \
+  --train_sampling_strategy group_by_length \
   --max_len 2048 \
   --image_resolution low \
   --resume_from none \
   --seed 1337 \
   --kd_loss_type sre \
   --sre_use_projector true \
-  --teacher_layer_mapping 27 \
-  --student_layer_mapping 27 \
+  --teacher_layer_mapping -3 -1 \
+  --student_layer_mapping -3 -1 \
   --sre_alpha 0.5 \
   --sre_p 1.0 \
   --sre_span_loss_weight 1.0 \
-  --sre_geom_loss_weight 50 \
+  --sre_geom_loss_weight 3.0 \
   --sre_logit_loss_weight 1.0 \
   --sre_temperature 2.0 \
-  --projector_lr 1e-4 \
+  --sre_skew_loss_weight 1.0 \
+  --sre_skew_lambda 0.01 \
+  --projector_lr 5e-4 \
   ${HUB_FLAGS[@]+"${HUB_FLAGS[@]}"}
