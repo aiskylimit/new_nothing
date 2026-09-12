@@ -1,6 +1,6 @@
 #2 -0-9
 #cka
-#v2
+#v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
@@ -30,8 +30,8 @@ export NCCL_DEBUG=WARN
 
 
 
-cd ./talas_vlm_embed
-bash ./project_commands.sh
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
