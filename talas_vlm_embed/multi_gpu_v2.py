@@ -23,8 +23,8 @@ DEFAULT_TARGET_POWER_W = 900.0  # Dùng cho GPU không được liệt kê ở t
 
 GPU_MAX_POWER_W = None
 
-POWER_CHECK_INTERVAL = 0.2  # Giây, tần suất đo lại công suất & điều chỉnh duty
-MICRO_CYCLE_S = 0.05        # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
+POWER_CHECK_INTERVAL = 0.1  # Giây, tần suất đo lại công suất & điều chỉnh duty
+MICRO_CYCLE_S = 0.03        # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
 DUTY_MIN = 0.02             # Duty cycle tối thiểu (không tắt hẳn để tránh dao động mạnh)
 DUTY_MAX = 1.0              # Duty cycle tối đa (luôn tính, không nghỉ)
 DUTY_STEP = 0.05            # Bước điều chỉnh duty cycle mỗi lần đo
