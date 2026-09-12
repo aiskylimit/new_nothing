@@ -1,4 +1,4 @@
-#i reasoning-velocity-distill-eval.txt
+#i reasoning-velocity-distill.txt
 #cka
 #v1
 
