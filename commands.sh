@@ -1,4 +1,4 @@
-#i talas-vlm-embed.txt
+#i reasoning-velocity-distill-eval.txt
 #cka
 #v1
 
