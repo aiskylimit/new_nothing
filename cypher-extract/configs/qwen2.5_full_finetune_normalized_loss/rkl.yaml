@@ -7,7 +7,7 @@ model_revision: 488639f1ff808d1d3d0ba301aef8c11461451ec5
 ref_model: results/full_finetune_normalized/qwen2.5_coder/teacher_full
 dataset: cypher_prepared_train
 eval_dataset: cypher_prepared_eval
-dataset_dir: ${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data}/llamafactory
+dataset_dir: ${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data}/llamafactory_distractor_v1
 template: qwen
 cutoff_len: 892
 packing: false
