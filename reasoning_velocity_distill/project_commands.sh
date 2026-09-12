@@ -43,12 +43,12 @@ if [[ ! -f "$CONTEXT_DATA_PATH" ]]; then
         export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
         export TOKENIZERS_PARALLELISM=false
 
-        CUDA_VISIBLE_DEVICES=4,5 \
+        CUDA_VISIBLE_DEVICES=4,5,6,7 \
         python "$BASE_PATH/prepare_privileged_data.py" \
             --data-dir "$RAW_DATA" \
             --output "$CONTEXT_DATA_PATH" \
             --teacher-model-path "$TEACHER_CKPT" \
-            --tensor-parallel-size 2 \
+            --tensor-parallel-size 4 \
             --gpu-memory-utilization 0.8 \
             --dtype bfloat16 \
             --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
