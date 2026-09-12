@@ -1,17 +1,16 @@
 import argparse
 import json
-import math
 import os
 from pathlib import Path
 import tempfile
 
-import torch
 from tqdm import tqdm
 
 from data_utils.prepared_privileged import fingerprint, read_jsonl, validate_context_field
 from data_utils.records import get_raw_prompt, get_response
 from data_utils.privileged import (DEFAULT_CONTEXT_TEMPLATE, build_privileged_teacher_input,
                                    render_privileged_teacher_prompt)
+from vllm import SamplingParams
 
 
 DEFAULT_GENERATION_TEMPLATE = (
@@ -105,9 +104,11 @@ def get_parser():
     parser.add_argument("--output", required=True, help="New prepared JSONL file, separate from the source")
     parser.add_argument("--teacher-model-path", required=True)
     parser.add_argument("--teacher-peft-path", default=None)
-    parser.add_argument("--device-map", default="auto", help="Hugging Face device map; auto can shard the teacher across GPUs")
+    parser.add_argument("--tensor-parallel-size", type=int, default=1,
+                        help="vLLM tensor-parallel degree; shards the teacher across this many GPUs")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.9,
+                        help="Fraction of GPU memory vLLM is allowed to reserve for weights + KV cache")
     parser.add_argument("--dtype", choices=["auto", "float32", "float16", "bfloat16"], default="auto")
-    parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--max-prompt-length", type=int, default=3072,
                         help="Context-generation input budget; reference responses are always capped "
@@ -115,27 +116,23 @@ def get_parser():
                              "keep the rendered prompt suffix within this budget")
     parser.add_argument("--max-length", type=int, default=4096,
                         help="Teacher context-generation total sequence budget")
-    # Accept old command lines; training now applies its own truncation budgets.
-    parser.add_argument("--t-max-prompt-length", type=int, default=None, help=argparse.SUPPRESS)
-    parser.add_argument("--student-max-length", type=int, default=None, help=argparse.SUPPRESS)
-    parser.add_argument("--t-max-length", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--privileged-context-field", default="context",
                         help="JSONL field stored alongside the original prompt and response")
     parser.add_argument("--privileged-context-template", default=DEFAULT_CONTEXT_TEMPLATE,
                         help="Match the context insertion template used by finetune_v2")
     parser.add_argument("--context-generation-template", default=DEFAULT_GENERATION_TEMPLATE,
                         help="Teacher instruction containing {prompt} and {response}")
-    parser.add_argument("--do-sample", action="store_true")
-    parser.add_argument("--temperature", type=float, default=1.)
-    parser.add_argument("--top-p", type=float, default=1.)
-    parser.add_argument("--top-k", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     return parser
 
 
 def validate_args(args):
-    if args.batch_size < 1 or args.max_new_tokens < 1:
-        raise ValueError("--batch-size and --max-new-tokens must be positive")
+    if args.max_new_tokens < 1:
+        raise ValueError("--max-new-tokens must be positive")
+    if args.tensor_parallel_size < 1:
+        raise ValueError("--tensor-parallel-size must be positive")
+    if not 0 < args.gpu_memory_utilization <= 1:
+        raise ValueError("--gpu-memory-utilization must be in (0, 1]")
     if not 0 < args.max_prompt_length < args.max_length:
         raise ValueError("Require 0 < --max-prompt-length < --max-length")
     if args.max_prompt_length + args.max_new_tokens > args.max_length:
@@ -145,10 +142,6 @@ def validate_args(args):
     validate_context_field(args.privileged_context_field)
     if "{prompt}" not in args.context_generation_template or "{response}" not in args.context_generation_template:
         raise ValueError("--context-generation-template must contain {prompt} and {response}")
-    if not math.isfinite(args.temperature) or args.temperature <= 0:
-        raise ValueError("--temperature must be finite and positive")
-    if not math.isfinite(args.top_p) or not 0 < args.top_p <= 1 or args.top_k < 0:
-        raise ValueError("Require 0 < --top-p <= 1 and --top-k >= 0")
     source = Path(args.data_dir)
     source = source / "train.jsonl" if source.is_dir() else source
     output = Path(args.output)
@@ -192,88 +185,106 @@ def validate_model_lengths(args, config):
         raise ValueError(f"--max-length exceeds teacher max_position_embeddings={limit}")
 
 
-@torch.no_grad()
+def build_sampling_params(args):
+    """Use greedy vLLM decoding while preserving the configured output-token budget."""
+    return SamplingParams(
+        max_tokens=args.max_new_tokens,
+        temperature=0.0,
+    )
+
+
+def build_lora_request(args):
+    if not args.teacher_peft_path:
+        return None
+    from vllm.lora.request import LoRARequest
+    return LoRARequest("teacher_adapter", 1, args.teacher_peft_path)
+
+
 def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
     source, output = validate_args(args)
     if not preflight_done:
         preflight_dataset(args, tokenizer)
-    validate_model_lengths(args, getattr(teacher, "config", None))
-    if tokenizer.eos_token_id is None:
-        raise ValueError("Teacher tokenizer must define eos_token_id")
-    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-    device = teacher.get_input_embeddings().weight.device
+
+    sampling_params = build_sampling_params(args)
+    lora_request = build_lora_request(args)
     output.parent.mkdir(parents=True, exist_ok=True)
-    was_training = teacher.training
-    teacher.eval()
     count = 0
     temporary = None
+
+    submission_chunk_size = 2048
+
     try:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent,
                                          prefix=output.name + ".", suffix=".partial", delete=False) as handle:
             temporary = Path(handle.name)
 
             def generate_rows(records):
-                prompts = [checked_generation_prompt(args, row, tokenizer) for row in records]
-                width = max(map(len, prompts))
-                # validate_args reserves max_new_tokens; checked prompts are
-                # already bounded so overlong rows cannot exceed max_length.
-                ids = torch.full((len(prompts), width), pad_id, dtype=torch.long, device=device)
-                mask = torch.zeros_like(ids)
-                for index, prompt in enumerate(prompts):
-                    ids[index, -len(prompt):] = torch.tensor(prompt, device=device)
-                    mask[index, -len(prompt):] = 1
-                options = dict(max_new_tokens=args.max_new_tokens, do_sample=args.do_sample,
-                               pad_token_id=pad_id, eos_token_id=tokenizer.eos_token_id,
-                               return_dict_in_generate=True, output_scores=False,
-                               num_return_sequences=1, num_beams=1, use_cache=True)
-                if args.do_sample:
-                    options.update(temperature=args.temperature, top_p=args.top_p, top_k=args.top_k)
-                sequences = teacher.generate(input_ids=ids, attention_mask=mask, **options).sequences
-                if sequences.shape[0] != len(records):
+                prompts = [
+                    {"prompt_token_ids": checked_generation_prompt(args, row, tokenizer)}
+                    for row in records
+                ]
+                outputs = teacher.generate(
+                    prompts,
+                    sampling_params=sampling_params,
+                    lora_request=lora_request,
+                    use_tqdm=False,
+                )
+                if len(outputs) != len(records):
                     raise ValueError("Teacher must return exactly one context per source row")
-                for offset, (record, generated) in enumerate(zip(records, sequences[:, width:]), 1):
-                    context_ids = generated.tolist()
-                    if tokenizer.eos_token_id in context_ids:
-                        context_ids = context_ids[:context_ids.index(tokenizer.eos_token_id) + 1]
-                    context = tokenizer.decode(context_ids, skip_special_tokens=True).strip()
+
+                for offset, (record, generated) in enumerate(zip(records, outputs), 1):
+                    if len(generated.outputs) != 1:
+                        raise ValueError(
+                            f"{source}: row {count + offset}: teacher must return exactly one completion"
+                        )
+
+                    context = generated.outputs[0].text.strip()
+
                     prepared = dict(record)
                     prepared[args.privileged_context_field] = context
-                    # Validate the complete training prompt without imposing a
-                    # token budget on privileged distillation.
+
+                    # Preserve the same downstream validation and JSONL contract.
                     try:
                         build_privileged_teacher_input(
                             prepared, tokenizer, args.privileged_context_field,
                             args.privileged_context_template)
                     except ValueError as error:
                         raise ValueError(f"{source}: row {count + offset}: {error}") from error
+
                     prepared["privileged_preparation"] = dict(
-                        version=1, kind="context", source_sha256=fingerprint(record),
+                        version=1,
+                        kind="context",
+                        source_sha256=fingerprint(record),
                         teacher_model_path=args.teacher_model_path,
                         teacher_peft_path=args.teacher_peft_path,
                         prompt_format="raw_question_v2",
                     )
                     handle.write(json.dumps(prepared, ensure_ascii=False) + "\n")
 
-            batch = []
+            records = []
             for record in tqdm(read_jsonl(source), desc="Preparing full dataset context", unit="rows"):
-                batch.append(record)
-                if len(batch) == args.batch_size:
-                    generate_rows(batch)
-                    count += len(batch)
-                    batch = []
-            if batch:
-                generate_rows(batch)
-                count += len(batch)
+                records.append(record)
+                if len(records) == submission_chunk_size:
+                    generate_rows(records)
+                    count += len(records)
+                    records = []
+
+            if records:
+                generate_rows(records)
+                count += len(records)
+
             if not count:
                 raise ValueError("Training dataset is empty")
+
             handle.flush()
             os.fsync(handle.fileno())
+
         # Publish only after full generation completes; refuse concurrent overwrite.
         os.link(temporary, output)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-        teacher.train(was_training)
+
     print(f"Prepared {count} / {count} dataset rows -> {output}")
     return count
 
@@ -282,20 +293,22 @@ def main():
     args = get_parser().parse_args()
     validate_args(args)
     if int(os.environ.get("WORLD_SIZE", "1")) > 1:
-        raise ValueError("Launch prepare with python, not torchrun; use --device-map auto for multiple GPUs")
-    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, set_seed
-    set_seed(args.seed)
+        raise ValueError("Launch prepare with python, not torchrun; use --tensor-parallel-size for multiple GPUs")
+    from transformers import AutoConfig, AutoTokenizer
+    from vllm import LLM
     tokenizer = AutoTokenizer.from_pretrained(args.teacher_model_path)
     config = AutoConfig.from_pretrained(args.teacher_model_path)
     validate_model_lengths(args, config)
     print(f"Validated {preflight_dataset(args, tokenizer)} rows before loading teacher weights")
-    dtype = args.dtype if args.dtype == "auto" else getattr(torch, args.dtype)
-    teacher = AutoModelForCausalLM.from_pretrained(
-        args.teacher_model_path, torch_dtype=dtype, device_map=args.device_map)
-    if args.teacher_peft_path:
-        from peft import PeftModel
-        teacher = PeftModel.from_pretrained(teacher, args.teacher_peft_path).merge_and_unload()
-    teacher.requires_grad_(False)
+    teacher = LLM(
+        model=args.teacher_model_path,
+        dtype=args.dtype,
+        tensor_parallel_size=args.tensor_parallel_size,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        max_model_len=args.max_length,
+        enable_lora=bool(args.teacher_peft_path),
+        seed=args.seed,
+    )
     prepare_full_dataset(args, teacher, tokenizer, preflight_done=True)
 
 
