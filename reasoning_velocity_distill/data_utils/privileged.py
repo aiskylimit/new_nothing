@@ -1,4 +1,4 @@
-"""Teacher-only prompt formatting. Response tokens are attached separately."""
+"""Privileged prompt formatting; supporting context is visible only to the teacher."""
 
 from .records import get_raw_prompt
 
@@ -28,13 +28,13 @@ def render_privileged_teacher_prompt(record, tokenizer, context, template):
     return prompt
 
 
-def build_privileged_teacher_input(record, tokenizer, field, template, max_prompt_length):
+def build_privileged_teacher_input(record, tokenizer, field, template):
+    """Render question and context; batch packing applies teacher training limits."""
     context = record.get(field)
     if not isinstance(context, str) or not context.strip():
         raise ValueError(f"Privileged training requires a nonempty '{field}' string")
     prompt = render_privileged_teacher_prompt(record, tokenizer, context, template)
     ids = tokenizer.encode(prompt, add_special_tokens=False)
-    if not ids or len(ids) > max_prompt_length:
-        raise ValueError(f"Privileged prompt has {len(ids)} tokens, limit is {max_prompt_length}; increase "
-                         "the limit to retain the question/context/chat headers")
+    if not ids:
+        raise ValueError("Privileged prompt must contain at least one token")
     return ids, len(tokenizer.encode(context, add_special_tokens=False))

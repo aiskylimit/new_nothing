@@ -22,14 +22,14 @@ DATA_DIR="$(python -c 'import sys; from tools.process_data_ultraInteract import 
 export DATA_DIR
 export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
 export DEV_NUM="${DEV_NUM:-512}" SEED="${SEED:-10}"
-CONTEXT_MAX_NEW_TOKENS="${CONTEXT_MAX_NEW_TOKENS:-512}"
+CONTEXT_MAX_NEW_TOKENS="${CONTEXT_MAX_NEW_TOKENS:-1024}"
 CONTEXT_MAX_PROMPT_LENGTH="${CONTEXT_MAX_PROMPT_LENGTH:-8192}"
-# Preparation keeps the full raw question, even when the student prompt is shorter.
-# Budget for that question plus generated context, then reserve the student response.
-# Export both limits so preparation and the training subprocess use the same values.
-export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((CONTEXT_MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))}"
+# Context generation has its own budget. Privileged training uses the same
+# bounded student response, with additional teacher space for prompt + context.
+export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))}"
+# A short student prompt can leave nearly MAX_LENGTH tokens for the response;
+# reserve that full budget, rather than MAX_LENGTH - MAX_PROMPT_LENGTH.
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
-printf 'Teacher training token budgets: prompt=%s, total=%s\n' "$T_MAX_PROMPT_LENGTH" "$T_MAX_LENGTH"
 
 # 1. Generate context for the FULL raw dataset, before splitting.
 printf '\n[1/4] Generate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
@@ -41,14 +41,15 @@ if [[ ! -f "$CONTEXT_DATA_PATH" ]]; then
         --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
         --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
         --max-length "$((CONTEXT_MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))" \
-        --t-max-prompt-length "$T_MAX_PROMPT_LENGTH" --t-max-length "$T_MAX_LENGTH" \
-        --student-max-length "$MAX_LENGTH" \
         --privileged-context-field context --seed "$SEED"
 fi
 
 # 2. Preprocess and split; each record retains its generated context.
 printf '\n[2/4] Preprocess dataset with context: %s\n' "$DATA_DIR"
-if [[ ! -f "$DATA_DIR/.context-preprocessed" || "$CONTEXT_DATA_PATH" -nt "$DATA_DIR/.context-preprocessed" || ! -f "$DATA_DIR/train.jsonl" || ! -f "$DATA_DIR/valid.jsonl" ]]; then
+if [[ ! -f "$DATA_DIR/.context-preprocessed" \
+      || "$CONTEXT_DATA_PATH" -nt "$DATA_DIR/.context-preprocessed" \
+      || "$BASE_PATH/tools/process_data_ultraInteract.py" -nt "$DATA_DIR/.context-preprocessed" \
+      || ! -f "$DATA_DIR/train.jsonl" || ! -f "$DATA_DIR/valid.jsonl" ]]; then
     rm -f "$DATA_DIR/.context-preprocessed"
     python tools/process_data_ultraInteract.py \
         --base-path "$BASE_PATH" --data-dir "$CONTEXT_DATA_PATH" \

@@ -44,14 +44,16 @@ class Encoder(object):
             add_generation_prompt=True,
         )
 
+        # Tokenize the two causal segments independently. Tokenizing their text
+        # concatenation can create a BPE token across the boundary, making the
+        # response IDs disagree with JSONL loading and step-span alignment.
         prompt_tokens = Encoder.tokenizer.encode(prompt_str, add_special_tokens=False)
-        full_tokens = Encoder.tokenizer.encode(prompt_str + response, add_special_tokens=False) + [
+        response_tokens = Encoder.tokenizer.encode(response, add_special_tokens=False) + [
             Encoder.tokenizer.eos_token_id]
 
-        response_tokens = full_tokens[len(prompt_tokens):]
-
-        if len(prompt_tokens) > self.args.max_prompt_length:
-            prompt_tokens = prompt_tokens[:self.args.max_prompt_length]
+        # Match data_utils.lm_datasets._pack_example: retain the suffix so chat
+        # generation headers immediately before the response are not discarded.
+        prompt_tokens = prompt_tokens[-self.args.max_prompt_length:]
             
         bytes_processed = len(prompt_str.encode('utf-8')) + len(response.encode('utf-8'))
 

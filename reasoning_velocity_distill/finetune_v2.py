@@ -33,7 +33,7 @@ from distillm.sampler import SampleGenerator
 from distillm.losses import forward_kl, reverse_kl, js_distance, tv_distance
 from distillm.losses import skewed_forward_kl, skewed_reverse_kl
 from distillm.trajectory import reasoning_velocity_loss
-from distillm.modes import (align_response_logits, prepare_privileged_teacher_batch,
+from distillm.modes import (align_response_logits, prepare_privileged_batches,
                            validate_mode_args, require_shared_vocabulary)
 from distillm.adaptive import AdaptiveConfig, AdaptiveScheduler
 
@@ -266,8 +266,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
     scheduler = AdaptiveScheduler(AdaptiveConfig.from_args(args), seed=getattr(args, "seed", 42)) if adaptive else None
     if adaptive and (teacher_model is None or "dev" not in dataset or args.eval_interval < 1):
         raise ValueError("Adaptive training requires a teacher, dev data, and positive eval_interval")
-    student_gen = adaptive or args.distill_mode == "on_policy" or (
-        args.distill_mode == "privileged" and args.privileged_trajectory == "student" and not prepared_privileged)
+    student_gen = adaptive or args.distill_mode == "on_policy"
     student_generator = SampleGenerator(args, tokenizer) if student_gen else None
     if teacher_model is not None:
         teacher_model.requires_grad_(False)
@@ -291,8 +290,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             st_time = time.time()
 
             selected_mode = scheduler.route(device) if scheduler else args.distill_mode
-            student_gen = selected_mode == "on_policy" or (
-                selected_mode == "privileged" and args.privileged_trajectory == "student" and not prepared_privileged)
+            student_gen = selected_mode == "on_policy"
             use_geometry = teacher_model is not None and selected_mode == "off_policy" and args.off_policy_geometry
             data_source = "fresh_on_policy" if student_gen else "canonical"
 
@@ -313,7 +311,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
 
             # Prepare teacher context on exactly the selected response tokens.
             if selected_mode == "privileged":
-                t_model_batch, t_no_model_batch = prepare_privileged_teacher_batch(
+                model_batch, no_model_batch, t_model_batch, t_no_model_batch = prepare_privileged_batches(
                     args, tokenizer, model_batch, no_model_batch)
             else:
                 t_model_batch = {key: value for key, value in model_batch.items() if key != "position_ids"}

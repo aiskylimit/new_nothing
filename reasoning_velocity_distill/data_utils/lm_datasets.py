@@ -276,7 +276,6 @@ class LMTrainDataset(Dataset):
                 record, self.teacher_tokenizer,
                 getattr(self.args, "privileged_context_field", "context"),
                 getattr(self.args, "privileged_context_template", DEFAULT_CONTEXT_TEMPLATE),
-                self.args.t_max_prompt_length,
             )
             student["privileged_prompt_ids"] = ids
             student["privileged_context_tokens"] = count
