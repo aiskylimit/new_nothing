@@ -30,7 +30,7 @@ DUTY_MAX = 1.0              # Duty cycle tối đa (luôn tính, không nghỉ)
 DUTY_STEP = 0.05            # Bước điều chỉnh duty cycle mỗi lần đo
 
 # --- Giới hạn VRAM cho ma trận burn (KHÔNG dùng đa luồng/nhiều stream) ---
-MAX_VRAM_GB = 6.0          # Tổng VRAM tối đa dùng cho x, y, z (fp32)
+MAX_VRAM_GB = 12.0          # Tổng VRAM tối đa dùng cho x, y, z (fp32)
 NUM_MATRICES = 3           # x, y, z (out buffer) mỗi cái là 1 ma trận NxN
 BYTES_PER_ELEM = 4         # fp32
 MIN_MM_TIME_S = 0.002      # 1 lần mm nên tốn tối thiểu ~2ms để overhead không đáng kể
@@ -88,8 +88,6 @@ def worker(rank, world_size, master_port):
         if per_mm_s >= MIN_MM_TIME_S or matrix_size >= hard_cap_size:
             break
 
-        del x, y, z
-        torch.cuda.empty_cache()
         matrix_size = min(matrix_size * 2, hard_cap_size)
 
     max_iters_per_micro = max(1, int(MICRO_CYCLE_S / per_mm_s))
