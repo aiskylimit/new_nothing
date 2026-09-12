@@ -1,4 +1,4 @@
-#1 +10
+#i talas-vlm-embed.txt
 #cka
 #v1
 
