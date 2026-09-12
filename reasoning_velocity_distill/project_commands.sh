@@ -24,6 +24,7 @@ export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-
 export DEV_NUM="${DEV_NUM:-512}" SEED="${SEED:-10}"
 CONTEXT_MAX_NEW_TOKENS="${CONTEXT_MAX_NEW_TOKENS:-1024}"
 CONTEXT_MAX_PROMPT_LENGTH="${CONTEXT_MAX_PROMPT_LENGTH:-8192}"
+CONTEXT_MAX_LENGTH="${CONTEXT_MAX_LENGTH:-10240}"
 # Context generation has its own budget. Privileged training uses the same
 # bounded student response, with additional teacher space for prompt + context.
 export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))}"
