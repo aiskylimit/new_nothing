@@ -76,39 +76,53 @@ def context_generation_prompt(record, tokenizer, template, max_reference_respons
         prompt = record["system_prompt"] + "\n\n" + prompt
     response = truncate_reference_response(response, tokenizer, max_reference_response_tokens)
 
-    def encode(reference):
-        text = template.format(prompt=prompt, response=reference)
+    def encode(prompt_text, reference):
+        text = template.format(prompt=prompt_text, response=reference)
         if getattr(tokenizer, "chat_template", None):
             text = tokenizer.apply_chat_template(
                 [{"role": "user", "content": text}], tokenize=False,
                 add_generation_prompt=True, enable_thinking=False)
         return tokenizer.encode(text, add_special_tokens=False)
 
-    ids = encode(response)
+    ids = encode(prompt, response)
     if max_prompt_length is None or len(ids) <= max_prompt_length:
         return ids
 
-    base_ids = encode("")
+    base_ids = encode(prompt, "")
     if len(base_ids) > max_prompt_length:
-        # Câu hỏi + khung template một mình đã vượt ngân sách: không có cách nào
-        # nhét reference response mà vẫn giữ nguyên câu hỏi. Trước đây code cũ
-        # âm thầm cắt đuôi toàn bộ chuỗi (ids[-max_prompt_length:]), có thể xoá
-        # mất phần câu hỏi và chỉ còn lại đuôi response — sinh ra prompt vô nghĩa
-        # mà không có cảnh báo nào. Ở đây báo lỗi rõ ràng thay vì âm thầm hỏng dữ liệu.
-        raise ValueError(
-            "Prompt/template alone exceed --max-prompt-length "
-            f"({len(base_ids)} > {max_prompt_length}); no reference response can fit. "
-            "Increase --max-prompt-length or shorten --context-generation-template."
+        # Câu hỏi (+ system_prompt) + khung template một mình đã vượt ngân sách:
+        # không còn chỗ cho reference response. Thay vì raise lỗi và làm hỏng cả
+        # batch, cắt bớt chính câu hỏi cho vừa ngân sách — vẫn tốt hơn bỏ hẳn dòng
+        # dữ liệu này, nhưng in cảnh báo rõ để biết dòng nào bị mất thông tin.
+        fitted_prompt = _binary_search_max_prefix(
+            prompt,
+            lambda candidate: len(encode(candidate, "")) <= max_prompt_length,
         )
+        if fitted_prompt is None:
+            # Ngay cả template rỗng + 1 ký tự câu hỏi cũng không vừa -> template
+            # tự nó đã vượt ngân sách, không thể cứu được bằng cách cắt prompt.
+            raise ValueError(
+                "--context-generation-template alone exceeds --max-prompt-length "
+                f"({len(encode('', '')) } > {max_prompt_length}); "
+                "increase --max-prompt-length or shorten the template."
+            )
+        print(
+            f"[canh bao] cau hoi bi cat bot vi prompt+template vuot --max-prompt-length "
+            f"({len(base_ids)} > {max_prompt_length} tokens); "
+            f"con lai {len(fitted_prompt)}/{len(prompt)} ky tu cua cau hoi goc.",
+            flush=True,
+        )
+        prompt = fitted_prompt
+        return encode(prompt, "")
 
     fitted = _binary_search_max_prefix(
         response,
-        lambda candidate: len(encode(candidate)) <= max_prompt_length,
+        lambda candidate: len(encode(prompt, candidate)) <= max_prompt_length,
     )
     if fitted is None:
         # Không tìm được prefix non-empty nào vừa; dùng response rỗng (đã biết vừa)
         return base_ids
-    return encode(fitted)
+    return encode(prompt, fitted)
 
 
 def get_parser():
@@ -355,9 +369,6 @@ def main():
     all_records, all_prompts = prepare_records(source, args)
     outputs = run_teacher_generation(args, all_prompts)
 
-    outputs = run_teacher_generation(args, all_prompts)
-
-    # --- Backup raw teacher outputs trước khi vào Giai đoạn 3 ---
     import pickle
     from datetime import datetime
 
