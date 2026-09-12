@@ -128,6 +128,81 @@ def test_distractor_pools_target_graph_neighbors_and_question_words() -> None:
     }
     assert set(pools["lexical"]) == {"node:Award", "relation:Movie|won|Award"}
     assert set(pools["random"]) == {unit["id"] for unit in schema_units(SCHEMA)} - set(GOLD_IDS)
+    assert set(pools["hard"]) == {"relation:Person|directed|Movie"}
+
+
+HARD_SCHEMA = {
+    "schema_id": "cypherbench:media:def",
+    "benchmark": "cypherbench",
+    "graph": "media",
+    "nodes": [
+        {"label": "Book", "properties": {"pages": "INTEGER", "title": "STRING"}},
+        {"label": "Genre", "properties": {}},
+        {"label": "Movie", "properties": {"country": "STRING", "release_year": "INTEGER", "title": "STRING"}},
+        {"label": "Person", "properties": {"age": "INTEGER", "name": "STRING"}},
+        {"label": "Series", "properties": {"release_year": "INTEGER", "seasons": "INTEGER", "title": "STRING"}},
+    ],
+    "relationships": [
+        {"properties": {}, "source": "Movie", "target": "Genre", "type": "inGenre"},
+        {"properties": {}, "source": "Movie", "target": "Person", "type": "features"},
+        {"properties": {}, "source": "Person", "target": "Movie", "type": "actedIn"},
+        {"properties": {}, "source": "Person", "target": "Series", "type": "actedIn"},
+        {"properties": {}, "source": "Person", "target": "Movie", "type": "directed"},
+        {"properties": {}, "source": "Person", "target": "Book", "type": "wrote"},
+    ],
+}
+HARD_GOLD_IDS = ["node:Movie", "node:Person", "relation:Person|actedIn|Movie"]
+EXPECTED_HARD = {
+    "node:Series",  # shares release_year and title with gold Movie (Jaccard 2/4)
+    "relation:Person|actedIn|Series",  # gold relationship type, other endpoint
+    "relation:Movie|features|Person",  # gold endpoint pair, reversed
+    "relation:Person|directed|Movie",  # gold endpoint pair, other type
+}
+
+
+def _hard_row(index: int) -> dict:
+    return {
+        "cypher": "MATCH (p:Person)-[:actedIn]->(m:Movie) RETURN m.title",
+        "graph": "media",
+        "id": f"cypherbench:train:media:{index}",
+        "question": "Which movies did Tom Hanks act in?",
+        "schema_id": HARD_SCHEMA["schema_id"],
+        "source": "cypherbench",
+        "split": "train",
+        "sub_schema": {
+            "nodes": [HARD_SCHEMA["nodes"][2], HARD_SCHEMA["nodes"][3]],
+            "relationships": [HARD_SCHEMA["relationships"][2]],
+        },
+    }
+
+
+def test_hard_pool_keeps_only_units_that_imitate_gold() -> None:
+    pools = distractor_pools(schema_units(HARD_SCHEMA), HARD_GOLD_IDS, "Which movies did Tom Hanks act in?")
+
+    # Book shares a single property and inGenre/wrote touch gold nodes only as neighbors.
+    assert set(pools["hard"]) == EXPECTED_HARD
+
+
+def test_hard_only_sampling_adds_only_hard_distractors() -> None:
+    config = AugmentationConfig(
+        gold_ratio=0.0,
+        full_ratio=0.0,
+        max_distractors=6,
+        hard_weight=1.0,
+        neighbor_weight=0.0,
+        lexical_weight=0.0,
+        random_weight=0.0,
+    )
+
+    for index in range(30):
+        info = augment_generation_row(_hard_row(index), HARD_SCHEMA, config)["schema_augmentation"]
+        assert info["distractor_unit_ids"]
+        assert set(info["distractor_unit_ids"]) <= EXPECTED_HARD
+
+
+def test_rejects_negative_pool_weights() -> None:
+    with pytest.raises(ValueError, match="pool weights"):
+        AugmentationConfig(hard_weight=-0.1)
 
 
 def test_rejects_gold_entries_that_do_not_match_the_schema() -> None:

@@ -51,6 +51,12 @@ def parse_args() -> argparse.Namespace:
         default=defaults.max_distractors,
         help="Upper bound on added units per noisy row, counting relationship-endpoint closure.",
     )
+    parser.add_argument(
+        "--hard-weight",
+        type=float,
+        default=defaults.hard_weight,
+        help="Weight of distractors imitating gold units (same relationship type or endpoints, similar node).",
+    )
     parser.add_argument("--neighbor-weight", type=float, default=defaults.neighbor_weight)
     parser.add_argument("--lexical-weight", type=float, default=defaults.lexical_weight)
     parser.add_argument("--random-weight", type=float, default=defaults.random_weight)
@@ -116,6 +122,7 @@ def main() -> None:
         gold_ratio=args.gold_ratio,
         full_ratio=args.full_ratio,
         max_distractors=args.max_distractors,
+        hard_weight=args.hard_weight,
         neighbor_weight=args.neighbor_weight,
         lexical_weight=args.lexical_weight,
         random_weight=args.random_weight,

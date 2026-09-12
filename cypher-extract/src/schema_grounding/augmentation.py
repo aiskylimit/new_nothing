@@ -29,7 +29,10 @@ from .inference.merge import merge_schema_units
 GOLD_MODE = "gold"
 NOISY_MODE = "noisy"
 FULL_MODE = "full"
-POOL_NAMES = ("neighbor", "lexical", "random")
+POOL_NAMES = ("hard", "neighbor", "lexical", "random")
+# A non-gold node is a hard distractor when its properties largely duplicate a gold node's.
+_HARD_MIN_SHARED_PROPERTIES = 2
+_HARD_MIN_PROPERTY_JACCARD = 0.5
 
 _WORD_RE = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+")
 _QUESTION_WORD_RE = re.compile(r"[a-z0-9]+")
@@ -47,6 +50,8 @@ class AugmentationConfig:
     gold_ratio: float = 0.15
     full_ratio: float = 0.10
     max_distractors: int = 6
+    # The default hard_weight of 0 reproduces the distractor_v1 data exactly.
+    hard_weight: float = 0.0
     neighbor_weight: float = 0.5
     lexical_weight: float = 0.25
     random_weight: float = 0.25
@@ -57,9 +62,14 @@ class AugmentationConfig:
             raise ValueError("gold_ratio and full_ratio must be non-negative and sum to at most 1.")
         if self.max_distractors < 1:
             raise ValueError("max_distractors must be at least 1.")
-        weights = (self.neighbor_weight, self.lexical_weight, self.random_weight)
-        if any(weight < 0 for weight in weights) or sum(weights) <= 0:
+        if any(weight < 0 for weight in self.pool_weights) or sum(self.pool_weights) <= 0:
             raise ValueError("Distractor pool weights must be non-negative with a positive sum.")
+
+    @property
+    def pool_weights(self) -> tuple[float, float, float, float]:
+        """Weights aligned with ``POOL_NAMES``."""
+
+        return (self.hard_weight, self.neighbor_weight, self.lexical_weight, self.random_weight)
 
 
 def node_unit_id(label: str) -> str:
@@ -123,6 +133,42 @@ def _question_words(question: str) -> set[str]:
     return {word for word in words if len(word) >= 3 and word not in _LEXICAL_STOPWORDS}
 
 
+def _is_hard_distractor(unit: Mapping[str, Any], gold_units: Sequence[Mapping[str, Any]]) -> bool:
+    """Return whether ``unit`` closely imitates a gold unit.
+
+    Relationships are hard when they reuse a gold relationship type with other
+    endpoints, or connect a gold relationship's endpoint pair (either direction)
+    under another type. Nodes are hard when their properties largely duplicate a
+    gold node's properties.
+    """
+
+    schema = unit["schema"]
+    if unit["kind"] == "relation":
+        for gold in gold_units:
+            if gold["kind"] != "relation":
+                continue
+            gold_schema = gold["schema"]
+            if schema["type"] == gold_schema["type"]:
+                return True
+            if {(schema["source"], schema["target"])} & {
+                (gold_schema["source"], gold_schema["target"]),
+                (gold_schema["target"], gold_schema["source"]),
+            }:
+                return True
+        return False
+    properties = set(schema.get("properties", {}))
+    for gold in gold_units:
+        if gold["kind"] != "node":
+            continue
+        gold_properties = set(gold["schema"].get("properties", {}))
+        shared = len(properties & gold_properties)
+        if shared < _HARD_MIN_SHARED_PROPERTIES:
+            continue
+        if shared / len(properties | gold_properties) >= _HARD_MIN_PROPERTY_JACCARD:
+            return True
+    return False
+
+
 def distractor_pools(
     units: Sequence[Mapping[str, Any]], gold_ids: Sequence[str], question: str
 ) -> dict[str, list[str]]:
@@ -130,6 +176,7 @@ def distractor_pools(
 
     gold = set(gold_ids)
     gold_nodes = {unit_id for unit_id in gold if unit_id.startswith("node:")}
+    gold_units = [unit for unit in units if unit["id"] in gold]
     candidates = [unit for unit in units if unit["id"] not in gold]
     adjacent_nodes: set[str] = set()
     for unit in units:
@@ -138,6 +185,7 @@ def distractor_pools(
             adjacent_nodes |= endpoints
     question_words = _question_words(question)
     return {
+        "hard": [unit["id"] for unit in candidates if _is_hard_distractor(unit, gold_units)],
         "neighbor": [
             unit["id"]
             for unit in candidates
@@ -170,7 +218,7 @@ def sample_distractors(
     selected = set(gold_ids)
     added: list[str] = []
     remaining = {name: [unit_id for unit_id in pools[name] if unit_id not in selected] for name in POOL_NAMES}
-    weights = dict(zip(POOL_NAMES, (config.neighbor_weight, config.lexical_weight, config.random_weight), strict=True))
+    weights = dict(zip(POOL_NAMES, config.pool_weights, strict=True))
     while len(added) < target:
         available = [name for name in POOL_NAMES if remaining[name] and weights[name] > 0]
         if not available:

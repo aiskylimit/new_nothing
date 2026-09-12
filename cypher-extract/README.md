@@ -212,11 +212,15 @@ chế này cho dataset tự quản lý. Có thể đổi nguồn grounding bằn
 Mỗi `dataset_dir` được quản lý gắn với đúng một nguồn grounding
 (`MANAGED_DATA_SOURCES` trong `src/distillation/auto_prepare.py`, tra theo tên
 thư mục; nguồn grounding/prepared là thư mục cùng cấp). Các config mặc định
-dùng `$CYPHER_DATA_ROOT/llamafactory_distractor_v1`, được build từ
-`$CYPHER_DATA_ROOT/cypherbench_schema_grounding_distractor_v1` (tạo bởi
-`scripts/augment_generator_schema.py`). Để chạy baseline gold sub-schema,
-override `dataset_dir=$CYPHER_DATA_ROOT/llamafactory`. Auto-prepare từ chối ghi
-đè một cache đã build từ nguồn grounding khác, trừ khi đặt `AUTO_PREPARE_FORCE=1`.
+dùng `$CYPHER_DATA_ROOT/llamafactory_distractor_v2`, được build từ
+`$CYPHER_DATA_ROOT/cypherbench_schema_grounding_distractor_v2` (tạo bởi
+`scripts/augment_generator_schema.py` với
+`--hard-weight 0.5 --neighbor-weight 0 --lexical-weight 0.2 --random-weight 0.3`).
+Để chạy baseline gold sub-schema, override
+`dataset_dir=$CYPHER_DATA_ROOT/llamafactory`; để dùng bản nhiễu v1 (tham số mặc
+định của script), override `dataset_dir=$CYPHER_DATA_ROOT/llamafactory_distractor_v1`.
+Auto-prepare từ chối ghi đè một cache đã build từ nguồn grounding khác, trừ khi
+đặt `AUTO_PREPARE_FORCE=1`.
 
 > **Lưu ý:**
 > - Pipeline mặc định từ chối ghi đè lên thư mục đã có dữ liệu. Hãy thêm `--overwrite` khi chủ động muốn tạo lại từ đầu.

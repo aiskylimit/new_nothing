@@ -573,7 +573,7 @@ def test_baseline_config_student_generation_matrix(config_path: Path) -> None:
     assert config["eval_dataset"] == "cypher_prepared_eval"
     assert config["dataset_dir"] == (
         "${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/"
-        "cypher-extract/datasets/cypher-extract-data}/llamafactory_distractor_v1"
+        "cypher-extract/datasets/cypher-extract-data}/llamafactory_distractor_v2"
     )
     expected_template = {
         "qwen3": "qwen3_nothink",

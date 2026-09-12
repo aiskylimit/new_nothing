@@ -8,7 +8,7 @@ model_revision: 9213176726f574b556790deb65791e0c5aa438b6
 ref_model: results/full_finetune/llama3/teacher_full
 dataset: cypher_prepared_train
 eval_dataset: cypher_prepared_eval
-dataset_dir: ${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data}/llamafactory_distractor_v1
+dataset_dir: ${oc.env:CYPHER_DATA_ROOT,/mnt/local/aiskylimit_new_nothing/cypher-extract/datasets/cypher-extract-data}/llamafactory_distractor_v2
 template: llama3
 cutoff_len: 899
 packing: false

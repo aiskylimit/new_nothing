@@ -60,30 +60,32 @@ def test_plan_uses_batch_specific_cache_and_honors_cli_override(tmp_path: Path) 
     assert plan.grounding_input_dir == tmp_path / "data" / "cypherbench_schema_grounding_full_final"
 
 
-def test_plan_pairs_distractor_dataset_dir_with_its_grounding_source(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_plan_pairs_distractor_dataset_dir_with_its_grounding_source(tmp_path: Path, version: str) -> None:
     config = tmp_path / "train.yaml"
-    _write_config(config, batch_size=8, dataset_dir="data/llamafactory_distractor_v1")
+    _write_config(config, batch_size=8, dataset_dir=f"data/llamafactory_distractor_{version}")
 
     plan = build_auto_prepare_plan(config, project_root=tmp_path)
 
     assert plan is not None
-    assert plan.grounding_input_dir == tmp_path / "data" / "cypherbench_schema_grounding_distractor_v1"
-    assert plan.prepared_dir == tmp_path / "data" / "prepared_distractor_v1" / "batch_8"
-    assert plan.dataset_dir == tmp_path / "data" / "llamafactory_distractor_v1" / "batch_8"
-    assert plan.dataset_dir_override == "data/llamafactory_distractor_v1/batch_8"
+    assert plan.grounding_input_dir == tmp_path / "data" / f"cypherbench_schema_grounding_distractor_{version}"
+    assert plan.prepared_dir == tmp_path / "data" / f"prepared_distractor_{version}" / "batch_8"
+    assert plan.dataset_dir == tmp_path / "data" / f"llamafactory_distractor_{version}" / "batch_8"
+    assert plan.dataset_dir_override == f"data/llamafactory_distractor_{version}/batch_8"
 
 
-def test_plan_pairs_absolute_data_root_dataset_dir_with_sibling_sources(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_plan_pairs_absolute_data_root_dataset_dir_with_sibling_sources(tmp_path: Path, version: str) -> None:
     data_root = tmp_path / "cypher-extract-data"
     config = tmp_path / "train.yaml"
-    _write_config(config, batch_size=8, dataset_dir=f"{data_root.as_posix()}/llamafactory_distractor_v1")
+    _write_config(config, batch_size=8, dataset_dir=f"{data_root.as_posix()}/llamafactory_distractor_{version}")
 
     plan = build_auto_prepare_plan(config, project_root=tmp_path / "project")
 
     assert plan is not None
-    assert plan.grounding_input_dir == data_root / "cypherbench_schema_grounding_distractor_v1"
-    assert plan.prepared_dir == data_root / "prepared_distractor_v1" / "batch_8"
-    assert plan.dataset_dir == data_root / "llamafactory_distractor_v1" / "batch_8"
+    assert plan.grounding_input_dir == data_root / f"cypherbench_schema_grounding_distractor_{version}"
+    assert plan.prepared_dir == data_root / f"prepared_distractor_{version}" / "batch_8"
+    assert plan.dataset_dir == data_root / f"llamafactory_distractor_{version}" / "batch_8"
 
 
 def test_explicit_grounding_and_prepared_overrides_win(tmp_path: Path) -> None:
