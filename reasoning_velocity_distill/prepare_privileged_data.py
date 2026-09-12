@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import multiprocessing
 
 from tqdm import tqdm
 
@@ -19,31 +20,49 @@ DEFAULT_GENERATION_TEMPLATE = (
     "Return only the supporting context, not a replacement answer or a full worked solution.\n\n"
     "Question:\n{prompt}\n\nReference response:\n{response}\n\nSupporting context:"
 )
-MAX_REFERENCE_RESPONSE_TOKENS = 2048
+DEFAULT_MAX_REFERENCE_RESPONSE_TOKENS = 2048
 
 
-def truncate_reference_response(response, tokenizer):
-    """Limit every reference before prompt rendering, keeping a Unicode-safe prefix."""
-    if len(tokenizer.encode(response, add_special_tokens=False)) <= MAX_REFERENCE_RESPONSE_TOKENS:
-        return response
-    low, high = 1, len(response) - 1
+def _binary_search_max_prefix(text, fits_fn):
+    """Tìm prefix dài nhất của `text` sao cho fits_fn(prefix) == True.
+
+    Lưu ý: giả định số token không giảm khi prefix dài thêm. Với hầu hết
+    tokenizer BPE điều này đúng, nhưng byte-fallback ở biên grapheme có thể
+    vi phạm giả định này ở một vài điểm hiếm. Thuật toán vẫn an toàn (không
+    crash) nhưng có thể không tìm ra prefix hợp lệ dài nhất tuyệt đối.
+    """
+    low, high = 1, len(text) - 1
     fitted = None
     while low <= high:
         middle = (low + high) // 2
-        candidate = response[:middle]
-        if len(tokenizer.encode(candidate, add_special_tokens=False)) <= MAX_REFERENCE_RESPONSE_TOKENS:
-            if candidate.strip():
-                fitted = candidate
+        candidate = text[:middle]
+        if candidate.strip() and fits_fn(candidate):
+            fitted = candidate
             low = middle + 1
         else:
             high = middle - 1
+    return fitted
+
+
+def truncate_reference_response(response, tokenizer, max_tokens):
+    if len(tokenizer.encode(response, add_special_tokens=False)) <= max_tokens:
+        return response
+
+    # Thu hẹp không gian tìm kiếm trước để binary search chạy nhanh trên chuỗi dài
+    upper_bound_chars = max_tokens * 10
+    if len(response) > upper_bound_chars:
+        response = response[:upper_bound_chars]
+
+    fitted = _binary_search_max_prefix(
+        response,
+        lambda candidate: len(tokenizer.encode(candidate, add_special_tokens=False)) <= max_tokens,
+    )
     if fitted is None:
         raise ValueError("Reference response token budget cannot fit a nonempty reference response")
     return fitted
 
 
-def context_generation_prompt(record, tokenizer, template, max_prompt_length=None):
-    """Cap every reference first, then fit the complete prompt to its token budget."""
+def context_generation_prompt(record, tokenizer, template, max_reference_response_tokens, max_prompt_length=None):
     if max_prompt_length is not None and max_prompt_length < 1:
         raise ValueError("--max-prompt-length must be positive")
     prompt = get_raw_prompt(record, tokenizer)
@@ -55,7 +74,7 @@ def context_generation_prompt(record, tokenizer, template, max_prompt_length=Non
                          "and original output/response/generated_text")
     if record.get("system_prompt"):
         prompt = record["system_prompt"] + "\n\n" + prompt
-    response = truncate_reference_response(response, tokenizer)
+    response = truncate_reference_response(response, tokenizer, max_reference_response_tokens)
 
     def encode(reference):
         text = template.format(prompt=prompt, response=reference)
@@ -71,30 +90,25 @@ def context_generation_prompt(record, tokenizer, template, max_prompt_length=Non
 
     base_ids = encode("")
     if len(base_ids) > max_prompt_length:
-        # A long question can overflow even after removing the reference. Use
-        # the same prompt-suffix policy as training, retaining the generation
-        # header at the end instead of rejecting the dataset row.
-        return ids[-max_prompt_length:]
+        # Câu hỏi + khung template một mình đã vượt ngân sách: không có cách nào
+        # nhét reference response mà vẫn giữ nguyên câu hỏi. Trước đây code cũ
+        # âm thầm cắt đuôi toàn bộ chuỗi (ids[-max_prompt_length:]), có thể xoá
+        # mất phần câu hỏi và chỉ còn lại đuôi response — sinh ra prompt vô nghĩa
+        # mà không có cảnh báo nào. Ở đây báo lỗi rõ ràng thay vì âm thầm hỏng dữ liệu.
+        raise ValueError(
+            "Prompt/template alone exceed --max-prompt-length "
+            f"({len(base_ids)} > {max_prompt_length}); no reference response can fit. "
+            "Increase --max-prompt-length or shorten --context-generation-template."
+        )
 
-    # Search character prefixes to avoid decoding partial Unicode tokens. Always
-    # measure the complete rendered prompt, including BPE boundary effects and
-    # any repeated {response} placeholders in a custom template. Keep only a
-    # verified fit: token counts need not be strictly monotonic across prefixes.
-    low, high = 1, len(response) - 1
-    fitted_ids = None
-    while low <= high:
-        middle = (low + high) // 2
-        reference = response[:middle]
-        candidate = encode(reference)
-        if len(candidate) <= max_prompt_length:
-            if reference.strip():
-                fitted_ids = candidate
-            low = middle + 1
-        else:
-            high = middle - 1
-    if fitted_ids is None:
-        return ids[-max_prompt_length:]
-    return fitted_ids
+    fitted = _binary_search_max_prefix(
+        response,
+        lambda candidate: len(encode(candidate)) <= max_prompt_length,
+    )
+    if fitted is None:
+        # Không tìm được prefix non-empty nào vừa; dùng response rỗng (đã biết vừa)
+        return base_ids
+    return encode(fitted)
 
 
 def get_parser():
@@ -111,17 +125,21 @@ def get_parser():
     parser.add_argument("--dtype", choices=["auto", "float32", "float16", "bfloat16"], default="auto")
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--max-prompt-length", type=int, default=3072,
-                        help="Context-generation input budget; reference responses are always capped "
-                             "at 2048 teacher tokens first, then shortened further; if still too long, "
-                             "keep the rendered prompt suffix within this budget")
+                        help="Context-generation input budget")
     parser.add_argument("--max-length", type=int, default=4096,
                         help="Teacher context-generation total sequence budget")
+    parser.add_argument("--max-reference-response-tokens", type=int, default=DEFAULT_MAX_REFERENCE_RESPONSE_TOKENS,
+                        help="Hard cap on reference-response tokens before it's fed into the generation prompt")
     parser.add_argument("--privileged-context-field", default="context",
                         help="JSONL field stored alongside the original prompt and response")
     parser.add_argument("--privileged-context-template", default=DEFAULT_CONTEXT_TEMPLATE,
                         help="Match the context insertion template used by finetune_v2")
     parser.add_argument("--context-generation-template", default=DEFAULT_GENERATION_TEMPLATE,
                         help="Teacher instruction containing {prompt} and {response}")
+    parser.add_argument("--num-workers", type=int, default=min(multiprocessing.cpu_count(), 64),
+                        help="CPU worker processes for tokenization/validation pass")
+    parser.add_argument("--chunksize", type=int, default=100,
+                        help="imap chunksize for the CPU preparation pool")
     parser.add_argument("--seed", type=int, default=42)
     return parser
 
@@ -137,6 +155,12 @@ def validate_args(args):
         raise ValueError("Require 0 < --max-prompt-length < --max-length")
     if args.max_prompt_length + args.max_new_tokens > args.max_length:
         raise ValueError("Require --max-prompt-length + --max-new-tokens <= --max-length")
+    if args.max_reference_response_tokens < 1:
+        raise ValueError("--max-reference-response-tokens must be positive")
+    if args.num_workers < 1:
+        raise ValueError("--num-workers must be positive")
+    if args.chunksize < 1:
+        raise ValueError("--chunksize must be positive")
     if "{privileged_context}" not in args.privileged_context_template:
         raise ValueError("--privileged-context-template must contain {privileged_context}")
     validate_context_field(args.privileged_context_field)
@@ -154,29 +178,41 @@ def validate_args(args):
     return source, output
 
 
-def checked_generation_prompt(args, record, tokenizer):
-    ids = context_generation_prompt(record, tokenizer, args.context_generation_template,
-                                    max_prompt_length=args.max_prompt_length)
-    if not ids:
-        raise ValueError("Context-generation prompt must contain at least one token")
-    return ids[-args.max_prompt_length:]
+# ---------------------------------------------------------
+# MULTIPROCESSING WORKER CONFIGURATION
+# ---------------------------------------------------------
+_worker_tokenizer = None
+_worker_args = None
 
 
-def preflight_dataset(args, tokenizer):
-    """Scan all rows before GPU generation; retain neither tokens nor records in RAM."""
-    source, _ = validate_args(args)
-    count = 0
-    for count, record in enumerate(read_jsonl(source), 1):
-        try:
-            checked_generation_prompt(args, record, tokenizer)
-            text = render_privileged_teacher_prompt(record, tokenizer, "", args.privileged_context_template)
-            if not tokenizer.encode(text, add_special_tokens=False):
-                raise ValueError("Training teacher prompt must contain at least one token")
-        except (ValueError, TypeError, KeyError) as error:
-            raise ValueError(f"{source}: row {count}: {error}") from error
-    if count == 0:
-        raise ValueError(f"Training dataset is empty: {source}")
-    return count
+def _init_worker(model_path, args):
+    """Khởi tạo tokenizer riêng cho mỗi worker process."""
+    global _worker_tokenizer, _worker_args
+    from transformers import AutoTokenizer
+    _worker_tokenizer = AutoTokenizer.from_pretrained(model_path)
+    _worker_args = args
+
+
+def _process_single_row(record_tuple):
+    idx, record = record_tuple
+    try:
+        prompt_ids = context_generation_prompt(
+            record, _worker_tokenizer, _worker_args.context_generation_template,
+            max_reference_response_tokens=_worker_args.max_reference_response_tokens,
+            max_prompt_length=_worker_args.max_prompt_length,
+        )
+        if not prompt_ids:
+            return False, idx, None, "Context-generation prompt must contain at least one token"
+
+        # Preflight validation: đảm bảo prompt huấn luyện (với context rỗng placeholder)
+        # cũng mã hóa được, để lỗi lộ ra sớm ở giai đoạn CPU thay vì sau khi tốn GPU generate.
+        text = render_privileged_teacher_prompt(record, _worker_tokenizer, "", _worker_args.privileged_context_template)
+        if not _worker_tokenizer.encode(text, add_special_tokens=False):
+            return False, idx, None, "Training teacher prompt must contain at least one token"
+
+        return True, idx, {"record": record, "prompt_token_ids": prompt_ids}, None
+    except Exception as error:
+        return False, idx, None, str(error)
 
 
 def validate_model_lengths(args, config):
@@ -186,7 +222,6 @@ def validate_model_lengths(args, config):
 
 
 def build_sampling_params(args):
-    """Use greedy vLLM decoding while preserving the configured output-token budget."""
     return SamplingParams(
         max_tokens=args.max_new_tokens,
         temperature=0.0,
@@ -200,106 +235,38 @@ def build_lora_request(args):
     return LoRARequest("teacher_adapter", 1, args.teacher_peft_path)
 
 
-def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
-    source, output = validate_args(args)
-    if not preflight_done:
-        preflight_dataset(args, tokenizer)
+def prepare_records(source, args):
+    """Giai đoạn 1: đọc + tokenize + validate toàn bộ dataset bằng CPU multiprocessing.
 
-    sampling_params = build_sampling_params(args)
-    lora_request = build_lora_request(args)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    count = 0
-    temporary = None
+    Chạy trên B200 nên toàn bộ dataset được nạp hết vào RAM một lần —
+    đơn giản hơn streaming và không phải nút thắt trên các server này.
+    """
+    print("Giai đoạn 1: đọc và mã hóa toàn bộ dữ liệu (CPU multiprocessing)...")
+    raw_records = list(enumerate(read_jsonl(source), 1))
+    if not raw_records:
+        raise ValueError(f"Training dataset is empty: {source}")
 
-    submission_chunk_size = 2048
+    all_records = []
+    all_prompts = []
+    with multiprocessing.Pool(processes=args.num_workers, initializer=_init_worker,
+                              initargs=(args.teacher_model_path, args)) as pool:
+        for success, idx, result, err_msg in tqdm(
+            pool.imap(_process_single_row, raw_records, chunksize=args.chunksize),
+            total=len(raw_records), desc="Preparing data",
+        ):
+            if not success:
+                raise ValueError(f"{source}: row {idx}: {err_msg}")
+            all_records.append(result["record"])
+            all_prompts.append({"prompt_token_ids": result["prompt_token_ids"]})
 
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent,
-                                         prefix=output.name + ".", suffix=".partial", delete=False) as handle:
-            temporary = Path(handle.name)
-
-            def generate_rows(records):
-                prompts = [
-                    {"prompt_token_ids": checked_generation_prompt(args, row, tokenizer)}
-                    for row in records
-                ]
-                outputs = teacher.generate(
-                    prompts,
-                    sampling_params=sampling_params,
-                    lora_request=lora_request,
-                    use_tqdm=False,
-                )
-                if len(outputs) != len(records):
-                    raise ValueError("Teacher must return exactly one context per source row")
-
-                for offset, (record, generated) in enumerate(zip(records, outputs), 1):
-                    if len(generated.outputs) != 1:
-                        raise ValueError(
-                            f"{source}: row {count + offset}: teacher must return exactly one completion"
-                        )
-
-                    context = generated.outputs[0].text.strip()
-
-                    prepared = dict(record)
-                    prepared[args.privileged_context_field] = context
-
-                    # Preserve the same downstream validation and JSONL contract.
-                    try:
-                        build_privileged_teacher_input(
-                            prepared, tokenizer, args.privileged_context_field,
-                            args.privileged_context_template)
-                    except ValueError as error:
-                        raise ValueError(f"{source}: row {count + offset}: {error}") from error
-
-                    prepared["privileged_preparation"] = dict(
-                        version=1,
-                        kind="context",
-                        source_sha256=fingerprint(record),
-                        teacher_model_path=args.teacher_model_path,
-                        teacher_peft_path=args.teacher_peft_path,
-                        prompt_format="raw_question_v2",
-                    )
-                    handle.write(json.dumps(prepared, ensure_ascii=False) + "\n")
-
-            records = []
-            for record in tqdm(read_jsonl(source), desc="Preparing full dataset context", unit="rows"):
-                records.append(record)
-                if len(records) == submission_chunk_size:
-                    generate_rows(records)
-                    count += len(records)
-                    records = []
-
-            if records:
-                generate_rows(records)
-                count += len(records)
-
-            if not count:
-                raise ValueError("Training dataset is empty")
-
-            handle.flush()
-            os.fsync(handle.fileno())
-
-        # Publish only after full generation completes; refuse concurrent overwrite.
-        os.link(temporary, output)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-    print(f"Prepared {count} / {count} dataset rows -> {output}")
-    return count
+    print(f"Đã chuẩn bị {len(all_prompts)} prompts.")
+    return all_records, all_prompts
 
 
-def main():
-    args = get_parser().parse_args()
-    validate_args(args)
-    if int(os.environ.get("WORLD_SIZE", "1")) > 1:
-        raise ValueError("Launch prepare with python, not torchrun; use --tensor-parallel-size for multiple GPUs")
-    from transformers import AutoConfig, AutoTokenizer
+def run_teacher_generation(args, all_prompts):
+    """Giai đoạn 2: nạp teacher model bằng vLLM và generate toàn bộ batch."""
     from vllm import LLM
-    tokenizer = AutoTokenizer.from_pretrained(args.teacher_model_path)
-    config = AutoConfig.from_pretrained(args.teacher_model_path)
-    validate_model_lengths(args, config)
-    print(f"Validated {preflight_dataset(args, tokenizer)} rows before loading teacher weights")
+
     teacher = LLM(
         model=args.teacher_model_path,
         dtype=args.dtype,
@@ -309,7 +276,109 @@ def main():
         enable_lora=bool(args.teacher_peft_path),
         seed=args.seed,
     )
-    prepare_full_dataset(args, teacher, tokenizer, preflight_done=True)
+
+    sampling_params = build_sampling_params(args)
+    lora_request = build_lora_request(args)
+
+    print("Giai đoạn 2: teacher generation (vLLM continuous batching)...")
+    outputs = teacher.generate(
+        all_prompts,
+        sampling_params=sampling_params,
+        lora_request=lora_request,
+        use_tqdm=True,
+    )
+    return outputs
+
+
+def write_prepared_dataset(source, output, args, tokenizer, all_records, outputs):
+    """Giai đoạn 3: validate + ghi file JSONL atomically (temp file + hardlink)."""
+    if len(outputs) != len(all_records):
+        raise ValueError("Teacher must return exactly one context per source row")
+
+    print("Giai đoạn 3: tổng hợp và ghi file...")
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent,
+                                         prefix=output.name + ".", suffix=".partial", delete=False) as handle:
+            temporary = Path(handle.name)
+
+            for offset, (record, generated) in tqdm(enumerate(zip(all_records, outputs), 1),
+                                                     total=len(all_records), desc="Writing file"):
+                if len(generated.outputs) != 1:
+                    raise ValueError(f"{source}: row {offset}: teacher must return exactly one completion")
+
+                context = generated.outputs[0].text.strip()
+                prepared = dict(record)
+                prepared[args.privileged_context_field] = context
+
+                try:
+                    build_privileged_teacher_input(
+                        prepared, tokenizer, args.privileged_context_field,
+                        args.privileged_context_template)
+                except ValueError as error:
+                    raise ValueError(f"{source}: row {offset}: {error}") from error
+
+                prepared["privileged_preparation"] = dict(
+                    version=1,
+                    kind="context",
+                    source_sha256=fingerprint(record),
+                    teacher_model_path=args.teacher_model_path,
+                    teacher_peft_path=args.teacher_peft_path,
+                    prompt_format="raw_question_v2",
+                )
+                handle.write(json.dumps(prepared, ensure_ascii=False) + "\n")
+
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        os.link(temporary, output)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+    print(f"Hoàn thành: đã ghi {len(all_records)} rows -> {output}")
+
+
+def main():
+    args = get_parser().parse_args()
+    source, output = validate_args(args)
+    if int(os.environ.get("WORLD_SIZE", "1")) > 1:
+        raise ValueError("Launch prepare with python, not torchrun; use --tensor-parallel-size for multiple GPUs")
+
+    from transformers import AutoConfig, AutoTokenizer
+
+    config = AutoConfig.from_pretrained(args.teacher_model_path)
+    validate_model_lengths(args, config)
+
+    all_records, all_prompts = prepare_records(source, args)
+    outputs = run_teacher_generation(args, all_prompts)
+
+    outputs = run_teacher_generation(args, all_prompts)
+
+    # --- Backup raw teacher outputs trước khi vào Giai đoạn 3 ---
+    import pickle
+    from datetime import datetime
+
+    backup_path = output.parent / f"{output.name}.generation_backup.{datetime.now():%Y%m%d_%H%M%S}.pkl"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(backup_path, "wb") as f:
+            pickle.dump(
+                {
+                    "generated_texts": [o.outputs[0].text if len(o.outputs) == 1 else None for o in outputs],
+                    "num_outputs": len(outputs),
+                    "args": vars(args),
+                },
+                f,
+            )
+        print(f"Đã backup raw outputs -> {backup_path}")
+    except Exception as error:
+        print(f"Cảnh báo: backup outputs thất bại ({error}), tiếp tục ghi file chính...")
+
+    tokenizer = AutoTokenizer.from_pretrained(args.teacher_model_path)
+    write_prepared_dataset(source, output, args, tokenizer, all_records, outputs)
 
 
 if __name__ == "__main__":
