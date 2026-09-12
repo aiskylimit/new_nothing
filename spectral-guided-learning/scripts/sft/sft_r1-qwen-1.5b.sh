@@ -2,7 +2,7 @@
 # Phase 5: masked SFT -- vanilla, DeepSeek-R1-Distill-Qwen-1.5B track (LoRA, DDP across both GPUs).
 set -euo pipefail
 
-read -ra GPUS <<< "${GPUS:-6 7}"
+read -ra GPUS <<< "${GPUS:-0 1}"
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1

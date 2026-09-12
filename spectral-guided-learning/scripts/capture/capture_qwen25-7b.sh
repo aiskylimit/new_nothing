@@ -2,7 +2,7 @@
 # Phase 3: gradient capture (--verify) for the Qwen2.5-7B-Instruct track.
 set -euo pipefail
 
-read -ra GPUS <<< "${GPUS:-6 7}"
+read -ra GPUS <<< "${GPUS:-0 1}"
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
 BASE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

@@ -3,7 +3,7 @@
 # Unsloth FULL fine-tuning on a SINGLE GPU (no LoRA, no DeepSpeed, no torchrun).
 set -euo pipefail
 
-read -ra GPUS <<< "${GPUS:-6 7}"
+read -ra GPUS <<< "${GPUS:-0 1}"
 export CUDA_VISIBLE_DEVICES="${GPUS[0]}"   # Unsloth OSS is single-GPU; pin the first listed GPU
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1
