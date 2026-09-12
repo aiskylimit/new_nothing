@@ -43,7 +43,7 @@ torchrun --standalone \
     --lr_scheduler_type "constant" \
     --warmup_ratio 0.05 \
     --kd_weight 1.0 \
-    --kd_loss_type "simcse_cka_loss" \
+    --kd_loss_type "simcse_cka_kd_loss" \
     --image_resolution "low" \
     --num_self_kd_layers 3 \
     --projector_lr 5e-5 \
