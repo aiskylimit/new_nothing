@@ -22,7 +22,7 @@ torchrun --standalone \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_qwen2" \
     --pooling "eos" \
-    --dataset_name "TIGER-Lab/MMEB-train" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -48,3 +48,29 @@ torchrun --standalone \
     --num_self_kd_layers 3 \
     --projector_lr 5e-5 \
     --report_to None
+
+
+SUBSETS=(
+  "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W"
+  "ScienceQA" "VizWiz" "GQA" "TextVQA"
+)
+
+
+python eval_mmeb.py \
+    --model_name "training/FastVLM-0.5B_simcse_cka_vqa/checkpoint-epoch-0" \
+    --encode_output_path "./MMEB-eval_outputs_v3/FastVLM-0.5B_simcse_cka_vqa" \
+    --lora True \
+    --lora_r 64 \
+    --lora_alpha 64 \
+    --pooling eos \
+    --model_backbone llava_qwen2 \
+    --normalize True \
+    --bf16 \
+    --dataset_name vlm2vec_eval/MMEB-eval \
+    --subset_name "${SUBSETS[@]}" \
+    --dataset_split test \
+    --per_device_eval_batch_size 16 \
+    --image_dir eval_images/ \
+    --tgt_prefix_mod \
+    --load_pretrained_lora True \
+    --report_to none
