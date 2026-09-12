@@ -20,9 +20,33 @@ DEFAULT_GENERATION_TEMPLATE = (
     "Return only the supporting context, not a replacement answer or a full worked solution.\n\n"
     "Question:\n{prompt}\n\nReference response:\n{response}\n\nSupporting context:"
 )
+MAX_REFERENCE_RESPONSE_TOKENS = 2048
 
 
-def context_generation_prompt(record, tokenizer, template):
+def truncate_reference_response(response, tokenizer):
+    """Limit every reference before prompt rendering, keeping a Unicode-safe prefix."""
+    if len(tokenizer.encode(response, add_special_tokens=False)) <= MAX_REFERENCE_RESPONSE_TOKENS:
+        return response
+    low, high = 1, len(response) - 1
+    fitted = None
+    while low <= high:
+        middle = (low + high) // 2
+        candidate = response[:middle]
+        if len(tokenizer.encode(candidate, add_special_tokens=False)) <= MAX_REFERENCE_RESPONSE_TOKENS:
+            if candidate.strip():
+                fitted = candidate
+            low = middle + 1
+        else:
+            high = middle - 1
+    if fitted is None:
+        raise ValueError("Reference response token budget cannot fit a nonempty reference response")
+    return fitted
+
+
+def context_generation_prompt(record, tokenizer, template, max_prompt_length=None):
+    """Cap every reference first, then fit the complete prompt to its token budget."""
+    if max_prompt_length is not None and max_prompt_length < 1:
+        raise ValueError("--max-prompt-length must be positive")
     prompt = get_raw_prompt(record, tokenizer)
     response = get_response(record)
     if isinstance(response, list):
@@ -32,12 +56,46 @@ def context_generation_prompt(record, tokenizer, template):
                          "and original output/response/generated_text")
     if record.get("system_prompt"):
         prompt = record["system_prompt"] + "\n\n" + prompt
-    text = template.format(prompt=prompt, response=response)
-    if getattr(tokenizer, "chat_template", None):
-        text = tokenizer.apply_chat_template(
-            [{"role": "user", "content": text}], tokenize=False,
-            add_generation_prompt=True, enable_thinking=False)
-    return tokenizer.encode(text, add_special_tokens=False)
+    response = truncate_reference_response(response, tokenizer)
+
+    def encode(reference):
+        text = template.format(prompt=prompt, response=reference)
+        if getattr(tokenizer, "chat_template", None):
+            text = tokenizer.apply_chat_template(
+                [{"role": "user", "content": text}], tokenize=False,
+                add_generation_prompt=True, enable_thinking=False)
+        return tokenizer.encode(text, add_special_tokens=False)
+
+    ids = encode(response)
+    if max_prompt_length is None or len(ids) <= max_prompt_length:
+        return ids
+
+    base_ids = encode("")
+    if len(base_ids) > max_prompt_length:
+        # A long question can overflow even after removing the reference. Use
+        # the same prompt-suffix policy as training, retaining the generation
+        # header at the end instead of rejecting the dataset row.
+        return ids[-max_prompt_length:]
+
+    # Search character prefixes to avoid decoding partial Unicode tokens. Always
+    # measure the complete rendered prompt, including BPE boundary effects and
+    # any repeated {response} placeholders in a custom template. Keep only a
+    # verified fit: token counts need not be strictly monotonic across prefixes.
+    low, high = 1, len(response) - 1
+    fitted_ids = None
+    while low <= high:
+        middle = (low + high) // 2
+        reference = response[:middle]
+        candidate = encode(reference)
+        if len(candidate) <= max_prompt_length:
+            if reference.strip():
+                fitted_ids = candidate
+            low = middle + 1
+        else:
+            high = middle - 1
+    if fitted_ids is None:
+        return ids[-max_prompt_length:]
+    return fitted_ids
 
 
 def get_parser():
@@ -52,15 +110,15 @@ def get_parser():
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--max-prompt-length", type=int, default=3072,
-                        help="Context-generation input budget, including question, reference response and instruction")
+                        help="Context-generation input budget; reference responses are always capped "
+                             "at 2048 teacher tokens first, then shortened further; if still too long, "
+                             "keep the rendered prompt suffix within this budget")
     parser.add_argument("--max-length", type=int, default=4096,
                         help="Teacher context-generation total sequence budget")
-    parser.add_argument("--t-max-prompt-length", type=int, default=1536,
-                        help="Training teacher prompt budget after context insertion; match finetune_v2")
-    parser.add_argument("--student-max-length", type=int, default=1024,
-                        help="Match finetune_v2 --max-length; conservatively reserve this much response space")
-    parser.add_argument("--t-max-length", type=int, default=None,
-                        help="Training teacher total budget; defaults to t-max-prompt-length + student-max-length")
+    # Accept old command lines; training now applies its own truncation budgets.
+    parser.add_argument("--t-max-prompt-length", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--student-max-length", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--t-max-length", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--privileged-context-field", default="context",
                         help="JSONL field stored alongside the original prompt and response")
     parser.add_argument("--privileged-context-template", default=DEFAULT_CONTEXT_TEMPLATE,
@@ -82,13 +140,6 @@ def validate_args(args):
         raise ValueError("Require 0 < --max-prompt-length < --max-length")
     if args.max_prompt_length + args.max_new_tokens > args.max_length:
         raise ValueError("Require --max-prompt-length + --max-new-tokens <= --max-length")
-    if args.t_max_prompt_length < 1 or args.student_max_length < 2:
-        raise ValueError("Require positive --t-max-prompt-length and --student-max-length >= 2")
-    if args.t_max_length is None:
-        args.t_max_length = args.t_max_prompt_length + args.student_max_length
-    if args.t_max_length < args.t_max_prompt_length + args.student_max_length:
-        raise ValueError("Reserve the full student response: --t-max-length must be >= "
-                         "--t-max-prompt-length + --student-max-length")
     if "{privileged_context}" not in args.privileged_context_template:
         raise ValueError("--privileged-context-template must contain {privileged_context}")
     validate_context_field(args.privileged_context_field)
@@ -111,12 +162,11 @@ def validate_args(args):
 
 
 def checked_generation_prompt(args, record, tokenizer):
-    ids = context_generation_prompt(record, tokenizer, args.context_generation_template)
-    if not ids or len(ids) > args.max_prompt_length:
-        raise ValueError(f"Context-generation prompt has {len(ids)} tokens, limit is "
-                         f"{args.max_prompt_length}; increase --max-prompt-length and --max-length "
-                         "to retain the full question/reference")
-    return ids
+    ids = context_generation_prompt(record, tokenizer, args.context_generation_template,
+                                    max_prompt_length=args.max_prompt_length)
+    if not ids:
+        raise ValueError("Context-generation prompt must contain at least one token")
+    return ids[-args.max_prompt_length:]
 
 
 def preflight_dataset(args, tokenizer):
@@ -127,11 +177,8 @@ def preflight_dataset(args, tokenizer):
         try:
             checked_generation_prompt(args, record, tokenizer)
             text = render_privileged_teacher_prompt(record, tokenizer, "", args.privileged_context_template)
-            size = len(tokenizer.encode(text, add_special_tokens=False))
-            if not size or size > args.t_max_prompt_length:
-                raise ValueError(f"Training teacher prompt already has {size} tokens without context, "
-                                 f"limit is {args.t_max_prompt_length}; increase --t-max-prompt-length "
-                                 "and --t-max-length in both prepare and training")
+            if not tokenizer.encode(text, add_special_tokens=False):
+                raise ValueError("Training teacher prompt must contain at least one token")
         except (ValueError, TypeError, KeyError) as error:
             raise ValueError(f"{source}: row {count}: {error}") from error
     if count == 0:
@@ -141,10 +188,8 @@ def preflight_dataset(args, tokenizer):
 
 def validate_model_lengths(args, config):
     limit = getattr(config, "max_position_embeddings", None)
-    if isinstance(limit, int) and limit > 0:
-        for name in ("max_length", "t_max_length"):
-            if getattr(args, name) > limit:
-                raise ValueError(f"--{name.replace('_', '-')} exceeds teacher max_position_embeddings={limit}")
+    if isinstance(limit, int) and limit > 0 and args.max_length > limit:
+        raise ValueError(f"--max-length exceeds teacher max_position_embeddings={limit}")
 
 
 @torch.no_grad()
@@ -170,8 +215,8 @@ def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
             def generate_rows(records):
                 prompts = [checked_generation_prompt(args, row, tokenizer) for row in records]
                 width = max(map(len, prompts))
-                if width + args.max_new_tokens > args.max_length:
-                    raise ValueError("Prepare prompt + --max-new-tokens exceeds --max-length")
+                # validate_args reserves max_new_tokens; checked prompts are
+                # already bounded so overlong rows cannot exceed max_length.
                 ids = torch.full((len(prompts), width), pad_id, dtype=torch.long, device=device)
                 mask = torch.zeros_like(ids)
                 for index, prompt in enumerate(prompts):
@@ -191,20 +236,16 @@ def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
                     if tokenizer.eos_token_id in context_ids:
                         context_ids = context_ids[:context_ids.index(tokenizer.eos_token_id) + 1]
                     context = tokenizer.decode(context_ids, skip_special_tokens=True).strip()
-                    if not context:
-                        raise ValueError("Teacher returned empty privileged context; adjust generation settings and rerun prepare")
                     prepared = dict(record)
                     prepared[args.privileged_context_field] = context
-                    # Retokenize the COMPLETE training prompt: BPE at insertion
-                    # boundaries means isolated context length is not sufficient.
+                    # Validate the complete training prompt without imposing a
+                    # token budget on privileged distillation.
                     try:
                         build_privileged_teacher_input(
                             prepared, tokenizer, args.privileged_context_field,
-                            args.privileged_context_template, args.t_max_prompt_length)
+                            args.privileged_context_template)
                     except ValueError as error:
-                        raise ValueError(f"{source}: row {count + offset}: {error}; "
-                                         "increase teacher training limits in both stages "
-                                         "or reduce --max-new-tokens") from error
+                        raise ValueError(f"{source}: row {count + offset}: {error}") from error
                     prepared["privileged_preparation"] = dict(
                         version=1, kind="context", source_sha256=fingerprint(record),
                         teacher_model_path=args.teacher_model_path,

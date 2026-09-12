@@ -82,7 +82,8 @@ def add_data_args(parser: argparse.ArgumentParser):
     group.add_argument("--prompt-type", type=str, default=None)
     group.add_argument("--num-workers", type=int, default=1)
     group.add_argument("--max-prompt-length", type=int, default=512)
-    group.add_argument("--t-max-prompt-length", type=int, default=640)
+    group.add_argument("--t-max-prompt-length", type=int, default=1536,
+                       help="Teacher prompt limit, including context in privileged distillation")
     group.add_argument("--min-prompt-length", type=int, default=128)
     group.add_argument("--json-data", action="store_true")
     group.add_argument("--bin-data", action="store_true")
@@ -112,8 +113,8 @@ def add_hp_args(parser: argparse.ArgumentParser):
                        help='total number of iterations per epoch')
     group.add_argument('--max-length', type=int, default=1024,
                        help='max length of input')
-    group.add_argument('--t-max-length', type=int, default=1024,
-                       help='max length of input')
+    group.add_argument('--t-max-length', type=int, default=2560,
+                       help='Teacher prompt + response limit in privileged distillation')
     group.add_argument('--seed', type=int, default=1234,
                        help='random seed for reproducibility')
     group.add_argument("--seed-order", type=int, default=42)
@@ -204,7 +205,8 @@ def add_distillation_args(parser: argparse.ArgumentParser):
                        help="Enable existing magnitude/Gram losses only for off_policy")
     group.add_argument("--disable-lm-loss", action="store_true",
                        help="Optimize distillation alone, without kd-ratio scaling")
-    group.add_argument("--privileged-trajectory", choices=["canonical", "student"], default="canonical")
+    group.add_argument("--privileged-trajectory", choices=["canonical", "student"], default="canonical",
+                       help="finetune_v2 privileged distillation requires canonical (dataset response)")
     group.add_argument("--privileged-data-path", default=None,
                        help="Full JSONL from prepare_privileged_data.py; uses cached teacher context with unchanged canonical responses")
     group.add_argument("--privileged-context-field", default="context",

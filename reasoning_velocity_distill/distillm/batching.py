@@ -6,12 +6,16 @@ import torch
 def pack_trajectories(prompts, responses, pad_id, model_type, max_length, device):
     if len(prompts) != len(responses) or not prompts:
         raise ValueError("Expected equally sized nonempty prompt/response batches")
-    lengths = [len(p) + len(r) - 1 for p, r in zip(prompts, responses)]
     if any(not len(p) or not len(r) for p, r in zip(prompts, responses)):
         raise ValueError("Every trajectory requires a prompt and response")
-    if max(lengths) + 1 > max_length:
-        raise ValueError("Trajectory exceeds context limit; increase --t-max-length "
-                         "for privileged scoring (responses are never silently truncated)")
+    if max_length is not None:
+        if max_length < 2:
+            raise ValueError("max_length must leave space for at least one prompt and response token")
+        # Keep the prompt suffix and response prefix, as in the dataset packer.
+        # Reserve at least one response label even if the prompt alone is long.
+        prompts = [p[-(max_length - 1):] for p in prompts]
+        responses = [r[:max_length - len(p)] for p, r in zip(prompts, responses)]
+    lengths = [len(p) + len(r) - 1 for p, r in zip(prompts, responses)]
     width = max(lengths)
     ids = torch.full((len(prompts), width), pad_id, dtype=torch.long, device=device)
     mask = torch.zeros_like(ids)

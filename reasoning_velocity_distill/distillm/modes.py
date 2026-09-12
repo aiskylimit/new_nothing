@@ -37,7 +37,7 @@ def validate_mode_args(args):
         if args.distill_mode != "privileged" and not adaptive:
             raise ValueError("--privileged-data-path requires privileged mode or --adaptive-on-policy")
         if args.privileged_trajectory == "student":
-            raise ValueError("--privileged-data-path preserves original responses; remove --privileged-trajectory student")
+            raise ValueError("--privileged-data-path uses dataset responses; remove --privileged-trajectory student")
     if "off_policy" in legacy_type:
         args.off_policy_geometry = True
     if args.kd_loss is None:
@@ -59,8 +59,9 @@ def validate_mode_args(args):
         raise ValueError("--distill-top-k must be at least 2")
     if not math.isfinite(args.distill_temperature) or args.distill_temperature <= 0:
         raise ValueError("--distill-temperature must be finite and positive")
-    uses_generation = args.distill_mode == "on_policy" or (
-        args.distill_mode == "privileged" and args.privileged_trajectory == "student")
+    uses_generation = args.distill_mode == "on_policy"
+    if (args.distill_mode == "privileged" or adaptive) and args.privileged_trajectory != "canonical":
+        raise ValueError("Privileged distillation uses dataset responses; use --privileged-trajectory canonical")
     if args.privileged_trajectory != "canonical" and args.distill_mode != "privileged" and not adaptive:
         raise ValueError("--privileged-trajectory applies only to privileged mode")
     if args.off_policy_geometry and args.distill_mode != "off_policy":
@@ -109,10 +110,38 @@ def align_response_logits(student_logits, student_labels, teacher_logits, teache
     return student_logits[sm], teacher_logits[tm], student_labels[sm]
 
 
-def prepare_privileged_teacher_batch(args, tokenizer, student_batch, metadata):
-    responses = [row[row != -100] for row in metadata["label"]]
-    return pack_trajectories(
-        metadata["privileged_prompt_ids"], responses, tokenizer.pad_token_id,
-        args.teacher_model_type or args.model_type, args.t_max_length,
-        student_batch["input_ids"].device,
+def prepare_privileged_batches(args, tokenizer, student_batch, metadata):
+    """Apply both models' budgets while keeping their response labels identical."""
+    if not 0 < args.t_max_prompt_length < args.t_max_length:
+        raise ValueError("Require 0 < --t-max-prompt-length < --t-max-length")
+    if not 0 < args.max_prompt_length < args.max_length:
+        raise ValueError("Require 0 < --max-prompt-length < --max-length")
+    student_prompts, teacher_prompts, responses = [], [], []
+    for ids, labels, teacher_prompt in zip(student_batch["input_ids"], metadata["label"],
+                                            metadata["privileged_prompt_ids"]):
+        positions = (labels != -100).nonzero(as_tuple=True)[0]
+        if not positions.numel():
+            raise ValueError("Privileged distillation requires nonempty student response labels")
+        prompt_length = int(positions[0]) + 1
+        student_prompt = ids[:prompt_length][-args.max_prompt_length:]
+        student_prompts.append(student_prompt)
+        # Reserve the shared response first. A smaller teacher budget trims its
+        # prompt/context before sacrificing any of the student's response labels.
+        # Only an answer that cannot fit with even one teacher prompt token is
+        # shortened, using the same prefix (including EOS if it fits) for both.
+        response_budget = min(args.max_length - len(student_prompt),
+                              args.t_max_length - 1)
+        response = labels[positions][:response_budget]
+        teacher_prompt_budget = min(args.t_max_prompt_length, args.t_max_length - len(response))
+        teacher_prompts.append(teacher_prompt[-teacher_prompt_budget:])
+        responses.append(response)
+    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    device = student_batch["input_ids"].device
+    student, student_metadata = pack_trajectories(
+        student_prompts, responses, pad_id, args.model_type, args.max_length, device,
     )
+    teacher, teacher_metadata = pack_trajectories(
+        teacher_prompts, responses, pad_id, args.teacher_model_type or args.model_type,
+        args.t_max_length, device,
+    )
+    return student, {**metadata, **student_metadata}, teacher, teacher_metadata
