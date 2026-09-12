@@ -16,6 +16,8 @@ RUN_PHASE="${RUN_PHASE:-all}"
 INFERENCE_SEEDS="${INFERENCE_SEEDS:-42}"
 INFERENCE_DATASETS="${INFERENCE_DATASETS:-}"
 SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
+RETRAIN="${RETRAIN:-0}"
+REINFER="${REINFER:-0}"
 TRAIN_OVERRIDES=()
 
 SUPPORTED_MODEL_FAMILIES=(
@@ -62,14 +64,20 @@ Options:
   --seeds CSV             Inference seeds (default: 42)
   --datasets CSV          Optional inference dataset selection
   --skip-completed        Skip completed training/inference work (default)
-  --no-skip-completed     Always invoke training, even if outputs are complete
+  --retrain               Delete each selected model's training output_dir and
+                          train it from scratch; implies --reinfer because old
+                          inference outputs belong to the deleted checkpoints
+  --reinfer               Delete the selected seeds/methods/datasets inference
+                          outputs and run them again
+  --no-skip-completed     Same as --retrain --reinfer
   -h, --help              Show this help
 
 Examples:
   bash scripts/run_teacher_student.sh --families qwen3 --phase train
   bash scripts/run_teacher_student.sh --student-methods all --phase train
   bash scripts/run_teacher_student.sh --families llama3 -- num_train_epochs=1
-  bash scripts/run_teacher_student.sh --families qwen3 --no-skip-completed
+  bash scripts/run_teacher_student.sh --families qwen3 --retrain
+  bash scripts/run_teacher_student.sh --families qwen3 --phase infer --reinfer
 EOF
 }
 
@@ -119,10 +127,20 @@ while (( $# > 0 )); do
     --datasets=*) INFERENCE_DATASETS="${1#*=}"; shift ;;
     --skip-completed)
       SKIP_COMPLETED=1
+      RETRAIN=0
+      REINFER=0
       shift
       ;;
     --no-skip-completed)
       SKIP_COMPLETED=0
+      shift
+      ;;
+    --retrain)
+      RETRAIN=1
+      shift
+      ;;
+    --reinfer)
+      REINFER=1
       shift
       ;;
     -h | --help)
@@ -150,13 +168,25 @@ case "${RUN_PHASE}" in
     ;;
 esac
 
-case "${SKIP_COMPLETED}" in
-  0 | 1) ;;
-  *)
-    echo "Unsupported SKIP_COMPLETED=${SKIP_COMPLETED}; expected 0 or 1." >&2
-    exit 2
-    ;;
-esac
+for flag_name in SKIP_COMPLETED RETRAIN REINFER; do
+  case "${!flag_name}" in
+    0 | 1) ;;
+    *)
+      echo "Unsupported ${flag_name}=${!flag_name}; expected 0 or 1." >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "${SKIP_COMPLETED}" == "0" ]]; then
+  RETRAIN=1
+  REINFER=1
+fi
+# A retrained checkpoint no longer matches its old inference run_config.json,
+# so those outputs must be regenerated as well.
+if [[ "${RETRAIN}" == "1" ]]; then
+  REINFER=1
+fi
 
 if [[ "${RUN_SETTINGS}" == "all" ]]; then
   SELECTED_SETTINGS=("${SUPPORTED_SETTINGS[@]}")
@@ -399,13 +429,33 @@ training_is_complete() {
   has_final_model_weights "${output_dir}"
 }
 
+remove_training_output() {
+  local label="$1"
+  local output_dir="$2"
+  local normalized="${output_dir%/}"
+
+  case "${normalized}" in
+    "" | "/" | "${PROJECT_ROOT}" | "${PROJECT_ROOT}/results" | "${HOME:-/}")
+      echo "Refusing to delete unsafe output_dir for ${label}: ${output_dir}" >&2
+      return 2
+      ;;
+  esac
+  if [[ -e "${normalized}" ]]; then
+    echo "Retraining ${label}; removing previous output: ${normalized}"
+    rm -rf -- "${normalized}"
+  fi
+}
+
 run_training() {
   local label="$1"
   local config_path="$2"
   local output_dir
 
   output_dir="$(training_output_dir "${config_path}")"
-  if [[ "${SKIP_COMPLETED}" == "1" ]] && training_is_complete "${output_dir}"; then
+  if [[ "${RETRAIN}" == "1" ]]; then
+    # Fresh training refuses an output_dir that still holds old checkpoints.
+    remove_training_output "${label}" "${output_dir}"
+  elif training_is_complete "${output_dir}"; then
     echo "Training already completed; skipping ${label}"
     echo "Output: ${output_dir}"
     return 0
@@ -425,6 +475,9 @@ run_inference() {
 
   if [[ -n "${INFERENCE_DATASETS}" ]]; then
     inference_args+=(--datasets "${INFERENCE_DATASETS}")
+  fi
+  if [[ "${REINFER}" == "1" ]]; then
+    inference_args+=(--overwrite)
   fi
 
   echo

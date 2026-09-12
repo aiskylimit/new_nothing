@@ -47,6 +47,7 @@ from schema_grounding.selector_labels import format_selector_response
 from scripts.infer_two_stage import (
     DEFAULT_INFERENCE_SEEDS,
     build_seed_first_run_groups,
+    clear_planned_run_outputs,
     parse_seeds,
     validate_choices,
 )
@@ -78,6 +79,28 @@ def test_inference_run_complete_requires_every_final_artifact(tmp_path: Path) ->
 
     (tmp_path / "metrics.json").unlink()
     assert not inference_run_complete(tmp_path)
+
+
+def test_overwrite_clears_only_planned_run_directories(tmp_path: Path) -> None:
+    run_groups = build_seed_first_run_groups(
+        methods=["sft"],
+        dataset_names=["cypherbench"],
+        seeds=[42],
+        output_root=tmp_path,
+        options=InferenceOptions(),
+    )
+    planned = tmp_path / "seed42" / "sft" / "cypherbench"
+    other_dataset = tmp_path / "seed42" / "sft" / "mind_the_query"
+    other_seed = tmp_path / "seed10" / "sft" / "cypherbench"
+    for directory in (planned, other_dataset, other_seed):
+        directory.mkdir(parents=True)
+        (directory / "metrics.json").write_text("{}\n", encoding="utf-8")
+
+    clear_planned_run_outputs(run_groups)
+
+    assert not planned.exists()
+    assert (other_dataset / "metrics.json").is_file()
+    assert (other_seed / "metrics.json").is_file()
 
 
 def write_resume_manifest(

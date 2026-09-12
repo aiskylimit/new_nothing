@@ -8,9 +8,15 @@ cd "${SCRIPT_DIR}"
 uv sync
 source .venv/bin/activate
 
+# --retrain deletes each selected model's output_dir and trains it from scratch;
+# --reinfer deletes the matching inference outputs and runs them again.
+# If this run is interrupted, drop both flags before rerunning so models that
+# were already retrained are skipped instead of being deleted again.
 CUDA_VISIBLE_DEVICES=3 RUN_GPUS=3 bash scripts/run_teacher_student.sh \
   --families qwen3 \
   --settings all \
   --student-settings full_finetune,full_finetune_normalized \
   --student-methods sft \
-  --phase all
+  --phase all \
+  --retrain \
+  --reinfer

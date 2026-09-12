@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import gc
 import json
+import shutil
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -110,6 +111,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not add endpoint nodes for selected relationships.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Delete existing outputs of the selected seeds/methods/datasets and run them again "
+            "instead of skipping completed runs."
+        ),
+    )
     args = parser.parse_args()
     if args.output_dir is None:
         args.output_dir = Path("results/inference/lora") / args.model_family
@@ -162,6 +171,18 @@ def build_seed_first_run_groups(
             ]
             groups.append((seed, method, runs))
     return groups
+
+
+def clear_planned_run_outputs(
+    run_groups: list[tuple[int, str, list[tuple[str, Path, InferenceOptions]]]],
+) -> None:
+    """Remove every planned dataset run directory so it is inferred from scratch."""
+
+    for seed, method, planned_runs in run_groups:
+        for dataset_name, output_directory, _ in planned_runs:
+            if output_directory.exists():
+                print(f"[seed{seed}/{method}/{dataset_name}] --overwrite: removing {output_directory}")
+                shutil.rmtree(output_directory)
 
 
 def main() -> None:
@@ -235,6 +256,10 @@ def main() -> None:
         output_root=args.output_dir.resolve(),
         options=options,
     )
+    if args.overwrite:
+        # Checkpoints were validated above, so old outputs are only removed
+        # once the replacement run is known to be loadable.
+        clear_planned_run_outputs(run_groups)
     for _seed, method, planned_runs in run_groups:
         checkpoint = checkpoints[method]
         for dataset_name, output_directory, seed_options in planned_runs:
