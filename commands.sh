@@ -1,4 +1,4 @@
-#2
+#1 +10
 #talas
 #v1
 
@@ -42,27 +42,6 @@ bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 # # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 # # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
-# cd ./spectral-guided-learning
-# bash ./project_commands.sh
-
-# cd ./reward-guidance-main
-# bash ./project_command.sh
-
-# cd ./VLM_Distillation-main
-# bash ./project_commands_collect_eval_summary.sh
-# bash scripts/eval/collect_base_model_summaries.sh
-# ls outputs/eval/
-# ls outputs/eval/base_models
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py &
-# bash ./project_commands.sh
-# bash ./project_commands_eval_base_model_1.sh &
-# bash ./project_commands_eval_base_model_2.sh &
-# wait
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 ./../talas_vlm_embed/multi_gpu.py
-# # CUDA_VISIBLE_DEVICES=2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
-# # # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 
 
 # cd ./reasoning_velocity_distill
