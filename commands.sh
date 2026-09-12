@@ -1,5 +1,5 @@
-#2 -0-5 +a
-#talas
+#1 +10
+#reasoning_velocity_distill
 #v2
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
@@ -37,8 +37,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
 
-# cd ./reasoning_velocity_distill
-# bash ./project_commands.sh
+cd ./reasoning_velocity_distill
+bash ./project_commands.sh
 
 # cd ./cypher-extract
 # bash ./project_command.sh

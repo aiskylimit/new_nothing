@@ -1,6 +1,8 @@
 import argparse
 import json
 import os
+import pickle
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import multiprocessing
@@ -21,6 +23,7 @@ DEFAULT_GENERATION_TEMPLATE = (
     "Question:\n{prompt}\n\nReference response:\n{response}\n\nSupporting context:"
 )
 DEFAULT_MAX_REFERENCE_RESPONSE_TOKENS = 2048
+GENERATION_BACKUP_SUFFIX_GLOB = ".generation_backup.*.pkl"
 
 
 def _binary_search_max_prefix(text, fits_fn):
@@ -154,6 +157,8 @@ def get_parser():
                         help="CPU worker processes for tokenization/validation pass")
     parser.add_argument("--chunksize", type=int, default=100,
                         help="imap chunksize for the CPU preparation pool")
+    parser.add_argument("--ignore-generation-backup", action="store_true",
+                        help="Bo qua moi generation backup co san va luon chay lai Giai doan 2 tren GPU")
     parser.add_argument("--seed", type=int, default=42)
     return parser
 
@@ -185,8 +190,8 @@ def validate_args(args):
     output = Path(args.output)
     if source.resolve() == output.resolve():
         raise ValueError("Prepared output must be separate from the canonical training source")
-    if output.exists():
-        raise FileExistsError(f"Prepared output already exists: {output}; choose a new output path")
+    if output.exists() and not output.is_file():
+        raise ValueError(f"--output path exists and is not a regular file: {output}")
     if not source.is_file():
         raise FileNotFoundError(f"Prepare requires the full source JSONL: {source}")
     return source, output
@@ -304,10 +309,69 @@ def run_teacher_generation(args, all_prompts):
     return outputs
 
 
-def write_prepared_dataset(source, output, args, tokenizer, all_records, outputs):
+def extract_generated_texts(source, outputs):
+    """Chuyển output vLLM (RequestOutput) thành list[str] gọn nhẹ để backup/ghi file.
+
+    Tách riêng bước này để backup không phải pickle nguyên object vLLM (nặng,
+    không đảm bảo ổn định giữa các version) mà chỉ lưu text thuần.
+    """
+    texts = []
+    for offset, generated in enumerate(outputs, 1):
+        if len(generated.outputs) != 1:
+            raise ValueError(f"{source}: row {offset}: teacher must return exactly one completion")
+        texts.append(generated.outputs[0].text.strip())
+    return texts
+
+
+def find_latest_generation_backup(output):
+    candidates = sorted(output.parent.glob(output.name + GENERATION_BACKUP_SUFFIX_GLOB))
+    return candidates[-1] if candidates else None
+
+
+def load_generation_backup(output):
+    """Nếu đã có sẵn file backup từ lần chạy trước, load lại generated_texts.
+
+    Trả về None nếu không tìm thấy backup nào (sẽ phải generate lại từ đầu).
+    """
+    backup_path = find_latest_generation_backup(output)
+    if backup_path is None:
+        return None
+    print(f"Phat hien generation backup co san: {backup_path}")
+    with open(backup_path, "rb") as f:
+        payload = pickle.load(f)
+    texts = payload.get("generated_texts")
+    if not isinstance(texts, list):
+        raise ValueError(f"{backup_path}: backup khong hop le (thieu 'generated_texts'), xoa file nay roi chay lai.")
+    return texts
+
+
+def save_generation_backup(output, generated_texts, args):
+    """Backup raw teacher outputs (chỉ text) ra đĩa để có thể resume nếu Giai đoạn 3 lỗi."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = output.parent / f"{output.name}.generation_backup.{datetime.now():%Y%m%d_%H%M%S}.pkl"
+    try:
+        with open(backup_path, "wb") as f:
+            pickle.dump(
+                {
+                    "generated_texts": generated_texts,
+                    "num_outputs": len(generated_texts),
+                    "args": vars(args),
+                },
+                f,
+            )
+        print(f"Da backup raw outputs -> {backup_path}")
+    except Exception as error:
+        print(f"Canh bao: backup outputs that bai ({error}), tiep tuc ghi file chinh...")
+
+
+def write_prepared_dataset(source, output, args, tokenizer, all_records, generated_texts):
     """Giai đoạn 3: validate + ghi file JSONL atomically (temp file + hardlink)."""
-    if len(outputs) != len(all_records):
-        raise ValueError("Teacher must return exactly one context per source row")
+    if len(generated_texts) != len(all_records):
+        raise ValueError(
+            f"So luong context da generate ({len(generated_texts)}) khong khop so records "
+            f"({len(all_records)}); neu dang resume tu backup, backup co the khong khop voi "
+            f"dataset hien tai."
+        )
 
     print("Giai đoạn 3: tổng hợp và ghi file...")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -318,13 +382,12 @@ def write_prepared_dataset(source, output, args, tokenizer, all_records, outputs
                                          prefix=output.name + ".", suffix=".partial", delete=False) as handle:
             temporary = Path(handle.name)
 
-            for offset, (record, generated) in tqdm(enumerate(zip(all_records, outputs), 1),
-                                                     total=len(all_records), desc="Writing file"):
-                if len(generated.outputs) != 1:
-                    raise ValueError(f"{source}: row {offset}: teacher must return exactly one completion")
-
-                context = generated.outputs[0].text.strip()
+            for offset, (record, context) in tqdm(enumerate(zip(all_records, generated_texts), 1),
+                                                    total=len(all_records), desc="Writing file"):
+                context = context.strip() if isinstance(context, str) else ""
                 prepared = dict(record)
+                if not context:
+                    context = "<empty>"
                 prepared[args.privileged_context_field] = context
 
                 try:
@@ -347,7 +410,11 @@ def write_prepared_dataset(source, output, args, tokenizer, all_records, outputs
             handle.flush()
             os.fsync(handle.fileno())
 
-        os.link(temporary, output)
+        if output.exists():
+            print(f"Canh bao: --output da ton tai, se bi ghi de: {output}")
+
+        os.replace(temporary, output)
+        temporary = None
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -367,29 +434,17 @@ def main():
     validate_model_lengths(args, config)
 
     all_records, all_prompts = prepare_records(source, args)
-    outputs = run_teacher_generation(args, all_prompts)
 
-    import pickle
-    from datetime import datetime
-
-    backup_path = output.parent / f"{output.name}.generation_backup.{datetime.now():%Y%m%d_%H%M%S}.pkl"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(backup_path, "wb") as f:
-            pickle.dump(
-                {
-                    "generated_texts": [o.outputs[0].text if len(o.outputs) == 1 else None for o in outputs],
-                    "num_outputs": len(outputs),
-                    "args": vars(args),
-                },
-                f,
-            )
-        print(f"Đã backup raw outputs -> {backup_path}")
-    except Exception as error:
-        print(f"Cảnh báo: backup outputs thất bại ({error}), tiếp tục ghi file chính...")
+    generated_texts = None if args.ignore_generation_backup else load_generation_backup(output)
+    if generated_texts is not None:
+        print("Da tim thay generation backup -> bo qua Giai doan 2 (khong chay lai teacher tren GPU).")
+    else:
+        outputs = run_teacher_generation(args, all_prompts)
+        generated_texts = extract_generated_texts(source, outputs)
+        save_generation_backup(output, generated_texts, args)
 
     tokenizer = AutoTokenizer.from_pretrained(args.teacher_model_path)
-    write_prepared_dataset(source, output, args, tokenizer, all_records, outputs)
+    write_prepared_dataset(source, output, args, tokenizer, all_records, generated_texts)
 
 
 if __name__ == "__main__":
