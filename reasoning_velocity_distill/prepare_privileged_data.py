@@ -5,13 +5,13 @@ import os
 from pathlib import Path
 import tempfile
 
-import torch
 from tqdm import tqdm
 
 from data_utils.prepared_privileged import fingerprint, read_jsonl, validate_context_field
 from data_utils.records import get_raw_prompt, get_response
 from data_utils.privileged import (DEFAULT_CONTEXT_TEMPLATE, build_privileged_teacher_input,
                                    render_privileged_teacher_prompt)
+from vllm import SamplingParams
 
 
 DEFAULT_GENERATION_TEMPLATE = (
@@ -105,9 +105,13 @@ def get_parser():
     parser.add_argument("--output", required=True, help="New prepared JSONL file, separate from the source")
     parser.add_argument("--teacher-model-path", required=True)
     parser.add_argument("--teacher-peft-path", default=None)
-    parser.add_argument("--device-map", default="auto", help="Hugging Face device map; auto can shard the teacher across GPUs")
+    parser.add_argument("--tensor-parallel-size", type=int, default=1,
+                        help="vLLM tensor-parallel degree; shards the teacher across this many GPUs")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.9,
+                        help="Fraction of GPU memory vLLM is allowed to reserve for weights + KV cache")
     parser.add_argument("--dtype", choices=["auto", "float32", "float16", "bfloat16"], default="auto")
-    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=4,
+                        help="Rows grouped per vLLM generate() call / per flush to the partial output file")
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--max-prompt-length", type=int, default=3072,
                         help="Context-generation input budget; reference responses are always capped "
@@ -136,6 +140,10 @@ def get_parser():
 def validate_args(args):
     if args.batch_size < 1 or args.max_new_tokens < 1:
         raise ValueError("--batch-size and --max-new-tokens must be positive")
+    if args.tensor_parallel_size < 1:
+        raise ValueError("--tensor-parallel-size must be positive")
+    if not 0 < args.gpu_memory_utilization <= 1:
+        raise ValueError("--gpu-memory-utilization must be in (0, 1]")
     if not 0 < args.max_prompt_length < args.max_length:
         raise ValueError("Require 0 < --max-prompt-length < --max-length")
     if args.max_prompt_length + args.max_new_tokens > args.max_length:
@@ -192,19 +200,38 @@ def validate_model_lengths(args, config):
         raise ValueError(f"--max-length exceeds teacher max_position_embeddings={limit}")
 
 
-@torch.no_grad()
+def build_sampling_params(args):
+    """Mirror the original do_sample/greedy switch, translated to vLLM's SamplingParams."""
+    if args.do_sample:
+        top_k = args.top_k if args.top_k > 0 else -1  # vLLM disables top_k with -1, not 0
+        return SamplingParams(max_tokens=args.max_new_tokens, temperature=args.temperature,
+                              top_p=args.top_p, top_k=top_k, seed=args.seed)
+    # do_sample=False in the HF path was plain greedy decoding, ignoring
+    # temperature/top_p/top_k entirely; temperature=0 reproduces that in vLLM.
+    return SamplingParams(max_tokens=args.max_new_tokens, temperature=0.0, top_p=1.0, top_k=-1)
+
+
+def build_lora_request(args):
+    if not args.teacher_peft_path:
+        return None
+    from vllm.lora.request import LoRARequest
+    return LoRARequest("teacher_adapter", 1, args.teacher_peft_path)
+
+
 def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
     source, output = validate_args(args)
     if not preflight_done:
         preflight_dataset(args, tokenizer)
-    validate_model_lengths(args, getattr(teacher, "config", None))
+    try:
+        model_config = teacher.llm_engine.get_model_config()
+        validate_model_lengths(args, getattr(model_config, "hf_config", None))
+    except AttributeError:
+        pass
     if tokenizer.eos_token_id is None:
         raise ValueError("Teacher tokenizer must define eos_token_id")
-    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-    device = teacher.get_input_embeddings().weight.device
+    sampling_params = build_sampling_params(args)
+    lora_request = build_lora_request(args)
     output.parent.mkdir(parents=True, exist_ok=True)
-    was_training = teacher.training
-    teacher.eval()
     count = 0
     temporary = None
     try:
@@ -214,25 +241,12 @@ def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
 
             def generate_rows(records):
                 prompts = [checked_generation_prompt(args, row, tokenizer) for row in records]
-                width = max(map(len, prompts))
-                # validate_args reserves max_new_tokens; checked prompts are
-                # already bounded so overlong rows cannot exceed max_length.
-                ids = torch.full((len(prompts), width), pad_id, dtype=torch.long, device=device)
-                mask = torch.zeros_like(ids)
-                for index, prompt in enumerate(prompts):
-                    ids[index, -len(prompt):] = torch.tensor(prompt, device=device)
-                    mask[index, -len(prompt):] = 1
-                options = dict(max_new_tokens=args.max_new_tokens, do_sample=args.do_sample,
-                               pad_token_id=pad_id, eos_token_id=tokenizer.eos_token_id,
-                               return_dict_in_generate=True, output_scores=False,
-                               num_return_sequences=1, num_beams=1, use_cache=True)
-                if args.do_sample:
-                    options.update(temperature=args.temperature, top_p=args.top_p, top_k=args.top_k)
-                sequences = teacher.generate(input_ids=ids, attention_mask=mask, **options).sequences
-                if sequences.shape[0] != len(records):
+                outputs = teacher.generate(prompt_token_ids=prompts, sampling_params=sampling_params,
+                                           lora_request=lora_request, use_tqdm=False)
+                if len(outputs) != len(records):
                     raise ValueError("Teacher must return exactly one context per source row")
-                for offset, (record, generated) in enumerate(zip(records, sequences[:, width:]), 1):
-                    context_ids = generated.tolist()
+                for offset, (record, generated) in enumerate(zip(records, outputs), 1):
+                    context_ids = list(generated.outputs[0].token_ids)
                     if tokenizer.eos_token_id in context_ids:
                         context_ids = context_ids[:context_ids.index(tokenizer.eos_token_id) + 1]
                     context = tokenizer.decode(context_ids, skip_special_tokens=True).strip()
@@ -249,8 +263,6 @@ def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
                     prepared["privileged_preparation"] = dict(
                         version=1, kind="context", source_sha256=fingerprint(record),
                         teacher_model_path=args.teacher_model_path,
-                        teacher_peft_path=args.teacher_peft_path,
-                        prompt_format="raw_question_v2",
                     )
                     handle.write(json.dumps(prepared, ensure_ascii=False) + "\n")
 
@@ -273,7 +285,6 @@ def prepare_full_dataset(args, teacher, tokenizer, *, preflight_done=False):
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-        teacher.train(was_training)
     print(f"Prepared {count} / {count} dataset rows -> {output}")
     return count
 
@@ -282,20 +293,23 @@ def main():
     args = get_parser().parse_args()
     validate_args(args)
     if int(os.environ.get("WORLD_SIZE", "1")) > 1:
-        raise ValueError("Launch prepare with python, not torchrun; use --device-map auto for multiple GPUs")
-    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, set_seed
+        raise ValueError("Launch prepare with python, not torchrun; use --tensor-parallel-size for multiple GPUs")
+    from transformers import AutoConfig, AutoTokenizer, set_seed
+    from vllm import LLM
     set_seed(args.seed)
     tokenizer = AutoTokenizer.from_pretrained(args.teacher_model_path)
     config = AutoConfig.from_pretrained(args.teacher_model_path)
     validate_model_lengths(args, config)
     print(f"Validated {preflight_dataset(args, tokenizer)} rows before loading teacher weights")
-    dtype = args.dtype if args.dtype == "auto" else getattr(torch, args.dtype)
-    teacher = AutoModelForCausalLM.from_pretrained(
-        args.teacher_model_path, torch_dtype=dtype, device_map=args.device_map)
-    if args.teacher_peft_path:
-        from peft import PeftModel
-        teacher = PeftModel.from_pretrained(teacher, args.teacher_peft_path).merge_and_unload()
-    teacher.requires_grad_(False)
+    teacher = LLM(
+        model=args.teacher_model_path,
+        dtype=args.dtype,
+        tensor_parallel_size=args.tensor_parallel_size,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        max_model_len=args.max_length,
+        enable_lora=bool(args.teacher_peft_path),
+        seed=args.seed,
+    )
     prepare_full_dataset(args, teacher, tokenizer, preflight_done=True)
 
 

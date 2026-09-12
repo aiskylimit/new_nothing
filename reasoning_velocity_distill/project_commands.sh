@@ -35,13 +35,18 @@ export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
 printf '\n[1/4] Generate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
 if [[ ! -f "$CONTEXT_DATA_PATH" ]]; then
     CUDA_VISIBLE_DEVICES=4,5 python prepare_privileged_data.py \
-        --data-dir "$RAW_DATA" --output "$CONTEXT_DATA_PATH" \
-        --teacher-model-path "$TEACHER_CKPT" --device-map auto --dtype bfloat16 \
-        --batch-size "${CONTEXT_BATCH_SIZE:-32}" \
-        --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
-        --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
-        --max-length "$((CONTEXT_MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))" \
-        --privileged-context-field context --seed "$SEED"
+    --data-dir "$RAW_DATA" \
+    --output "$CONTEXT_DATA_PATH" \
+    --teacher-model-path "$TEACHER_CKPT" \
+    --tensor-parallel-size 2 \
+    --gpu-memory-utilization 0.9 \
+    --dtype bfloat16 \
+    --batch-size "${CONTEXT_BATCH_SIZE:-32}" \
+    --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
+    --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
+    --max-length "$((CONTEXT_MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))" \
+    --privileged-context-field context \
+    --seed "$SEED"
 fi
 
 # 2. Preprocess and split; each record retains its generated context.
