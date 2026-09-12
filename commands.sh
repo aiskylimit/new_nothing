@@ -1,4 +1,4 @@
-#2 -2 +3000
+#i talas-vlm-embed.txt
 #reasoning_velocity_distill
 #v2
 
