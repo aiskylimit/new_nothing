@@ -1,4 +1,4 @@
-#1 +10
+#2 -1 +a
 #reasoning_velocity_distill
 #v2
 
