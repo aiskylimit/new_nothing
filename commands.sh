@@ -1,4 +1,4 @@
-#i talas-vlm-embed.txt
+#i vlm-distill-eval.txt
 #reasoning_velocity_distill
 #v2
 
