@@ -24,7 +24,7 @@ DEFAULT_TARGET_POWER_W = 900.0  # Dùng cho GPU không được liệt kê ở t
 GPU_MAX_POWER_W = None
 
 POWER_CHECK_INTERVAL = 0.05  # Giây, tần suất đo lại công suất & điều chỉnh duty
-MICRO_CYCLE_S = 0.03        # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
+MICRO_CYCLE_S = 0.02        # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
 DUTY_MIN = 0.02             # Duty cycle tối thiểu (không tắt hẳn để tránh dao động mạnh)
 DUTY_MAX = 1.0              # Duty cycle tối đa (luôn tính, không nghỉ)
 DUTY_STEP = 0.05            # Bước điều chỉnh duty cycle mỗi lần đo
@@ -34,7 +34,7 @@ MAX_VRAM_GB = 10.0          # Tổng VRAM tối đa dùng cho x, y, z (fp32)
 NUM_MATRICES = 3           # x, y, z (out buffer) mỗi cái là 1 ma trận NxN
 BYTES_PER_ELEM = 4         # fp32
 MIN_MM_TIME_S = 0.002      # 1 lần mm nên tốn tối thiểu ~2ms để overhead không đáng kể
-MIN_MATRIX_SIZE = 1524     # kích thước khởi điểm để dò
+MIN_MATRIX_SIZE = 1024     # kích thước khởi điểm để dò
 # ======================================================================
 
 
