@@ -99,9 +99,8 @@ def align_response_logits(student_logits, student_labels, teacher_logits, teache
         raise ValueError("Expected student/teacher logits [B, L, V]")
     if student_logits.shape[:2] != student_labels.shape or teacher_logits.shape[:2] != teacher_labels.shape:
         raise ValueError("Logit sequence dimensions must match labels")
-    if (student_logits.shape[0] != teacher_logits.shape[0]
-            or student_logits.shape[-1] != teacher_logits.shape[-1]):
-        raise ValueError("Batch size and vocabulary dimensions must match")
+    if (student_logits.shape[0] != teacher_logits.shape[0]):
+        raise ValueError("Batch size must match")
     sm, tm = student_labels != -100, teacher_labels != -100
     if not torch.equal(sm.sum(-1), tm.sum(-1)):
         raise ValueError("Student/teacher response lengths differ")

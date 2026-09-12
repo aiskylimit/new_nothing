@@ -174,16 +174,11 @@ def get_distil_loss(args, teacher_logits, no_model_batch, logits):
         return logits.reshape(-1)[:0].sum()
     top_k = getattr(args, "distill_top_k", 32)
     temperature = getattr(args, "distill_temperature", 1.0)
-    if top_k < 2:
-        raise ValueError("--distill-top-k must be at least 2")
-    if not math.isfinite(temperature) or temperature <= 0:
-        raise ValueError("--distill-temperature must be finite and positive")
-    if logits.shape != teacher_logits.shape or logits.shape[-1] < 2:
-        raise ValueError("Expected aligned student/teacher logits with at least two vocabulary tokens")
-    teacher_logits, candidate_ids = teacher_logits.detach().topk(
-        min(top_k, teacher_logits.shape[-1]), dim=-1)
-    logits = logits.gather(-1, candidate_ids).float() / temperature
-    teacher_logits = teacher_logits.float() / temperature
+
+    vocab_size = min(logits.shape[-1], teacher_logits.shape[-1])
+
+    logits = logits[..., :vocab_size].float() / temperature
+    teacher_logits = teacher_logits[..., :vocab_size].float() / temperature
 
     if args.kd_loss == "sfkl":
         distil_loss = skewed_forward_kl(logits, teacher_logits, no_model_batch, lam=args.skew_alpha)
