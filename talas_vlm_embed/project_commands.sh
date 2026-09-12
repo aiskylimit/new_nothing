@@ -72,6 +72,8 @@ CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1
 # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
 CUDA_VISIBLE_DEVICES=2 bash scripts/train_distill_span_propose_llava_ov_cls.sh &
 CUDA_VISIBLE_DEVICES=3 bash scripts/train_distill_span_propose_llava_ov_cls_2.sh &
+CUDA_VISIBLE_DEVICES=2 bash scripts/train_distill_simcse_cka_cls.sh &
+CUDA_VISIBLE_DEVICES=3 bash scripts/train_distill_simcse_cka_vqa.sh &
 
 wait
 
