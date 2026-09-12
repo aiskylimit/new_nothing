@@ -24,7 +24,7 @@ DEFAULT_TARGET_POWER_W = 900.0  # Dùng cho GPU không được liệt kê ở t
 GPU_MAX_POWER_W = None
 
 POWER_CHECK_INTERVAL = 0.2  # Giây, tần suất đo lại công suất & điều chỉnh duty
-MICRO_CYCLE_S = 0.02        # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
+MICRO_CYCLE_S = 0.05        # Giây, độ dài mỗi micro-cycle PWM (càng nhỏ càng mượt)
 DUTY_MIN = 0.02             # Duty cycle tối thiểu (không tắt hẳn để tránh dao động mạnh)
 DUTY_MAX = 1.0              # Duty cycle tối đa (luôn tính, không nghỉ)
 DUTY_STEP = 0.05            # Bước điều chỉnh duty cycle mỗi lần đo
@@ -58,14 +58,11 @@ def worker(rank, world_size, master_port):
     torch.cuda.set_device(rank)
     device = torch.device(f"cuda:{rank}")
 
-    # Khởi tạo NVML để đo công suất thực tế của GPU này
     pynvml.nvmlInit()
     handle = pynvml.nvmlDeviceGetHandleByIndex(rank)
 
-    # Target công suất riêng cho GPU này (fallback về default nếu không cấu hình)
     target_power_w = TARGET_POWER_PER_GPU_W.get(rank, DEFAULT_TARGET_POWER_W)
 
-    # --- Tính kích thước ma trận tối đa cho phép trong ngân sách VRAM ---
     max_vram_bytes = MAX_VRAM_GB * (1024 ** 3)
     max_elems = max_vram_bytes / (NUM_MATRICES * BYTES_PER_ELEM)
     hard_cap_size = int(max_elems ** 0.5)
@@ -73,28 +70,33 @@ def worker(rank, world_size, master_port):
     matrix_size = min(MIN_MATRIX_SIZE, hard_cap_size)
     per_mm_s = None
 
+    
     while True:
         x = torch.randn(matrix_size, matrix_size, device=device)
         y = torch.randn(matrix_size, matrix_size, device=device)
         z = torch.empty(matrix_size, matrix_size, device=device)
 
-        torch.cuda.synchronize()
-        t0 = time.time()
+        # 1. WARMUP GPU trước khi đo thời gian
         for _ in range(5):
             torch.mm(x, y, out=z)
         torch.cuda.synchronize()
-        per_mm_s = (time.time() - t0) / 5
+
+        t0 = time.time()
+        for _ in range(10):
+            torch.mm(x, y, out=z)
+        torch.cuda.synchronize()
+        per_mm_s = (time.time() - t0) / 10.0
 
         if per_mm_s >= MIN_MM_TIME_S or matrix_size >= hard_cap_size:
             break
 
         matrix_size = min(matrix_size * 2, hard_cap_size)
 
-    max_iters_per_micro = max(1, int(MICRO_CYCLE_S / per_mm_s))
+    # max_iters cho một chu kỳ làm việc đầy (100% duty)
+    max_iters_per_micro = MICRO_CYCLE_S / per_mm_s
 
-    duty = 0.5  # bắt đầu ở giữa, feedback loop sẽ tự điều chỉnh
+    duty = 0.5
     last_check = time.time()
-
     step_count = 0
 
     while True:
@@ -102,29 +104,34 @@ def worker(rank, world_size, master_port):
 
         while time.time() - cycle_start < POWER_CHECK_INTERVAL:
             micro_start = time.time()
-            n_iters = max(1, round(duty * max_iters_per_micro))
+            
+            # Tính toán số lượng phép nhân ma trận dựa trên duty hiện tại
+            n_iters = max(1, int(duty * max_iters_per_micro))
 
             for _ in range(n_iters):
                 torch.mm(x, y, out=z)
-            torch.cuda.synchronize()  # đảm bảo GPU thực sự rảnh trước khi sleep
+            torch.cuda.synchronize()
+            
             step_count += n_iters
 
-            elapsed = time.time() - micro_start
-            remaining_micro = MICRO_CYCLE_S - elapsed
-            if remaining_micro > 0:
-                time.sleep(remaining_micro)
+            # 2. BỎ QUA SLEEP nếu GPU đang cần đẩy công suất lên mức tối đa
+            if duty < 0.99:
+                elapsed = time.time() - micro_start
+                remaining_micro = MICRO_CYCLE_S - elapsed
+                # 3. Chỉ sleep nếu thời gian rảnh lớn hơn 1ms để tránh overhead của OS
+                if remaining_micro > 0.001:
+                    time.sleep(remaining_micro)
 
         dist.all_reduce(z, op=dist.ReduceOp.SUM)
         torch.cuda.synchronize()
 
-        # Đo công suất thực tế và điều chỉnh duty cycle (feedback control)
         now = time.time()
         if now - last_check >= POWER_CHECK_INTERVAL:
-            power_mw = pynvml.nvmlDeviceGetPowerUsage(handle)  # milliwatt
+            power_mw = pynvml.nvmlDeviceGetPowerUsage(handle)
             power_w = power_mw / 1000.0
 
             error = target_power_w - power_w
-            # Điều chỉnh duty theo sai số, giới hạn trong [DUTY_MIN, DUTY_MAX]
+            
             if error > 0:
                 duty = min(DUTY_MAX, duty + DUTY_STEP)
             elif error < 0:

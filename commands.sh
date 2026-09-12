@@ -1,5 +1,5 @@
-#1 +10
-#reasoning_velocity_distill
+#1 +60
+#test
 #v2
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
@@ -11,6 +11,8 @@
 # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+kill -TERM -9314 
+kill -TERM -6601
 # sleep 3
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
@@ -25,10 +27,11 @@ export NCCL_DEBUG=WARN
 
 
 
-# source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 ./talas_vlm_embed/multi_gpu_v2.py
+source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 ./talas_vlm_embed/multi_gpu_v2.py
 
-
+sleep 50
+nvidia-smi
 
 # cd ./talas_vlm_embed
 # bash ./project_commands.sh
@@ -37,8 +40,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
 
-cd ./reasoning_velocity_distill
-bash ./project_commands.sh
+# cd ./reasoning_velocity_distill
+# bash ./project_commands.sh
 
 # cd ./cypher-extract
 # bash ./project_command.sh
