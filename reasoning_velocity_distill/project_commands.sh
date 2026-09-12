@@ -32,22 +32,33 @@ export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEX
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
 
 # 1. Generate context for the FULL raw dataset, before splitting.
-printf '\n[1/4] Generate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
+printf '\n[1/4] Generate context for full dataset: %s\n' \
+    "$CONTEXT_DATA_PATH"
+
 if [[ ! -f "$CONTEXT_DATA_PATH" ]]; then
-    CUDA_VISIBLE_DEVICES=4,5 python prepare_privileged_data.py \
-    --data-dir "$RAW_DATA" \
-    --output "$CONTEXT_DATA_PATH" \
-    --teacher-model-path "$TEACHER_CKPT" \
-    --tensor-parallel-size 2 \
-    --gpu-memory-utilization 0.9 \
-    --dtype bfloat16 \
-    --batch-size "${CONTEXT_BATCH_SIZE:-32}" \
-    --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
-    --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
-    --max-length "$((CONTEXT_MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))" \
-    --privileged-context-field context \
-    --seed "$SEED"
+    (
+        source "$EVAL_VENV_PATH/bin/activate"
+
+        export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
+        export TOKENIZERS_PARALLELISM=false
+
+        CUDA_VISIBLE_DEVICES=4,5 \
+        python "$BASE_PATH/prepare_privileged_data.py" \
+            --data-dir "$RAW_DATA" \
+            --output "$CONTEXT_DATA_PATH" \
+            --teacher-model-path "$TEACHER_CKPT" \
+            --tensor-parallel-size 2 \
+            --gpu-memory-utilization 0.8 \
+            --dtype bfloat16 \
+            --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
+            --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
+            --max-length "$CONTEXT_MAX_LENGTH" \
+            --privileged-context-field context \
+            --seed "$SEED"
+    )
+
 fi
+
 
 # 2. Preprocess and split; each record retains its generated context.
 printf '\n[2/4] Preprocess dataset with context: %s\n' "$DATA_DIR"
