@@ -1,4 +1,4 @@
-#i vlm-distill-eval.txt
+#i reasoning-velocity-distill-eval.txt
 #reasoning_velocity_distill
 #v2
 
