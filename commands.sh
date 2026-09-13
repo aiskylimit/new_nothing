@@ -1,4 +1,4 @@
-#2 -0-10
+#1 +10
 #test
 #v1
 
@@ -11,7 +11,7 @@
 # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 279165 279166 279167 279168
+# kill -9 279165 279166 279167 279168
 # sleep 3
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
