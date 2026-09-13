@@ -7,19 +7,31 @@ import torch
 from .batching import pack_trajectories
 
 
+def geometry_enabled_for_mode(args, mode):
+    return mode in ("off_policy", "privileged") and (
+        args.geometry or (mode == "off_policy" and args.off_policy_geometry)
+    )
+
+
 def validate_mode_args(args):
+    from .adaptive import DEPRECATED_ADAPTIVE_ARGUMENTS
+    old_flags = [name.replace("_", "-") for name in DEPRECATED_ADAPTIVE_ARGUMENTS
+                 if hasattr(args, name)]
+    if old_flags:
+        raise ValueError("Old adaptive scheduler arguments were removed: " +
+                         ", ".join("--" + name for name in old_flags))
     adaptive = getattr(args, "adaptive_on_policy", False)
     if adaptive:
         from .adaptive import AdaptiveConfig
-        config = AdaptiveConfig.from_args(args)
+        AdaptiveConfig.from_args(args)
         if args.student_gen or args.distill_mode not in (None, "off_policy") or args.type not in (None, "kd"):
             raise ValueError("--adaptive-on-policy requires --type kd and no fixed ON/PRIV mode or --student-gen")
         if not args.teacher_model_path:
             raise ValueError("--adaptive-on-policy requires --teacher-model-path")
         if args.do_train and (not args.eval_interval or args.eval_interval < -1):
             raise ValueError("--adaptive-on-policy requires positive --eval-interval (or -1 for each epoch)")
-        if config.progress_signal in ("metric", "either") and not getattr(args, "eval_gen", False):
-            raise ValueError("--progress-signal metric/either requires --eval-gen")
+        if not getattr(args, "do_train", False):
+            raise ValueError("Adaptive exposure requires --do-train")
     legacy_type = args.type or "kd"
     if "adaptive" in legacy_type or "mixed" in legacy_type:
         raise ValueError("Use --distill-mode; "
@@ -38,6 +50,8 @@ def validate_mode_args(args):
             raise ValueError("--privileged-data-path requires privileged mode or --adaptive-on-policy")
         if args.privileged_trajectory == "student":
             raise ValueError("--privileged-data-path uses dataset responses; remove --privileged-trajectory student")
+    if getattr(args, "privileged_dev_data_path", None) and not adaptive:
+        raise ValueError("--privileged-dev-data-path requires dual adaptive exposure")
     if "off_policy" in legacy_type:
         args.off_policy_geometry = True
     if args.kd_loss is None:
@@ -54,9 +68,9 @@ def validate_mode_args(args):
     if not math.isfinite(args.skew_alpha) or not 0 <= args.skew_alpha <= 1:
         raise ValueError("--skew-alpha must be in [0, 1]")
     args.distill_top_k = getattr(args, "distill_top_k", 32)
-    args.distill_temperature = getattr(args, "distill_temperature", 1.0)
     if args.distill_top_k < 2:
         raise ValueError("--distill-top-k must be at least 2")
+    args.distill_temperature = getattr(args, "distill_temperature", 1.0)
     if not math.isfinite(args.distill_temperature) or args.distill_temperature <= 0:
         raise ValueError("--distill-temperature must be finite and positive")
     uses_generation = args.distill_mode == "on_policy"
@@ -64,8 +78,10 @@ def validate_mode_args(args):
         raise ValueError("Privileged distillation uses dataset responses; use --privileged-trajectory canonical")
     if args.privileged_trajectory != "canonical" and args.distill_mode != "privileged" and not adaptive:
         raise ValueError("--privileged-trajectory applies only to privileged mode")
-    if args.off_policy_geometry and args.distill_mode != "off_policy":
-        raise ValueError("Geometry is supported only for off_policy")
+    if args.off_policy_geometry and args.distill_mode != "off_policy" and not args.geometry:
+        raise ValueError("--off-policy-geometry applies only to off_policy; use --geometry for privileged")
+    if args.geometry and args.distill_mode == "on_policy":
+        raise ValueError("--geometry applies to off_policy and privileged modes")
     if any(not math.isfinite(w) or w < 0 for w in (args.mag_weight, args.gram_weight)):
         raise ValueError("Geometry weights must be finite and nonnegative")
     if not math.isfinite(args.eps) or args.eps <= 0:
@@ -109,12 +125,23 @@ def align_response_logits(student_logits, student_labels, teacher_logits, teache
     return student_logits[sm], teacher_logits[tm], student_labels[sm]
 
 
+def _rebase_response_spans(spans, original_labels, packed_labels, packed_mask):
+    """Move dataset response-step spans to a repacked prompt and clip truncated steps."""
+    original_start = (original_labels != -100).long().argmax(-1) + 1
+    packed_start = (packed_labels != -100).long().argmax(-1) + 1
+    shift = (packed_start - original_start)[:, None]
+    start = spans[..., 0] + shift
+    end = (spans[..., 1] + shift).minimum(packed_mask.sum(-1)[:, None])
+    valid = (spans[..., 0] >= 0) & (start >= packed_start[:, None]) & (end > start)
+    return torch.stack((start, end), dim=-1).masked_fill(~valid[..., None], -1)
+
+
 def prepare_privileged_batches(args, tokenizer, student_batch, metadata):
     """Apply both models' budgets while keeping their response labels identical."""
-    if not 0 < args.t_max_prompt_length < args.t_max_length:
-        raise ValueError("Require 0 < --t-max-prompt-length < --t-max-length")
-    if not 0 < args.max_prompt_length < args.max_length:
-        raise ValueError("Require 0 < --max-prompt-length < --max-length")
+    batch_size = student_batch["input_ids"].shape[0]
+    if (metadata["label"].shape[0] != batch_size
+            or len(metadata["privileged_prompt_ids"]) != batch_size):
+        raise ValueError("Privileged batch must have one response and context prompt per student row")
     student_prompts, teacher_prompts, responses = [], [], []
     for ids, labels, teacher_prompt in zip(student_batch["input_ids"], metadata["label"],
                                             metadata["privileged_prompt_ids"]):
@@ -143,4 +170,10 @@ def prepare_privileged_batches(args, tokenizer, student_batch, metadata):
         teacher_prompts, responses, pad_id, args.teacher_model_type or args.model_type,
         args.t_max_length, device,
     )
+    if "step_spans" in metadata:
+        original_spans = metadata["step_spans"]
+        student_metadata["step_spans"] = _rebase_response_spans(
+            original_spans, metadata["label"], student_metadata["label"], student["attention_mask"])
+        teacher_metadata["step_spans"] = _rebase_response_spans(
+            original_spans, metadata["label"], teacher_metadata["label"], teacher["attention_mask"])
     return student, {**metadata, **student_metadata}, teacher, teacher_metadata

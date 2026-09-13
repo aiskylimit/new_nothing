@@ -23,7 +23,7 @@ TASK_SCIQ="sciq"
 TASK_BBH="bbh_cot_fewshot"
 TASK_MBPP="mbpp"
 TASK_MBPP_INSTRUCT="mbpp_instruct"
-TASK_GSM8K="gsm8k_cot"
+TASK_GSM8K="gsm8k"
 TASK_GSM_PLUS="gsm_plus"
 TASK_MINERVA="minerva_math"
 TASK_MMLU_PRO_MATH="mmlu_pro_math"
@@ -146,10 +146,5 @@ run_eval "$TASK_MMLU_PRO_MATH" "${BASE_ARGS[@]}"
 
 # Code
 run_eval "$TASK_MBPP" "${BASE_ARGS_CODE[@]}"
-printf 'Run setting 2 for code\n'
-run_eval "$TASK_MBPP" "${BASE_ARGS_CODE_1[@]}"
-
-# Math
-run_eval "$TASK_Hendrycks_Math" "${BASE_ARGS_MATH[@]}"
-printf 'Run setting 2 for math\n'
-run_eval "$TASK_Hendrycks_Math" "${BASE_ARGS_MATH_1[@]}"
+# printf 'Run setting 2 for code\n'
+# run_eval "$TASK_MBPP" "${BASE_ARGS_CODE_1[@]}"
