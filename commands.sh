@@ -11,12 +11,11 @@
 # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
 
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 499 500 501 502 503 504 505 506
 # sleep 3
 # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
 
 export PATH=/usr/local/cuda/bin:$PATH
@@ -28,9 +27,6 @@ export NCCL_DEBUG=WARN
 
 
 
-# source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 ./talas_vlm_embed/multi_gpu_v2.py
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 ./talas_vlm_embed/multi_gpu_v2.py
 
 
 # cd ./talas_vlm_embed
