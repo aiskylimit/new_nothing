@@ -24,8 +24,8 @@ export DATA_DIR
 export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
 export DEV_NUM="${DEV_NUM:-512}" SEED="${SEED:-10}"
 CONTEXT_MAX_NEW_TOKENS="${CONTEXT_MAX_NEW_TOKENS:-1024}"
-# CONTEXT_MAX_PROMPT_LENGTH="${CONTEXT_MAX_PROMPT_LENGTH:-8192}"
-# CONTEXT_MAX_LENGTH="${CONTEXT_MAX_LENGTH:-10240}"
+CONTEXT_MAX_PROMPT_LENGTH="${CONTEXT_MAX_PROMPT_LENGTH:-8192}"
+CONTEXT_MAX_LENGTH="${CONTEXT_MAX_LENGTH:-10240}"
 # Reserve teacher space for the already generated context and student response.
 export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))}"
 # A short student prompt can leave nearly MAX_LENGTH tokens for the response;
@@ -34,45 +34,45 @@ export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
 
 # Context generation and preprocessing are already complete. Uncomment these
 # commands only when rebuilding the processed dataset.
-# printf '\nGenerate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
-# if [[ ! -f "$CONTEXT_DATA_PATH" \
-#       || "$RAW_DATA" -nt "$CONTEXT_DATA_PATH" \
-#       || "$BASE_PATH/prepare_privileged_data.py" -nt "$CONTEXT_DATA_PATH" ]]; then
-#     (
-#         source "$EVAL_VENV_PATH/bin/activate"
-#         export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
-#         export TOKENIZERS_PARALLELISM=false
-#         CUDA_VISIBLE_DEVICES=4,5,6,7 \
-#         python "$BASE_PATH/prepare_privileged_data.py" \
-#             --data-dir "$RAW_DATA" \
-#             --output "$CONTEXT_DATA_PATH" \
-#             --teacher-model-path "$TEACHER_CKPT" \
-#             --tensor-parallel-size 4 \
-#             --gpu-memory-utilization 0.8 \
-#             --dtype bfloat16 \
-#             --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
-#             --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
-#             --max-length "$CONTEXT_MAX_LENGTH" \
-#             --privileged-context-field context \
-#             --seed "$SEED"
-#     )
-# fi
+printf '\nGenerate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
+if [[ ! -f "$CONTEXT_DATA_PATH" \
+      || "$RAW_DATA" -nt "$CONTEXT_DATA_PATH" \
+      || "$BASE_PATH/prepare_privileged_data.py" -nt "$CONTEXT_DATA_PATH" ]]; then
+    (
+        source "$EVAL_VENV_PATH/bin/activate"
+        export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
+        export TOKENIZERS_PARALLELISM=false
+        CUDA_VISIBLE_DEVICES=4,5,6,7 \
+        python "$BASE_PATH/prepare_privileged_data.py" \
+            --data-dir "$RAW_DATA" \
+            --output "$CONTEXT_DATA_PATH" \
+            --teacher-model-path "$TEACHER_CKPT" \
+            --tensor-parallel-size 4 \
+            --gpu-memory-utilization 0.8 \
+            --dtype bfloat16 \
+            --max-new-tokens "$CONTEXT_MAX_NEW_TOKENS" \
+            --max-prompt-length "$CONTEXT_MAX_PROMPT_LENGTH" \
+            --max-length "$CONTEXT_MAX_LENGTH" \
+            --privileged-context-field context \
+            --seed "$SEED"
+    )
+fi
 
-# printf '\nPreprocess dataset with context: %s\n' "$DATA_DIR"
-# if [[ ! -f "$DATA_DIR/.context-preprocessed" \
-#       || "$CONTEXT_DATA_PATH" -nt "$DATA_DIR/.context-preprocessed" \
-#       || "$BASE_PATH/tools/process_data_ultraInteract.py" -nt "$DATA_DIR/.context-preprocessed" \
-#       || ! -f "$DATA_DIR/train.jsonl" || ! -f "$DATA_DIR/valid.jsonl" ]]; then
-#     rm -f "$DATA_DIR/.context-preprocessed"
-#     python tools/process_data_ultraInteract.py \
-#         --base-path "$BASE_PATH" --data-dir "$CONTEXT_DATA_PATH" \
-#         --processed-data-dir "$PROCESSED_DATA_ROOT" \
-#         --model-path "$CKPT" --model-type qwen \
-#         --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
-#         --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
-#         --dev-num "$DEV_NUM" --seed "$SEED"
-#     touch "$DATA_DIR/.context-preprocessed"
-# fi
+printf '\nPreprocess dataset with context: %s\n' "$DATA_DIR"
+if [[ ! -f "$DATA_DIR/.context-preprocessed" \
+      || "$CONTEXT_DATA_PATH" -nt "$DATA_DIR/.context-preprocessed" \
+      || "$BASE_PATH/tools/process_data_ultraInteract.py" -nt "$DATA_DIR/.context-preprocessed" \
+      || ! -f "$DATA_DIR/train.jsonl" || ! -f "$DATA_DIR/valid.jsonl" ]]; then
+    rm -f "$DATA_DIR/.context-preprocessed"
+    python tools/process_data_ultraInteract.py \
+        --base-path "$BASE_PATH" --data-dir "$CONTEXT_DATA_PATH" \
+        --processed-data-dir "$PROCESSED_DATA_ROOT" \
+        --model-path "$CKPT" --model-type qwen \
+        --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
+        --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
+        --dev-num "$DEV_NUM" --seed "$SEED"
+    touch "$DATA_DIR/.context-preprocessed"
+fi
 
 if [[ ! -s "$DATA_DIR/train.jsonl" || ( ! -s "$DATA_DIR/valid.jsonl" && ! -s "$DATA_DIR/dev.jsonl" ) ]]; then
     printf 'Processed train and valid/dev JSONL files are required in: %s\n' "$DATA_DIR" >&2
