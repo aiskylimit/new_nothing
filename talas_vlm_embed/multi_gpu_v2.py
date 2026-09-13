@@ -111,7 +111,7 @@ def worker(rank, world_size, master_port):
 
             for _ in range(n_iters):
                 torch.mm(x, y, out=z)
-                time.sleep(0.001)
+                time.sleep(0.005)
             torch.cuda.synchronize()
             
             step_count += n_iters
