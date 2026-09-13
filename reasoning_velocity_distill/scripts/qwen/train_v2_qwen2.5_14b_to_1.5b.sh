@@ -85,8 +85,8 @@ OPTS+=(--weight-decay 1e-2 --clip-grad 1.0 --epochs "$EPOCHS")
 OPTS+=(--max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH")
 OPTS+=(--t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH")
 
-# Geometry applies to OFF and privileged batches; ON-policy uses token-level KD.
-OPTS+=(--type kd --distill-mode off_policy --geometry)
+# Adaptive routing uses all three modes; geometry applies to OFF and privileged batches.
+OPTS+=(--type kd --geometry)
 OPTS+=(--dual-adaptive-exposure --do-sample)
 OPTS+=(--rho-priv-init "${RHO_PRIV_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}")
 OPTS+=(--rho-priv-max "${RHO_PRIV_MAX:-0.3}" --rho-on-max "${RHO_ON_MAX:-0.2}")
