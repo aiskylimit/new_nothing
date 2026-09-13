@@ -367,8 +367,11 @@ class TalasJepa(nn.Module):
                 total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
 
             sigreg_erank_loss = self.sigreg_erank(stu_img_tokens[0], stu_img_tokens[last_layer_idx])
-            
-            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
+
+            if self.args.use_sigreg_loss:
+                sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
+            else:
+                sigreg_final = sigreg_erank_loss
 
         return stacked_stu_text_reps, stu_img_final_reps, sigreg_final
     
@@ -507,7 +510,10 @@ class TalasJepa(nn.Module):
         loss = contrastive_loss 
         if self.args.use_distill_loss:
             loss = loss + self.kd_weight * loss_distill
-        if self.args.use_sigreg_loss:
+        # if self.args.use_sigreg_loss:
+        #     loss = loss + self.args.sigreg_weight * SIGReg
+
+        if self.args.sigreg_weight > 0:
             loss = loss + self.args.sigreg_weight * SIGReg
 
         return {
