@@ -1,5 +1,6 @@
 import time
 import os
+import copy
 
 import torch
 import torch.nn as nn
@@ -34,8 +35,10 @@ from distillm.losses import forward_kl, reverse_kl, js_distance, tv_distance
 from distillm.losses import skewed_forward_kl, skewed_reverse_kl
 from distillm.trajectory import reasoning_velocity_loss
 from distillm.modes import (align_response_logits, prepare_privileged_batches,
-                           validate_mode_args, require_shared_vocabulary)
-from distillm.adaptive import AdaptiveConfig, AdaptiveScheduler
+                           validate_mode_args, require_shared_vocabulary,
+                           geometry_enabled_for_mode)
+from distillm.adaptive import (AdaptiveConfig, AdaptiveScheduler,
+                               OptimizerStepModeRouter)
 
 torch.set_num_threads(4)
 
@@ -44,22 +47,21 @@ def get_teacher_model(args, device):
     config = AutoConfig.from_pretrained(args.teacher_model_path)
     if args.model_parallel:
         raise NotImplementedError
-    else:
-        config.is_model_parallel = False
-        try: model = AutoModelForCausalLM.from_pretrained(args.teacher_model_path, config=config, device_map={"": device}, torch_dtype=torch.bfloat16)
-        except:
-            model = AutoModelForCausalLM.from_pretrained(args.teacher_model_path, config=config, device_map={"": device}, torch_dtype=torch.float32)
-            model = model.half()
-        
-        if args.teacher_peft_path is not None:
-            from peft import PeftModel
-            model = PeftModel.from_pretrained(model, args.teacher_peft_path)
-            model = model.merge_and_unload()
-            print("merge_and_unload")
+    config.is_model_parallel = False
+    try: model = AutoModelForCausalLM.from_pretrained(args.teacher_model_path, config=config, device_map={"": device}, torch_dtype=torch.bfloat16)
+    except:
+        model = AutoModelForCausalLM.from_pretrained(args.teacher_model_path, config=config, device_map={"": device}, torch_dtype=torch.float32)
+        model = model.half()
 
-        if dist.get_rank() == 0:
-            print(' > number of parameters: {}'.format(
-                sum([p.nelement() for p in model.parameters()])), flush=True)
+    if args.teacher_peft_path is not None:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, args.teacher_peft_path)
+        model = model.merge_and_unload()
+        print("merge_and_unload")
+
+    if dist.get_rank() == 0:
+        print(' > number of parameters: {}'.format(
+            sum([p.nelement() for p in model.parameters()])), flush=True)
 
     model.requires_grad_(False)
     model.eval()
@@ -134,8 +136,6 @@ def setup_model_and_optimizer(args, ds_config, device, set_optim=True):
         config_params=ds_config
     )
     
-    # get the memory usage
-    print_rank("Model mem\n", torch.cuda.memory_summary())
     return model, optimizer, lr_scheduler
 
 
@@ -146,39 +146,42 @@ def prepare_dataset(args, tokenizer, teacher_tokenizer=None):
             args, tokenizer, args.data_dir, "train", args.train_num, args.train_ratio,
             teacher_tokenizer=teacher_tokenizer,
             with_teacher=args.teacher_model_path is not None,
-            distill_mode=args.distill_mode, geometry=args.off_policy_geometry,
+            distill_mode=args.distill_mode, geometry=args.geometry or args.off_policy_geometry,
         )
         print_rank("train num", len(data["train"]))
         if args.eval_interval:
-            data["dev"] = LMTrainDataset(args, tokenizer, args.data_dir, "valid",
-                                        args.dev_num, args.dev_ratio, with_teacher=False)
+            adaptive = getattr(args, "adaptive_on_policy", False)
+            dev_args = copy.copy(args)
+            if adaptive:
+                # The train cache is aligned to train rows, not validation rows.
+                dev_args.privileged_data_path = getattr(args, "privileged_dev_data_path", None)
+            data["dev"] = LMTrainDataset(dev_args, tokenizer, args.data_dir, "valid",
+                                        args.dev_num, args.dev_ratio,
+                                        teacher_tokenizer=teacher_tokenizer,
+                                        with_teacher=adaptive,
+                                        distill_mode="off_policy" if adaptive else None)
     if args.do_eval:
         data["test"] = LMTrainDataset(args, tokenizer, args.data_dir, "test",
                                      args.dev_num, args.dev_ratio, with_teacher=False)
     return data
 
 
-def pt_loss(args, model, model_batch, no_model_batch):
-    loss_mask = (no_model_batch["label"] != -100).int()
-    outputs = model(**model_batch, return_dict=True, use_cache=False)
-    logits = outputs.logits
-    loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
-    lm_loss = loss_fn(logits.view(-1, logits.size(-1)), no_model_batch["label"].view(-1))
-    return lm_loss
-
-
-
-def get_distil_loss(args, teacher_logits, no_model_batch, logits):
-    """Distill on the teacher's top-k token IDs, shared by all three modes."""
-    if not (no_model_batch["label"] != -100).any():
-        return logits.reshape(-1)[:0].sum()
+def _teacher_topk_logits(args, teacher_logits, student_logits):
+    """Gather each model's logits at the teacher's top-k token IDs per position."""
+    vocab_size = min(student_logits.shape[-1], teacher_logits.shape[-1])
     top_k = getattr(args, "distill_top_k", 32)
+    if top_k < 2 or vocab_size < 2:
+        raise ValueError("Top-k distillation requires at least two shared vocabulary tokens")
+    teacher_logits, token_ids = teacher_logits[..., :vocab_size].topk(
+        min(top_k, vocab_size), dim=-1)
+    student_logits = student_logits[..., :vocab_size].gather(-1, token_ids)
+    return teacher_logits, student_logits
+
+
+def _distil_loss_on_topk(args, teacher_logits, no_model_batch, student_logits):
     temperature = getattr(args, "distill_temperature", 1.0)
-
-    vocab_size = min(logits.shape[-1], teacher_logits.shape[-1])
-
-    logits = logits[..., :vocab_size].float() / temperature
-    teacher_logits = teacher_logits[..., :vocab_size].float() / temperature
+    logits = student_logits.float() / temperature
+    teacher_logits = teacher_logits.float() / temperature
 
     if args.kd_loss == "sfkl":
         distil_loss = skewed_forward_kl(logits, teacher_logits, no_model_batch, lam=args.skew_alpha)
@@ -198,58 +201,104 @@ def get_distil_loss(args, teacher_logits, no_model_batch, logits):
     return distil_loss if args.kd_loss == "tvd" else distil_loss * temperature ** 2
 
 
-def get_teacher_lm_loss(args, tokenizer, model, teacher_model, model_batch):
-    with torch.no_grad():
-        t_gen_out = teacher_model.generate(
-            **model_batch,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-            max_length=args.max_length,
-            top_k=0,
-            top_p=1,
-            temperature=1.0,
-            do_sample=True,
-            return_dict_in_generate=True,
-            output_scores=False)
-    
-    full_ids = t_gen_out.sequences
-    
-    input_ids = full_ids[:, :-1]
-    mask = (input_ids != tokenizer.pad_token_id).long()
-    labels = full_ids[:, 1:]    
-    labels = torch.masked_fill(labels, mask==0, -100)
-    labels[:, :model_batch["input_ids"].size(1)-1] = -100
-    loss_mask = (labels != -100).float()
-    
-    new_batch = {
-        "input_ids": input_ids,
-        "attention_mask": mask,
-    }
-    
-    if args.model_type in ["gpt2"]:
-        position_ids = torch.cumsum(mask, dim=-1) - 1
-        position_ids = torch.masked_fill(position_ids, mask==0, 0)    
-        new_batch["position_ids"] = position_ids    
-    
-    loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
+def get_distil_loss(args, teacher_logits, no_model_batch, logits):
+    """Distill on teacher-selected top-k tokens at supervised response positions."""
+    if not (no_model_batch["label"] != -100).any():
+        return logits.reshape(-1)[:0].sum()
+    teacher_topk, student_topk = _teacher_topk_logits(args, teacher_logits, logits)
+    return _distil_loss_on_topk(args, teacher_topk, no_model_batch, student_topk)
 
-    outputs = model(**new_batch, return_dict=True, use_cache=False)
-    logits = outputs.logits
-    lm_loss = loss_fn(logits.view(-1, logits.size(-1)), labels.view(-1))
 
-    return lm_loss
+def get_adaptive_discrepancy(args, teacher_logits, labels, student_logits):
+    """Measure teacher/student divergence on already selected response positions."""
+    teacher_topk, student_topk = _teacher_topk_logits(args, teacher_logits, student_logits)
+    kd = _distil_loss_on_topk(args, teacher_topk, {"label": labels}, student_topk)
+    if args.kd_loss not in ("fkl", "sfkl"):
+        return kd
+    # Both forward losses optimize cross-entropy. On fresh ON trajectories,
+    # teacher entropy varies even when student and teacher match exactly.
+    temperature = getattr(args, "distill_temperature", 1.0)
+    teacher_logprobs = F.log_softmax(
+        teacher_topk.float() / temperature, dim=-1)
+    teacher_entropy = -(teacher_logprobs.exp() * teacher_logprobs).sum(-1).mean()
+    return (kd - teacher_entropy * temperature ** 2).clamp_min(0)
+
+
+def teacher_batch_for_response(args, student_batch):
+    teacher_batch = {key: value for key, value in student_batch.items() if key != "position_ids"}
+    if (args.teacher_model_type or args.model_type) == "gpt2":
+        mask = teacher_batch["attention_mask"]
+        teacher_batch["position_ids"] = (mask.cumsum(-1) - 1).clamp_min(0) * mask
+    return teacher_batch
+
+
+def evaluate_adaptive_losses(args, tokenizer, model, teacher_model, dataset, device):
+    """Token-weighted PRIV and deterministic ON discrepancies on the existing dev split."""
+    if not dataset.with_teacher or not dataset.needs_privileged_context:
+        raise ValueError("Adaptive dev data must include teacher context")
+    world_size, rank = dist.get_world_size(), dist.get_rank()
+    sampler = DistributedSampler(dataset, shuffle=False, drop_last=False,
+                                 rank=rank, num_replicas=world_size)
+    dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.eval_batch_size,
+                            num_workers=args.num_workers, collate_fn=dataset.collate)
+    generator = SampleGenerator(args, tokenizer, do_sample=False)
+    # Sum of token losses and token counts for PRIV, then ON.
+    stats = torch.zeros(4, dtype=torch.float64, device=device)
+    offset = 0
+    was_training = model.training
+    model.eval()
+    teacher_model.eval()
+    try:
+        with torch.no_grad():
+            for model_batch, metadata, gen_data, _, _ in dataloader:
+                dataset.move_to_device(model_batch, metadata, gen_data, device)
+                rows = torch.arange(model_batch["input_ids"].shape[0], device=device) + offset
+                valid_rows = rows * world_size + rank < len(dataset)
+                offset += rows.numel()
+                for mode, start in (("privileged", 0), ("on_policy", 2)):
+                    if mode == "privileged":
+                        student_batch, student_meta, teacher_batch, teacher_meta = prepare_privileged_batches(
+                            args, tokenizer, model_batch, metadata)
+                    else:
+                        student_batch = generator.run_sample(model, gen_data)
+                        labels = student_batch.pop("no_model_batch")
+                        student_meta = {"label": labels}
+                        teacher_batch = teacher_batch_for_response(args, student_batch)
+                        teacher_meta = student_meta
+                    student_logits = model(**student_batch, use_cache=False, return_dict=True).logits
+                    teacher_logits = teacher_model(**teacher_batch, use_cache=False, return_dict=True).logits
+                    aligned_student, aligned_teacher, response_labels = align_response_logits(
+                        student_logits, student_meta["label"], teacher_logits, teacher_meta["label"])
+                    keep = valid_rows[:, None].expand_as(student_meta["label"])
+                    keep = keep[student_meta["label"] != -100]
+                    count = keep.sum()
+                    if count:
+                        kd = get_adaptive_discrepancy(
+                            args, aligned_teacher[keep], response_labels[keep], aligned_student[keep])
+                        stats[start] += kd.double() * count
+                        stats[start + 1] += count
+    finally:
+        model.train(was_training)
+    dist.all_reduce(stats, dist.ReduceOp.SUM)
+    if (stats[1] == 0).item() or (stats[3] == 0).item():
+        raise ValueError("Adaptive dev evaluation has no response tokens")
+    losses = (stats[0] / stats[1], stats[2] / stats[3])
+    if not all(torch.isfinite(loss).item() for loss in losses):
+        raise FloatingPointError("Non-finite adaptive dev KD loss")
+    return tuple(loss.item() for loss in losses)
 
 
 def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, teacher_model=None):
     print_rank("Start Fine-tuning")
+    if args.load:
+        raise ValueError("--load is unavailable without training-state checkpoints; start a new run with --model-path or --peft-path")
 
     if args.model_parallel:
         raise NotImplementedError
-    else:
-        dp_world_size = dist.get_world_size()
-        dp_rank = dist.get_rank()
-        dp_group = None
-        loss_func = nn.CrossEntropyLoss(ignore_index=-100, reduction="sum")
+    dp_world_size = dist.get_world_size()
+    dp_rank = dist.get_rank()
+    dp_group = None
+    loss_func = nn.CrossEntropyLoss(ignore_index=-100, reduction="sum")
 
     sampler = DistributedSampler(dataset["train"], shuffle=True, drop_last=True, rank=dp_rank, num_replicas=dp_world_size)
     train_dataloader = DataLoader(
@@ -268,6 +317,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
         teacher_model.eval()
 
     step, global_step = 1, 1
+    mode_router = OptimizerStepModeRouter(scheduler, args.distill_mode)
     total_time, log_steps = 0.0, 0
     # loss, distil, lm, kl, magnitude, direction, context tokens, generated samples
     total_losses = torch.zeros(8, dtype=torch.float64, device=device)
@@ -277,16 +327,16 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
     for epoch in range(args.epochs):
         sampler.set_epoch(epoch)
         model.train()
-        for it, (model_batch, no_model_batch, gen_data, t_model_batch, t_no_model_batch) in enumerate(train_dataloader):
+        for model_batch, no_model_batch, gen_data, t_model_batch, t_no_model_batch in train_dataloader:
             dataset["train"].move_to_device(model_batch, no_model_batch, gen_data, device)
 
             if model_batch["input_ids"].is_cuda:
                 torch.cuda.synchronize()
             st_time = time.time()
 
-            selected_mode = scheduler.route(device) if scheduler else args.distill_mode
+            selected_mode = mode_router.for_microbatch(device)
             student_gen = selected_mode == "on_policy"
-            use_geometry = teacher_model is not None and selected_mode == "off_policy" and args.off_policy_geometry
+            use_geometry = teacher_model is not None and geometry_enabled_for_mode(args, selected_mode)
             data_source = "fresh_on_policy" if student_gen else "canonical"
 
             if selected_mode == "privileged" and prepared_privileged:
@@ -302,17 +352,13 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                     "label": labels,
                     "loss_mask": (labels != -100).float(),
                 }
-                model.train()
 
             # Prepare teacher context on exactly the selected response tokens.
             if selected_mode == "privileged":
                 model_batch, no_model_batch, t_model_batch, t_no_model_batch = prepare_privileged_batches(
                     args, tokenizer, model_batch, no_model_batch)
             else:
-                t_model_batch = {key: value for key, value in model_batch.items() if key != "position_ids"}
-                if (args.teacher_model_type or args.model_type) == "gpt2":
-                    mask = t_model_batch["attention_mask"]
-                    t_model_batch["position_ids"] = (mask.cumsum(-1) - 1).clamp_min(0) * mask
+                t_model_batch = teacher_batch_for_response(args, model_batch)
                 t_no_model_batch = no_model_batch
 
             outputs = model(**model_batch, use_cache=False, output_hidden_states=use_geometry, return_dict=True)
@@ -328,7 +374,6 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             kl_loss = magnitude_loss = gram_loss = distil_loss = logits.reshape(-1)[:0].sum()
             if teacher_model is not None:
                 with torch.no_grad():
-                    teacher_model.eval()
                     teacher_outputs = teacher_model(
                         **t_model_batch, use_cache=False, output_hidden_states=use_geometry, return_dict=True)
                     h_tea = teacher_outputs.hidden_states[-1] if use_geometry else None
@@ -361,6 +406,8 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             # Query before step(): DeepSpeed owns optimizer/accumulation boundaries.
             boundary = model.is_gradient_accumulation_boundary()
             model.step()
+            if boundary:
+                mode_router.on_optimizer_step()
 
             context_tokens = no_model_batch.get("privileged_context_tokens") if selected_mode == "privileged" else None
             context_count = context_tokens.sum() if context_tokens is not None else loss.new_zeros(())
@@ -370,8 +417,6 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 context_count, fresh_count)).detach().double()
             dist.all_reduce(global_losses, dist.ReduceOp.SUM, group=dp_group)
             global_losses[:6] /= dp_world_size
-            if scheduler and selected_mode == "off_policy":
-                scheduler.observe_off_loss(global_losses[1].item())
             mode_kl_totals[selected_mode] += global_losses[3].item()
             mode_log_counts[selected_mode] += 1
             total_losses += global_losses
@@ -417,7 +462,6 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 log_str = get_log(log_losses, total_time, aggregate=True)
                 print_rank("*" * 100)
                 print_rank(log_str)
-                print_rank(args.save)
                 print_rank("*" * 100)
                 save_rank(log_str, os.path.join(args.save, "log.txt"))
                 total_losses.zero_()
@@ -425,7 +469,24 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 mode_kl_totals = dict.fromkeys(AdaptiveScheduler.MODES, 0.)
                 mode_log_counts = dict.fromkeys(AdaptiveScheduler.MODES, 0)
 
-            # Checkpointing
+            # Evaluation
+            if boundary and args.eval_interval and global_step % args.eval_interval == 0:
+                evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device,
+                         global_step=global_step)
+                if scheduler:
+                    priv_loss, on_loss = evaluate_adaptive_losses(
+                        args, tokenizer, model, teacher_model, dataset["dev"], device)
+                    scheduler_log = scheduler.on_evaluation(priv_loss, on_loss)
+                    scheduler_log["global_step"] = global_step
+                    log_str = "scheduler | " + json.dumps(scheduler_log, sort_keys=True, allow_nan=False)
+                    print_rank(log_str)
+                    save_rank(log_str, os.path.join(args.save, "log.txt"))
+                if args.do_eval:
+                    evaluate(args, tokenizer, model, dataset["test"], "test", epoch, device,
+                             global_step=global_step)
+                model.train()
+
+            # Save model weights for evaluation or inference.
             if boundary and args.save and (
                 (args.save_interval and global_step % args.save_interval == 0) or global_step == args.total_iters
             ):
@@ -435,30 +496,11 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                     print_rank(f"Model save to {save_dir_path}")
                     tokenizer.save_pretrained(save_dir_path)
                     model.module.save_pretrained(save_dir_path, safe_serialization=False)
-                    # Let the invoking pipeline evaluate this run's final checkpoint.
                     checkpoint_file = os.environ.get("FINAL_CHECKPOINT_FILE")
                     if global_step == args.total_iters and checkpoint_file:
                         with open(checkpoint_file, "w") as handle:
                             handle.write(os.path.abspath(save_dir_path) + "\n")
                 dist.barrier()
-
-            # Evaluation
-            if boundary and args.eval_interval and global_step % args.eval_interval == 0:
-                if scheduler:
-                    evaluation = evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device,
-                                          return_scheduler_metrics=True, global_step=global_step)
-                    scheduler_log = scheduler.on_evaluation(evaluation["loss"], evaluation["metric"])
-                    scheduler_log["global_step"] = global_step
-                    log_str = "scheduler | " + json.dumps(scheduler_log, sort_keys=True, allow_nan=False)
-                    print_rank(log_str)
-                    save_rank(log_str, os.path.join(args.save, "log.txt"))
-                else:
-                    evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device,
-                             global_step=global_step)
-                if args.do_eval:
-                    evaluate(args, tokenizer, model, dataset["test"], "test", epoch, device,
-                             global_step=global_step)
-                model.train()
 
             step += 1
             if boundary:
@@ -470,22 +512,16 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
 
 
 def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, device,
-             return_scheduler_metrics=False, global_step=None):
+             global_step=None):
     
     collate_fn = dataset.collate
 
     if args.model_parallel:
         raise NotImplementedError
-    else:
-        dp_world_size = dist.get_world_size()
-        dp_rank = dist.get_rank()
-        dp_group = None
-        loss_func = nn.CrossEntropyLoss(ignore_index=-100, reduction="none")
-
-    if len(dataset) == 0:
-        raise ValueError("Evaluation dataset must contain at least one sample")
-
-    print_rank("dp size", dp_world_size)
+    dp_world_size = dist.get_world_size()
+    dp_rank = dist.get_rank()
+    dp_group = None
+    loss_func = nn.CrossEntropyLoss(ignore_index=-100, reduction="none")
 
     generation_config = GenerationConfig(
         do_sample=args.do_sample,
@@ -513,23 +549,17 @@ def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, devi
     all_response_ids = []
     
     with torch.no_grad():
-        for it, (model_batch, no_model_batch, gen_data, _, _) in enumerate(tqdm(dataloader, desc="Evaluating", disable=(dist.get_rank() != 0))):
-            print_rank(f"{it}/{len(dataloader)}")
+        for model_batch, no_model_batch, gen_data, _, _ in tqdm(dataloader, desc="Evaluating", disable=(dist.get_rank() != 0)):
             dataset.move_to_device(model_batch, no_model_batch, gen_data, device)
             logits = model(**model_batch).logits
-            if args.model_parallel:
-                raise NotImplementedError
-            else:
-                labels = no_model_batch["label"]
-                # shuffle=False interleaves rank slices of [0, ..., N-1, padding].
-                # Keep padded forwards for equal collective counts, but exclude
-                # their repeated samples from the evaluation statistics.
-                positions = (torch.arange(labels.shape[0], device=labels.device) + local_offset) * dp_world_size + dp_rank
-                labels = labels.masked_fill((positions >= len(dataset))[:, None], -100)
-                token_losses = loss_func(logits.float().reshape(-1, logits.shape[-1]), labels.reshape(-1))
-                loss_stats[0] += token_losses.double().sum()
-                loss_stats[1] += (labels != -100).sum()
-                local_offset += labels.shape[0]
+            labels = no_model_batch["label"]
+            # DistributedSampler may repeat rows to balance ranks; exclude repeats.
+            positions = (torch.arange(labels.shape[0], device=labels.device) + local_offset) * dp_world_size + dp_rank
+            labels = labels.masked_fill((positions >= len(dataset))[:, None], -100)
+            token_losses = loss_func(logits.float().reshape(-1, logits.shape[-1]), labels.reshape(-1))
+            loss_stats[0] += token_losses.double().sum()
+            loss_stats[1] += (labels != -100).sum()
+            local_offset += labels.shape[0]
             
             max_new_tokens = args.max_length - gen_data["input_ids"].size(1)
             
@@ -579,22 +609,10 @@ def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, devi
             with open(os.path.join(eval_dir, "answers.jsonl"), "w") as f:
                 for resp in responses:
                     f.write(json.dumps({"text": resp}) + "\n")
-        else:
-            res = {}
-    
         log_str = f"{split} | avg_loss: {avg_loss} | {res} | epoch: {epoch} | global_step: {global_step}"
         print_rank(log_str)
         save_rank(log_str, os.path.join(args.save, "log.txt"))
         
-    if return_scheduler_metrics:
-        metric = None
-        if args.eval_gen:
-            metric_tensor = torch.tensor(
-                res.get(getattr(args, "scheduler_metric", "exact_match"), float("nan")),
-                dtype=torch.float64, device=device)
-            dist.broadcast(metric_tensor, src=0)
-            metric = metric_tensor.item()
-        return {"loss": avg_loss, "metric": metric}
     return avg_loss
 
 
@@ -603,6 +621,8 @@ def main():
     torch.backends.cudnn.enabled = False
     
     args = get_args(default_type="kd")
+    if args.load:
+        raise ValueError("--load is unavailable without training-state checkpoints; start a new run with --model-path or --peft-path")
     validate_mode_args(args)
     initialize(args)
     
@@ -683,8 +703,7 @@ def main():
     else:
         teacher_model = None
     
-    if args.do_train:
-        model = finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, teacher_model=teacher_model)
+    model = finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, teacher_model=teacher_model)
    
         
     

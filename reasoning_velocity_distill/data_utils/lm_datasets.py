@@ -279,7 +279,9 @@ class LMTrainDataset(Dataset):
             )
             student["privileged_prompt_ids"] = ids
             student["privileged_context_tokens"] = count
-        return student, student if self.with_teacher else None
+        # Explicit v2 modes construct the teacher batch after routing; collating
+        # a duplicate student batch here only allocates unused CPU tensors.
+        return student, None
 
     def __getitem__(self, index):
         if index < 0:
@@ -361,12 +363,12 @@ class LMTrainDataset(Dataset):
     def collate(self, samples):
         students, teachers = zip(*samples)
         step_count = max(sample["marker_count"] for sample in students)
-        if self.with_teacher:
+        if self.with_teacher and self.distill_mode is None:
             step_count = max(step_count, max(sample["marker_count"] for sample in teachers))
         model_data, no_model_data = self._collate_model(
             students, self.tokenizer, self.args.model_type, self.student_marker_ids, step_count)
         teacher_data = teacher_metadata = None
-        if self.with_teacher:
+        if self.with_teacher and self.distill_mode is None:
             teacher_data, teacher_metadata = self._collate_model(
                 teachers, self.teacher_tokenizer,
                 getattr(self.args, "teacher_model_type", None) or self.args.model_type,

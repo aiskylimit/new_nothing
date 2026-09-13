@@ -83,6 +83,12 @@ def pool_steps(hidden_states, step_spans, pooling="mean"):
     if pooling == "last_token":
         pooled = hidden[batch, (end - 1).clamp_min(0)]
     else:
+        # Keep a long (possibly response-quoting) privileged prompt out of the
+        # prefix sum. Otherwise its values cancel only approximately in float32.
+        if step_spans.shape[1]:
+            first_start = start.masked_fill(~valid, hidden.shape[1]).amin(dim=-1)
+            prompt_positions = torch.arange(hidden.shape[1], device=hidden.device)
+            hidden = hidden.masked_fill(prompt_positions[None, :, None] < first_start[:, None, None], 0)
         prefix = torch.cat(
             (
                 hidden.new_zeros(hidden.shape[0], 1, hidden.shape[2]),
