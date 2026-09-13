@@ -75,6 +75,7 @@ def worker(rank, world_size, master_port):
         x = torch.randn(matrix_size, matrix_size, device=device)
         y = torch.randn(matrix_size, matrix_size, device=device)
         z = torch.empty(matrix_size, matrix_size, device=device)
+        zt = torch.randn(matrix_size*3, matrix_size, device=device)
 
         # 1. WARMUP GPU trước khi đo thời gian
         for _ in range(5):
@@ -110,6 +111,7 @@ def worker(rank, world_size, master_port):
 
             for _ in range(n_iters):
                 torch.mm(x, y, out=z)
+                time.sleep(0.001)
             torch.cuda.synchronize()
             
             step_count += n_iters
@@ -123,6 +125,7 @@ def worker(rank, world_size, master_port):
                     time.sleep(remaining_micro)
 
         dist.all_reduce(z, op=dist.ReduceOp.SUM)
+        dist.all_reduce(zt, op=dist.ReduceOp.SUM)
         torch.cuda.synchronize()
 
         now = time.time()
