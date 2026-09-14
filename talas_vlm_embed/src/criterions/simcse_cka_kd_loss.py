@@ -52,7 +52,7 @@ class SimcseCKA(nn.Module):
     def distillcse_kd_loss(
             self, S1, S2,
                 T1, T2,
-                tau=0.05,):
+                tau=1.0,):
         """
         Distill teacher similarity distribution over in-batch negatives.
 

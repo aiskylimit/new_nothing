@@ -1,4 +1,4 @@
-"""Micro-batch routing with evaluation-only, monotonic ON-policy milestones."""
+"""One categorical exposure decision per optimizer step, guided by dev discrepancies."""
 
 from dataclasses import dataclass, fields
 import math
@@ -8,159 +8,145 @@ import torch
 import torch.distributed as dist
 
 
+DEPRECATED_ADAPTIVE_ARGUMENTS = (
+    "rho_min", "rho_max", "rho_increment", "progress_signal", "scheduler_metric",
+    "loss_improvement_threshold", "metric_improvement_threshold", "eval_ema_beta",
+    "min_evals_between_rho_updates", "off_ema_beta", "off_min_absorption",
+    "off_plateau_threshold", "off_transition_patience",
+)
+
+
 @dataclass(frozen=True)
 class AdaptiveConfig:
-    rho_min: float = 0.1
-    rho_max: float = 0.5
-    rho_increment: float = 0.1
-    progress_signal: str = "loss"
-    loss_improvement_threshold: float = 0.05
-    metric_improvement_threshold: float = 1.0
-    eval_ema_beta: float = 0.9
-    min_evals_between_rho_updates: int = 1
-    off_ema_beta: float = 0.9
-    off_min_absorption: float = 0.2
-    off_plateau_threshold: float = 0.01
-    off_transition_patience: int = 3
-    eps: float = 1e-6
+    rho_priv_init: float = 0.05
+    rho_on_init: float = 0.05
+    rho_priv_max: float = 0.25
+    rho_on_max: float = 0.15
+    rho_priv_increment: float = 0.05
+    rho_on_increment: float = 0.025
+    deterioration_threshold: float = 0.05
+    eps: float = 1e-8
 
     @classmethod
     def from_args(cls, args):
-        return cls(**{f.name: getattr(args, f.name, f.default) for f in fields(cls)})
+        values = {field.name: getattr(args, field.name, field.default) for field in fields(cls)}
+        values["deterioration_threshold"] = getattr(
+            args, "adaptive_deterioration_threshold", cls.deterioration_threshold)
+        values["eps"] = getattr(args, "adaptive_eps", cls.eps)
+        return cls(**values)
 
     def __post_init__(self):
-        for f in fields(self):
-            value = getattr(self, f.name)
-            if f.name != "progress_signal" and not math.isfinite(value):
-                raise ValueError(f"--{f.name.replace('_', '-')} must be finite")
-        if not 0 <= self.rho_min <= self.rho_max <= 1:
-            raise ValueError("Require 0 <= --rho-min <= --rho-max <= 1")
-        if self.rho_increment <= 0 or self.eps <= 0:
-            raise ValueError("--rho-increment and --eps must be positive")
-        if self.progress_signal not in ("loss", "metric", "either"):
-            raise ValueError("--progress-signal must be loss, metric, or either")
-        if not 0 <= self.eval_ema_beta < 1 or not 0 <= self.off_ema_beta < 1:
-            raise ValueError("EMA betas must be in [0, 1)")
-        if self.loss_improvement_threshold <= 0 or self.metric_improvement_threshold <= 0:
-            raise ValueError("Progress improvement thresholds must be positive")
-        if not 0 <= self.off_min_absorption <= 1 or self.off_plateau_threshold < 0:
-            raise ValueError("OFF absorption must be in [0, 1]; plateau threshold must be nonnegative")
-        for name in ("min_evals_between_rho_updates", "off_transition_patience"):
-            value = getattr(self, name)
-            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-                raise ValueError(f"--{name.replace('_', '-')} must be a positive integer")
+        for field in fields(self):
+            if not math.isfinite(getattr(self, field.name)):
+                raise ValueError(f"--{field.name.replace('_', '-')} must be finite")
+        if not (0 <= self.rho_priv_init <= self.rho_priv_max
+                and 0 <= self.rho_on_init <= self.rho_on_max
+                and self.rho_priv_max + self.rho_on_max <= 1):
+            raise ValueError("Adaptive rho initial values must fit their caps; caps must sum to at most 1")
+        if self.rho_priv_increment <= 0 or self.rho_on_increment <= 0:
+            raise ValueError("Adaptive rho increments must be positive")
+        if self.deterioration_threshold < 0 or self.eps <= 0:
+            raise ValueError("Deterioration threshold must be nonnegative and adaptive eps positive")
 
 
 class AdaptiveScheduler:
     MODES = ("off_policy", "privileged", "on_policy")
 
-    def __init__(self, config, seed=42):
-        self.config = config
+    def __init__(self, config=None, seed=42):
+        self.config = config or AdaptiveConfig()
         self.rng = random.Random(seed)
-        self.base_mode = "off"
-        self.rho_on = config.rho_min
-        self.off_initial_loss = self.off_loss_ema = self.previous_eval_ema_off = None
-        self.eval_loss_ema = self.eval_loss_reference = self.metric_reference = None
-        self.off_transition_counter = 0
-        self.eval_count = 0
-        self.last_rho_update_eval = 0
+        self.rho_priv = self.config.rho_priv_init
+        self.rho_on = self.config.rho_on_init
+        self.ref_priv_loss = None
+        self.ref_on_loss = None
         self.counts = dict.fromkeys(self.MODES, 0)
 
-    def route(self, device=None):
-        """Call exactly once per training DataLoader batch on every rank."""
+    @property
+    def rho_off(self):
+        return 1.0 - self.rho_priv - self.rho_on
+
+    def sample_mode(self, device=None):
+        """Rank zero draws once; every rank receives the same categorical mode."""
         distributed = dist.is_available() and dist.is_initialized()
         mode_id = 0
         if not distributed or dist.get_rank() == 0:
-            mode_id = (2 if self.rng.random() < self.rho_on
-                       else int(self.base_mode == "privileged"))
+            u = self.rng.random()
+            mode_id = 2 if u < self.rho_on else 1 if u < self.rho_on + self.rho_priv else 0
         if distributed:
-            # NCCL requires CUDA tensors; Gloo uses CPU even during GPU tests.
             routing_device = (device if device is not None else torch.cuda.current_device()) \
                 if dist.get_backend() == "nccl" else "cpu"
             decision = torch.tensor(mode_id, dtype=torch.long, device=routing_device)
             dist.broadcast(decision, src=0)
             mode_id = int(decision.item())
-        mode = self.MODES[mode_id]
+        return self.MODES[mode_id]
+
+    def record_step(self, mode):
+        """Count completed optimizer updates, not micro-batches or unfinished windows."""
+        if mode not in self.counts:
+            raise ValueError(f"Unknown distillation mode: {mode}")
         self.counts[mode] += 1
-        return mode
 
-    def observe_off_loss(self, loss):
-        """Observe the existing OFF distillation objective, averaged across ranks."""
-        if not math.isfinite(loss):
-            raise FloatingPointError("Non-finite OFF-policy loss")
-        if self.base_mode != "off":
-            return
-        if self.off_loss_ema is None:
-            self.off_initial_loss = self.off_loss_ema = loss
+    def on_evaluation(self, priv_loss, on_loss):
+        if not math.isfinite(priv_loss) or not math.isfinite(on_loss):
+            raise FloatingPointError("Non-finite adaptive evaluation loss")
+        priv_deterioration = on_deterioration = None
+        priv_updated = on_updated = False
+        if self.ref_priv_loss is None:
+            self.ref_priv_loss = priv_loss
+            self.ref_on_loss = on_loss
         else:
-            beta = self.config.off_ema_beta
-            self.off_loss_ema = beta * self.off_loss_ema + (1 - beta) * loss
-
-    def on_evaluation(self, eval_loss, metric=None):
-        """Update once per dev evaluation, after a completed optimizer step.
-
-        The first event establishes references. Missing OFF observations cannot
-        count as plateau evidence. Returned counters cover the interval that just
-        ended, while base_mode/rho_on describe routing for the next interval.
-        """
-        if not math.isfinite(eval_loss) or (metric is not None and not math.isfinite(metric)):
-            raise FloatingPointError("Non-finite scheduler evaluation signal")
-        c = self.config
-        if c.progress_signal == "metric" and metric is None:
-            raise ValueError("Metric progress requires an evaluation metric")
-        self.eval_count += 1
-        self.eval_loss_ema = (eval_loss if self.eval_loss_ema is None else
-                              c.eval_ema_beta * self.eval_loss_ema + (1 - c.eval_ema_beta) * eval_loss)
-        if self.eval_loss_reference is None:
-            self.eval_loss_reference = self.eval_loss_ema
-            self.last_rho_update_eval = self.eval_count
-        if metric is not None and self.metric_reference is None:
-            self.metric_reference = metric
-
-        loss_improvement = (self.eval_loss_reference - self.eval_loss_ema) / (self.eval_loss_reference + c.eps)
-        metric_improvement = None if metric is None else metric - self.metric_reference
-        loss_ready = c.progress_signal in ("loss", "either") and loss_improvement >= c.loss_improvement_threshold
-        metric_ready = (c.progress_signal in ("metric", "either") and metric_improvement is not None
-                        and metric_improvement >= c.metric_improvement_threshold)
-        rho_updated = False
-        if ((loss_ready or metric_ready) and self.rho_on < c.rho_max
-                and self.eval_count - self.last_rho_update_eval >= c.min_evals_between_rho_updates):
-            self.rho_on = min(self.rho_on + c.rho_increment, c.rho_max)
-            # Both references correspond to the same last-increase milestone.
-            self.eval_loss_reference = self.eval_loss_ema
-            self.metric_reference = metric
-            self.last_rho_update_eval = self.eval_count
-            rho_updated = True
-
-        absorption = progress = None
-        transitioned = False
-        if self.base_mode == "off":
-            if self.counts["off_policy"] and self.off_loss_ema is not None:
-                absorption = (self.off_initial_loss - self.off_loss_ema) / (self.off_initial_loss + c.eps)
-                if self.previous_eval_ema_off is not None:
-                    progress = (self.previous_eval_ema_off - self.off_loss_ema) / (self.previous_eval_ema_off + c.eps)
-                ready = (progress is not None and absorption >= c.off_min_absorption
-                         and 0 <= progress <= c.off_plateau_threshold)
-                self.off_transition_counter = self.off_transition_counter + 1 if ready else 0
-                self.previous_eval_ema_off = self.off_loss_ema
-                if self.off_transition_counter >= c.off_transition_patience:
-                    self.base_mode = "privileged"
-                    transitioned = True
+            c = self.config
+            priv_deterioration = (priv_loss - self.ref_priv_loss) / (abs(self.ref_priv_loss) + c.eps)
+            on_deterioration = (on_loss - self.ref_on_loss) / (abs(self.ref_on_loss) + c.eps)
+            if priv_deterioration > c.deterioration_threshold:
+                new_rho = min(self.rho_priv + c.rho_priv_increment, c.rho_priv_max)
+                priv_updated = new_rho > self.rho_priv
+                self.rho_priv = new_rho
+                self.ref_priv_loss = priv_loss
             else:
-                self.off_transition_counter = 0
+                self.ref_priv_loss = min(self.ref_priv_loss, priv_loss)
+            if on_deterioration > c.deterioration_threshold:
+                new_rho = min(self.rho_on + c.rho_on_increment, c.rho_on_max)
+                on_updated = new_rho > self.rho_on
+                self.rho_on = new_rho
+                self.ref_on_loss = on_loss
+            else:
+                self.ref_on_loss = min(self.ref_on_loss, on_loss)
+        return {
+            "scheduler/rho_off": self.rho_off,
+            "scheduler/rho_priv": self.rho_priv,
+            "scheduler/rho_on": self.rho_on,
+            "scheduler/eval_priv_loss": priv_loss,
+            "scheduler/eval_on_loss": on_loss,
+            "scheduler/ref_priv_loss": self.ref_priv_loss,
+            "scheduler/ref_on_loss": self.ref_on_loss,
+            "scheduler/priv_deterioration": priv_deterioration,
+            "scheduler/on_deterioration": on_deterioration,
+            "scheduler/priv_updated": priv_updated,
+            "scheduler/on_updated": on_updated,
+            "scheduler/off_steps": self.counts["off_policy"],
+            "scheduler/privileged_steps": self.counts["privileged"],
+            "scheduler/on_policy_steps": self.counts["on_policy"],
+        }
 
-        total = sum(self.counts.values())
-        values = dict(
-            base_mode=self.base_mode, rho_on=self.rho_on,
-            eval_loss=eval_loss, eval_loss_ema=self.eval_loss_ema,
-            eval_loss_reference=self.eval_loss_reference, loss_improvement=loss_improvement,
-            current_metric=metric, metric_reference=self.metric_reference,
-            metric_improvement=metric_improvement, off_loss_ema=self.off_loss_ema,
-            off_absorption=absorption, off_progress=progress,
-            off_transition_counter=self.off_transition_counter,
-            off_batches=self.counts["off_policy"], privileged_batches=self.counts["privileged"],
-            on_batches=self.counts["on_policy"], actual_on_ratio=self.counts["on_policy"] / total if total else 0.,
-            rho_updated=rho_updated, base_transitioned=transitioned,
-        )
-        self.counts = dict.fromkeys(self.MODES, 0)
-        return {f"scheduler/{key}": value for key, value in values.items()}
+
+class OptimizerStepModeRouter:
+    """Hold one sampled mode until the optimizer finishes its accumulation window."""
+
+    def __init__(self, scheduler=None, fixed_mode=None):
+        self.scheduler = scheduler
+        self.fixed_mode = fixed_mode
+        self.current_mode = None
+
+    def for_microbatch(self, device=None):
+        if self.current_mode is None:
+            self.current_mode = (self.scheduler.sample_mode(device) if self.scheduler
+                                 else self.fixed_mode)
+        return self.current_mode
+
+    def on_optimizer_step(self):
+        if self.current_mode is None:
+            raise RuntimeError("No mode was selected for this optimizer step")
+        if self.scheduler:
+            self.scheduler.record_step(self.current_mode)
+        self.current_mode = None

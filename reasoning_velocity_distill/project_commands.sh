@@ -9,40 +9,39 @@ export EVAL_VENV_PATH="${EVAL_VENV_PATH:-/mnt/local/uvenvs/reasoning-velocity-di
 export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
 export TOKENIZERS_PARALLELISM=false
 
-# Models and source data
 export CKPT="${CKPT:-$BASE_PATH/models/Qwen2.5_1.5B-Instruct}"
 export TEACHER_CKPT="${TEACHER_CKPT:-$BASE_PATH/models/Qwen2.5_14B-Instruct}"
 RAW_DATA="${RAW_DATA:-$BASE_PATH/data/raw/Qwen/Qwen2.5-14B-Instruct/generated_train.jsonl}"
 CONTEXT_DATA_PATH="${CONTEXT_DATA_PATH:-${RAW_DATA%.jsonl}_with_context.jsonl}"
 PROCESSED_DATA_ROOT="${PROCESSED_DATA_ROOT:-$BASE_PATH/processed_data/ultraInteract-v2}"
 
-# Use the preprocessor's own path resolution for local and Hugging Face models.
-DATA_DIR="$(python -c 'import sys; from tools.process_data_ultraInteract import resolve_processed_data_dir; print(resolve_processed_data_dir(*sys.argv[1:]))' \
-    "$PROCESSED_DATA_ROOT" "$CKPT" "$BASE_PATH")"
+# Use the preprocessor's path resolution unless an existing DATA_DIR is supplied.
+if [[ -z "${DATA_DIR:-}" ]]; then
+    DATA_DIR="$(python -c 'import sys; from tools.process_data_ultraInteract import resolve_processed_data_dir; print(resolve_processed_data_dir(*sys.argv[1:]))' \
+        "$PROCESSED_DATA_ROOT" "$CKPT" "$BASE_PATH")"
+fi
 export DATA_DIR
 export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
 export DEV_NUM="${DEV_NUM:-512}" SEED="${SEED:-10}"
 CONTEXT_MAX_NEW_TOKENS="${CONTEXT_MAX_NEW_TOKENS:-1024}"
 CONTEXT_MAX_PROMPT_LENGTH="${CONTEXT_MAX_PROMPT_LENGTH:-8192}"
 CONTEXT_MAX_LENGTH="${CONTEXT_MAX_LENGTH:-10240}"
-# Context generation has its own budget. Privileged training uses the same
-# bounded student response, with additional teacher space for prompt + context.
+# Reserve teacher space for the already generated context and student response.
 export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEXT_MAX_NEW_TOKENS))}"
 # A short student prompt can leave nearly MAX_LENGTH tokens for the response;
 # reserve that full budget, rather than MAX_LENGTH - MAX_PROMPT_LENGTH.
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((T_MAX_PROMPT_LENGTH + MAX_LENGTH))}"
 
-# 1. Generate context for the FULL raw dataset, before splitting.
-printf '\n[1/4] Generate context for full dataset: %s\n' \
-    "$CONTEXT_DATA_PATH"
-
-if [[ ! -f "$CONTEXT_DATA_PATH" ]]; then
+# Context generation and preprocessing are already complete. Uncomment these
+# commands only when rebuilding the processed dataset.
+printf '\nGenerate context for full dataset: %s\n' "$CONTEXT_DATA_PATH"
+if [[ ! -f "$CONTEXT_DATA_PATH" \
+      || "$RAW_DATA" -nt "$CONTEXT_DATA_PATH" \
+      || "$BASE_PATH/prepare_privileged_data.py" -nt "$CONTEXT_DATA_PATH" ]]; then
     (
         source "$EVAL_VENV_PATH/bin/activate"
-
         export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
         export TOKENIZERS_PARALLELISM=false
-
         CUDA_VISIBLE_DEVICES=4,5,6,7 \
         python "$BASE_PATH/prepare_privileged_data.py" \
             --data-dir "$RAW_DATA" \
@@ -57,12 +56,9 @@ if [[ ! -f "$CONTEXT_DATA_PATH" ]]; then
             --privileged-context-field context \
             --seed "$SEED"
     )
-
 fi
 
-
-# 2. Preprocess and split; each record retains its generated context.
-printf '\n[2/4] Preprocess dataset with context: %s\n' "$DATA_DIR"
+printf '\nPreprocess dataset with context: %s\n' "$DATA_DIR"
 if [[ ! -f "$DATA_DIR/.context-preprocessed" \
       || "$CONTEXT_DATA_PATH" -nt "$DATA_DIR/.context-preprocessed" \
       || "$BASE_PATH/tools/process_data_ultraInteract.py" -nt "$DATA_DIR/.context-preprocessed" \
@@ -78,14 +74,19 @@ if [[ ! -f "$DATA_DIR/.context-preprocessed" \
     touch "$DATA_DIR/.context-preprocessed"
 fi
 
-# 3. Train synchronously; context is already inside train.jsonl.
-printf '\n[3/4] Train v2: adaptive OFF -> privileged + random ON-policy\n'
+if [[ ! -s "$DATA_DIR/train.jsonl" || ( ! -s "$DATA_DIR/valid.jsonl" && ! -s "$DATA_DIR/dev.jsonl" ) ]]; then
+    printf 'Processed train and valid/dev JSONL files are required in: %s\n' "$DATA_DIR" >&2
+    exit 1
+fi
+
+# 1. Train synchronously using the existing processed data.
+printf '\n[1/2] Train v2: dual adaptive OFF/privileged/ON exposure\n'
 CHECKPOINT_FILE="$(mktemp)"
 trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
 CUDA_DEVICES=4,5,6,7 PRIVILEGED_DATA_PATH= FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
     bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
 
-# 4. Evaluate this run's final checkpoint only after training succeeds.
+# 2. Evaluate this run's final checkpoint only after training succeeds.
 LORA_PATH="$(cat "$CHECKPOINT_FILE")"
 [[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
 printf '\n[4/4] Evaluate checkpoint: %s\n' "$LORA_PATH"

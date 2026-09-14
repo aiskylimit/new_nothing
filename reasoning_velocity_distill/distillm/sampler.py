@@ -6,16 +6,16 @@ from .batching import pack_trajectories
 
 
 class SampleGenerator:
-    def __init__(self, args, tokenizer):
+    def __init__(self, args, tokenizer, do_sample=None):
         self.args = args
         self.tokenizer = tokenizer
         self.max_new_token = args.max_length - args.max_prompt_length
         self.pad_id = tokenizer.pad_token_id
         self.generation_config = GenerationConfig(
-            do_sample=args.do_sample,
-            top_p=getattr(args, "gen_top_p", None) or args.top_p,
-            top_k=args.top_k,
-            temperature=args.temperature,
+            do_sample=args.do_sample if do_sample is None else do_sample,
+            top_p=(getattr(args, "gen_top_p", None) or args.top_p) if do_sample is not False else 1.0,
+            top_k=args.top_k if do_sample is not False else 50,
+            temperature=args.temperature if do_sample is not False else 1.0,
             repetition_penalty=args.repetition_penalty or 1.0,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=self.pad_id,

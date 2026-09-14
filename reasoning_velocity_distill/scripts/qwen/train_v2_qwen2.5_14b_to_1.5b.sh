@@ -27,13 +27,14 @@ TEACHER_CKPT="${TEACHER_CKPT:-Qwen/Qwen2.5-14B-Instruct}"
 DATA_DIR="${DATA_DIR:-$BASE_PATH/processed_data/ultraInteract/Qwen/Qwen2.5-14B-Instruct}"
 # Optional prepared JSONL; otherwise train data must already contain context.
 PRIVILEGED_DATA_PATH="${PRIVILEGED_DATA_PATH:-}"
+PRIVILEGED_DEV_DATA_PATH="${PRIVILEGED_DEV_DATA_PATH:-}"
 DS_CONFIG="${DS_CONFIG:-$BASE_PATH/configs/deepspeed/ds_config_bf16.json}"
 
 BATCH_SIZE="${BATCH_SIZE:-8}"
 GRAD_ACC="${GRAD_ACC:-4}"
 EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-16}"
 LR="${LR:-1e-4}"
-EPOCHS="${EPOCHS:-3}"
+EPOCHS="${EPOCHS:-2}"
 WARMUP_RATIO="${WARMUP_RATIO:-0.1}"
 MAX_LENGTH="${MAX_LENGTH:-1024}"
 MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
@@ -45,7 +46,7 @@ NUM_WORKERS="${NUM_WORKERS:-4}"
 DEV_NUM="${DEV_NUM:-512}"
 SEED="${SEED:-10}"
 
-# Adaptive OFF -> privileged, with randomly mixed ON-policy batches.
+# Dual adaptive exposure across OFF, privileged, and ON-policy updates.
 KD_LOSS="${KD_LOSS:-sfkl}"
 SKEW_ALPHA="${SKEW_ALPHA:-0.1}"
 KD_RATIO="${KD_RATIO:-0.5}"
@@ -72,6 +73,9 @@ OPTS+=(--data-dir "$DATA_DIR" --json-data --num-workers "$NUM_WORKERS" --dev-num
 if [[ -n "$PRIVILEGED_DATA_PATH" ]]; then
     OPTS+=(--privileged-data-path "$PRIVILEGED_DATA_PATH")
 fi
+if [[ -n "$PRIVILEGED_DEV_DATA_PATH" ]]; then
+    OPTS+=(--privileged-dev-data-path "$PRIVILEGED_DEV_DATA_PATH")
+fi
 
 # Training: 'wrmup_cosine' is the scheduler name supported by finetune_v2.
 OPTS+=(--lr "$LR" --batch-size "$BATCH_SIZE" --eval-batch-size "$EVAL_BATCH_SIZE")
@@ -81,10 +85,13 @@ OPTS+=(--weight-decay 1e-2 --clip-grad 1.0 --epochs "$EPOCHS")
 OPTS+=(--max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH")
 OPTS+=(--t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH")
 
-# Geometry applies only to OFF batches; the scheduler controls mode transitions.
-OPTS+=(--type kd --distill-mode off_policy --off-policy-geometry)
-OPTS+=(--adaptive-on-policy --do-sample --progress-signal loss)
-OPTS+=(--rho-min "${RHO_MIN:-0.1}" --rho-max "${RHO_MAX:-0.8}" --rho-increment "${RHO_INCREMENT:-0.05}")
+# Adaptive routing uses all three modes; geometry applies to OFF and privileged batches.
+OPTS+=(--type kd --geometry)
+OPTS+=(--dual-adaptive-exposure --do-sample)
+OPTS+=(--rho-priv-init "${RHO_PRIV_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}")
+OPTS+=(--rho-priv-max "${RHO_PRIV_MAX:-0.3}" --rho-on-max "${RHO_ON_MAX:-0.2}")
+OPTS+=(--rho-priv-increment "${RHO_PRIV_INCREMENT:-0.05}" --rho-on-increment "${RHO_ON_INCREMENT:-0.025}")
+OPTS+=(--adaptive-threshold "${ADAPTIVE_THRESHOLD:-${ADAPTIVE_DETERIORATION_THRESHOLD:-0.05}}")
 OPTS+=(--privileged-trajectory canonical --privileged-context-field context)
 OPTS+=(--kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO")
 OPTS+=(--skew-alpha "$SKEW_ALPHA")

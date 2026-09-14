@@ -284,6 +284,7 @@ class TalasJepa(nn.Module):
             energies = energies / energies.mean(dim=-1, keepdim=True).clamp_min(eps)
 
             valid = lengths >= min_valid_tokens                             # [B]
+            
             return energies, valid
 
         energies_0, valid_0 = _projected_energies(z0_padded, mask0, len0)
@@ -310,6 +311,69 @@ class TalasJepa(nn.Module):
 
         loss_per_sample = torch.trapezoid(err, t, dim=-1) * num_slices / 2  # [B]
         return loss_per_sample[valid].mean().to(dtype)
+
+    def sigreg_dualview(self, z_list: list[torch.Tensor], eos_query: torch.Tensor,
+                        num_slices: int = 256, tau: float = 0.05, alpha: float = 0.9):
+        B = len(z_list)
+        if B == 0:
+            return 0.0
+
+        device, dtype = z_list[0].device, z_list[0].dtype
+        D = z_list[0].shape[-1]
+
+        # ==========================================
+        # 0. PADDING & MASK
+        # ==========================================
+        lengths = torch.tensor([x.size(0) for x in z_list], device=device)
+        N_max = lengths.max().item()
+        z_padded = pad_sequence(z_list, batch_first=True, padding_value=0.0)  # [B, N_max, D]
+
+        idx = torch.arange(N_max, device=device).unsqueeze(0)   # [1, N_max]
+        mask = idx < lengths.view(B, 1)                          # [B, N_max]
+
+        # ==========================================
+        # 1. VIEW 1: ATTENTION-WEIGHTED POOLING
+        # ==========================================
+        q = F.normalize(eos_query.to(device=device, dtype=dtype), p=2, dim=-1)   # [B, D]
+        k = F.normalize(z_padded, p=2, dim=-1)                                   # [B, N_max, D]
+
+        score = torch.einsum('bd,bnd->bn', q, k) / tau                           # [B, N_max]
+        score = score.masked_fill(~mask, -float('inf'))
+        attn_w = torch.softmax(score, dim=-1)                                    # [B, N_max]
+
+        attn_view = torch.einsum('bn,bnd->bd', attn_w, z_padded)                 # [B, D]
+
+        z_k_concepts = attn_view.unsqueeze(0)
+
+        if alpha < 1.0:
+            noise = torch.randn_like(z_k_concepts)
+            z_mixed = math.sqrt(alpha) * z_k_concepts + math.sqrt(1.0 - alpha) * noise
+        else:
+            z_mixed = z_k_concepts
+
+        if self.process_rank == 0:
+            projection_seed = random.randint(0, 2**63 - 1)
+        else:
+            projection_seed = 0
+        g = torch.Generator(device=device)
+        g.manual_seed(projection_seed)
+        
+        A = torch.randn(D, num_slices, generator=g, device=device, dtype=dtype)
+        A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
+        t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
+        exp_f = torch.exp(-0.5 * t.square())
+
+        x_proj = z_mixed @ A                   # [K, B, num_slices]
+        x_t = x_proj.unsqueeze(-1) * t         # [K, B, num_slices, 17]
+
+        ecf_real = torch.cos(x_t).mean(dim=1)  # [K, num_slices, 17]
+        ecf_imag = torch.sin(x_t).mean(dim=1)  # [K, num_slices, 17]
+
+        err = ((ecf_real - exp_f).square() + ecf_imag.square()).mul(exp_f)
+
+        loss_sigreg = torch.trapezoid(err, t, dim=-1).mean(dim=-1) * B
+
+        return loss_sigreg.mean()
 
     def _compute_modality_distill(self, student_hidden_states, image_features, 
                                   text_token_counts, attention_mask, concept_queries):
@@ -364,11 +428,18 @@ class TalasJepa(nn.Module):
             total_sigreg = 0.0
             
             for l in layers[1:-1]:
-                total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
+                eos_query = pooling(student_hidden_states[l], attention_mask, 
+                                    mode='eos', normalize=True).detach()
+                total_sigreg += self.sigreg_dualview(stu_img_tokens[l], eos_query, 
+                                                     tau=0.1, alpha=0.9)
+                # total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
 
             sigreg_erank_loss = self.sigreg_erank(stu_img_tokens[0], stu_img_tokens[last_layer_idx])
-            
-            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
+
+            if self.args.use_sigreg_loss:
+                sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
+            else:
+                sigreg_final = sigreg_erank_loss
 
         return stacked_stu_text_reps, stu_img_final_reps, sigreg_final
     
@@ -428,10 +499,14 @@ class TalasJepa(nn.Module):
                                             student_pos_input['attention_mask'], 
                                             mode='eos', normalize=True)
         
-        kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, 
-                                             last_stu_pos_hidden_state, 
-                                             teacher_qry_reps, teacher_pos_reps, 
-                                             tau=self.args.d_cse_temperature)
+        # kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, 
+        #                                      last_stu_pos_hidden_state, 
+        #                                      teacher_qry_reps, teacher_pos_reps, 
+        #                                      tau=self.args.d_cse_temperature)
+
+        all_stu_reps = torch.cat([last_stu_qry_hidden_state, last_stu_pos_hidden_state], dim=0)
+        all_tea_reps = torch.cat([teacher_qry_reps, teacher_pos_reps], dim=0)
+        kd_simcse += self.structure_loss(all_stu_reps, all_tea_reps) / self.args.d_cse_temperature
 
         ##################################
         student_special_ids = torch.tensor(
@@ -507,7 +582,10 @@ class TalasJepa(nn.Module):
         loss = contrastive_loss 
         if self.args.use_distill_loss:
             loss = loss + self.kd_weight * loss_distill
-        if self.args.use_sigreg_loss:
+        # if self.args.use_sigreg_loss:
+        #     loss = loss + self.args.sigreg_weight * SIGReg
+
+        if self.args.sigreg_weight > 0:
             loss = loss + self.args.sigreg_weight * SIGReg
 
         return {
