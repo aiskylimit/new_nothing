@@ -3,6 +3,12 @@
 #v2
 
 sudo lsof /dev/nvidia4 /dev/nvidia5 /dev/nvidia6 /dev/nvidia7
+echo "2"
+nvidia-smi pmon -i 4,5,6,7 -c 1
+echo "3"
+nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv
+echo "4"
+sudo fuser -v /dev/nvidia*
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v1/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
