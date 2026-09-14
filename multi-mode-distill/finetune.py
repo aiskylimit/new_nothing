@@ -346,7 +346,8 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
 
             selected_mode = mode_router.for_microbatch(device)
             student_gen = selected_mode == "on_policy"
-            use_geometry = teacher_model is not None and geometry_enabled_for_mode(args, selected_mode)
+            source_model = reference_model if selected_mode == "self_distill" else teacher_model
+            use_geometry = source_model is not None and geometry_enabled_for_mode(args, selected_mode)
             data_source = "fresh_on_policy" if student_gen else "canonical"
 
             if selected_mode == "self_distill":
@@ -377,7 +378,6 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 lm_loss = lm_loss / (no_model_batch["label"] != -100).sum().clamp_min(1)
 
             kl_loss = magnitude_loss = gram_loss = distil_loss = logits.reshape(-1)[:0].sum()
-            source_model = reference_model if selected_mode == "self_distill" else teacher_model
             if source_model is not None:
                 with torch.no_grad():
                     teacher_outputs = source_model(

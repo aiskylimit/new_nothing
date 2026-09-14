@@ -204,7 +204,7 @@ def add_distillation_args(parser: argparse.ArgumentParser):
     group.add_argument("--off-policy-geometry", action="store_true",
                        help="Enable magnitude/Gram losses for off_policy only (legacy flag)")
     group.add_argument("--geometry", action="store_true",
-                       help="Enable magnitude/Gram losses for off_policy batches")
+                       help="Enable magnitude/Gram losses for off_policy and self_distill batches")
     group.add_argument("--disable-lm-loss", action="store_true",
                        help="Optimize distillation alone, without kd-ratio scaling")
     group.add_argument("--self-distill-context-drop-ratio", type=float, default=0.5,

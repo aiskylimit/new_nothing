@@ -123,6 +123,18 @@ def _fit_reference_prompt(record, tokenizer, context, template, separator, budge
     return best_ids, separator.join(steps[:best_count]), best_tokens
 
 
+def _rebase_step_spans(spans, original_labels, packed_batch, packed_labels):
+    """Move canonical response spans to the packed prompt and clip truncated steps."""
+    original_start = (original_labels != -100).long().argmax(-1) + 1
+    packed_start = (packed_labels != -100).long().argmax(-1) + 1
+    shifted = spans - original_start[:, None, None] + packed_start[:, None, None]
+    response_end = packed_batch["attention_mask"].sum(-1)[:, None]
+    start = shifted[..., 0]
+    end = shifted[..., 1].minimum(response_end)
+    valid = (spans[..., 0] >= original_start[:, None]) & (start < end)
+    return torch.stack((start, end), dim=-1).masked_fill(~valid[..., None], -1)
+
+
 def prepare_self_distill_batches(args, tokenizer, student_batch, metadata, rng):
     """Use one response with the plain student prompt and contextual reference prompt."""
     batch_size = student_batch["input_ids"].shape[0]
@@ -160,5 +172,10 @@ def prepare_self_distill_batches(args, tokenizer, student_batch, metadata, rng):
         prompts, responses, pad_id, args.model_type, args.max_length, device)
     reference, ref_meta = pack_trajectories(
         ref_prompts, responses, pad_id, args.model_type, args.t_max_length, device)
+    if "step_spans" in metadata:
+        student_meta["step_spans"] = _rebase_step_spans(
+            metadata["step_spans"], labels, student, student_meta["label"])
+        ref_meta["step_spans"] = _rebase_step_spans(
+            metadata["step_spans"], labels, reference, ref_meta["label"])
     student_meta["self_distill_context_tokens"] = student_meta["label"].new_tensor(counts)
     return student, student_meta, reference, ref_meta

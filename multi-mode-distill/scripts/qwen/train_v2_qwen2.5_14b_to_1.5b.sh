@@ -79,8 +79,8 @@ OPTS+=(--weight-decay 1e-2 --clip-grad 1.0 --epochs "$EPOCHS")
 OPTS+=(--max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH")
 OPTS+=(--t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH")
 
-# Adaptive routing uses all three modes; geometry applies to OFF batches.
-OPTS+=(--type kd)
+# Adaptive routing uses all three modes
+OPTS+=(--type kd --geometry)
 OPTS+=(--dual-adaptive-exposure --do-sample)
 OPTS+=(--rho-self-init "${RHO_SELF_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}")
 OPTS+=(--rho-self-max "${RHO_SELF_MAX:-0.25}" --rho-on-max "${RHO_ON_MAX:-0.25}")

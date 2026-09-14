@@ -329,7 +329,7 @@ class LMTrainDataset(Dataset):
             "step_marker_ids": torch.tensor(marker_ids, dtype=torch.long),
             "max_step_markers": step_count,
         }
-        if self.with_teacher:
+        if self.with_teacher or self.geometry:
             no_model_data["step_spans"] = torch.full((len(samples), step_count, 2), -1, dtype=torch.long)
         if model_type == "gpt2":
             model_data["position_ids"] = torch.zeros(len(samples), length, dtype=torch.long)
@@ -338,7 +338,7 @@ class LMTrainDataset(Dataset):
             model_data["input_ids"][index, :size] = torch.tensor(sample["input_ids"])
             model_data["attention_mask"][index, :size] = 1
             no_model_data["label"][index, :size] = torch.tensor(sample["label"])
-            if self.with_teacher and sample["step_spans"]:
+            if (self.with_teacher or self.geometry) and sample["step_spans"]:
                 no_model_data["step_spans"][index, :len(sample["step_spans"])] = torch.tensor(sample["step_spans"])
             if "position_ids" in model_data:
                 model_data["position_ids"][index, :size] = torch.arange(size)
