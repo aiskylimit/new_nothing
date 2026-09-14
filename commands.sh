@@ -1,4 +1,4 @@
-#1 +10
+#2
 #multi-mode-distill
 #v2
 
@@ -36,8 +36,8 @@ export NCCL_DEBUG=WARN
 # cd ./reasoning_velocity_distill
 # bash ./project_commands.sh
 
-cd ./multi-mode-distill
-bash ./project_commands.sh
+# cd ./multi-mode-distill
+# bash ./project_commands.sh
 
 # cd ./cypher-extract
 # bash ./project_command.sh
