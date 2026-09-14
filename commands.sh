@@ -2,7 +2,11 @@
 #test
 #v2
 
-lsof /dev/nvidia*
+ps -o pid,ppid,pgid,sid,user,stat,etime,cmd \
+  -p 1141359,1141362,1158168,1158235,1158236,1158237,1158238
+
+pstree -aps 1141359
+pstree -aps 1158235
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v1/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
