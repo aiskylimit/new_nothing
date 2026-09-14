@@ -1,4 +1,4 @@
-#2
+#2 +a
 #multi-mode-eval
 #v1
 
