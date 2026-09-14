@@ -311,6 +311,83 @@ class TalasJepa(nn.Module):
         loss_per_sample = torch.trapezoid(err, t, dim=-1) * num_slices / 2  # [B]
         return loss_per_sample[valid].mean().to(dtype)
 
+    def sigreg_dualview(self, z_list: list[torch.Tensor], eos_query: torch.Tensor,
+                        num_slices: int = 256, tau: float = 0.05, alpha: float = 0.9):
+        """
+        2 views:
+        - view 1: weighted-average pooling của image tokens, trọng số = attention
+                    giữa eos_query (query) và từng token (key), softmax theo chiều N
+        - view 2: mean-pooling đều (không trọng số) của image tokens
+        Bỏ hoàn toàn Sinkhorn + concept_queries.
+        """
+        B = len(z_list)
+        if B == 0:
+            return 0.0
+
+        device, dtype = z_list[0].device, z_list[0].dtype
+        D = z_list[0].shape[-1]
+
+        # ==========================================
+        # 0. PADDING & MASK
+        # ==========================================
+        lengths = torch.tensor([x.size(0) for x in z_list], device=device)
+        N_max = lengths.max().item()
+        z_padded = pad_sequence(z_list, batch_first=True, padding_value=0.0)  # [B, N_max, D]
+
+        idx = torch.arange(N_max, device=device).unsqueeze(0)   # [1, N_max]
+        mask = idx < lengths.view(B, 1)                          # [B, N_max], True = token thật
+
+        # ==========================================
+        # 1. VIEW 1: ATTENTION-WEIGHTED POOLING (eos_query làm query)
+        # ==========================================
+        q = F.normalize(eos_query.to(device=device, dtype=dtype), p=2, dim=-1)   # [B, D]
+        k = F.normalize(z_padded, p=2, dim=-1)                                   # [B, N_max, D]
+
+        # score[b, n] = <q_b, k_{b,n}> / tau
+        score = torch.einsum('bd,bnd->bn', q, k) / tau                          # [B, N_max]
+        score = score.masked_fill(~mask, -float('inf'))
+        attn_w = torch.softmax(score, dim=-1)                                    # [B, N_max]
+
+        attn_view = torch.einsum('bn,bnd->bd', attn_w, z_padded)                 # [B, D]
+        attn_view = F.normalize(attn_view, p=2, dim=-1)
+
+        # ==========================================
+        # 2. VIEW 2: MEAN POOLING (trọng số đều)
+        # ==========================================
+        denom = lengths.clamp_min(1).view(B, 1).to(dtype)
+        mean_view = z_padded.sum(dim=1) / denom                                  # [B, D]
+        mean_view = F.normalize(mean_view, p=2, dim=-1)
+
+        z_k_concepts = torch.stack([attn_view, mean_view], dim=0)                # [K=2, B, D]
+
+        # ==========================================
+        # 3. RMSNorm & TRỘN NOISE (giữ nguyên)
+        # ==========================================
+        z_normed = z_k_concepts / z_k_concepts.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D)
+
+        if alpha < 1.0:
+            noise = torch.randn_like(z_normed)
+            z_mixed = math.sqrt(alpha) * z_normed + math.sqrt(1.0 - alpha) * noise
+        else:
+            z_mixed = z_normed
+
+        # ==========================================
+        # 4. SIGREG (giữ nguyên)
+        # ==========================================
+        A = torch.randn(D, num_slices, device=device, dtype=dtype)
+        A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
+        t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
+        exp_f = torch.exp(-0.5 * t.square())
+
+        x_proj = z_mixed @ A                   # [K, B, num_slices]
+        x_t = x_proj.unsqueeze(-1) * t         # [K, B, num_slices, 17]
+        ecf = torch.exp(1j * x_t).mean(dim=1)  # [K, num_slices, 17]
+
+        err = (ecf - exp_f).abs().square().mul(exp_f)
+        loss_sigreg = torch.trapezoid(err, t, dim=-1).mean(dim=-1) * B
+
+        return loss_sigreg.mean()
+
     def _compute_modality_distill(self, student_hidden_states, image_features, 
                                   text_token_counts, attention_mask, concept_queries):
         """
@@ -364,7 +441,11 @@ class TalasJepa(nn.Module):
             total_sigreg = 0.0
             
             for l in layers[1:-1]:
-                total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
+                eos_query = pooling(student_hidden_states[l], attention_mask, 
+                                    mode='eos', normalize=True).detach()
+                total_sigreg += self.sigreg_dualview(stu_img_tokens[l], eos_query, 
+                                                     tau=0.1, alpha=0.9)
+                # total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
 
             sigreg_erank_loss = self.sigreg_erank(stu_img_tokens[0], stu_img_tokens[last_layer_idx])
 
@@ -431,10 +512,14 @@ class TalasJepa(nn.Module):
                                             student_pos_input['attention_mask'], 
                                             mode='eos', normalize=True)
         
-        kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, 
-                                             last_stu_pos_hidden_state, 
-                                             teacher_qry_reps, teacher_pos_reps, 
-                                             tau=self.args.d_cse_temperature)
+        # kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, 
+        #                                      last_stu_pos_hidden_state, 
+        #                                      teacher_qry_reps, teacher_pos_reps, 
+        #                                      tau=self.args.d_cse_temperature)
+
+        all_stu_reps = torch.cat([last_stu_qry_hidden_state, last_stu_pos_hidden_state], dim=0)
+        all_tea_reps = torch.cat([teacher_qry_reps, teacher_pos_reps], dim=0)
+        kd_simcse += self.structure_loss(all_stu_reps, all_tea_reps) / self.args.d_cse_temperature
 
         ##################################
         student_special_ids = torch.tensor(
