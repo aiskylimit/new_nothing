@@ -2,7 +2,7 @@
 #test
 #v2
 
-fuser -v /dev/nvidia4 /dev/nvidia5 /dev/nvidia6 /dev/nvidia7
+lsof /dev/nvidia*
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v1/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
