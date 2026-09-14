@@ -68,7 +68,7 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 wait
 
-CUDA_VISIBLE_DEVICES=0 bash script_full/infer_erank_analyze_cls.sh 1 1 1 0 1.0 0.5 9 0.02
+CUDA_VISIBLE_DEVICES=0 bash script_full/infer_erank_analyze_cls.sh 1 1 0 0 1.0 1.0 9 0.1
 
 # =========================
 # 9. Copy JSON eval outputs
