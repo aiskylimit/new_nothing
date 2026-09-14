@@ -3,19 +3,19 @@ set -euo pipefail
 
 export BASE_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$BASE_PATH"
+export ASSET_ROOT="${ASSET_ROOT:-/mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill}"
 VENV_PATH="${VENV_PATH:-/mnt/local/uvenvs/reasoning-velocity-distill}"
 source "$VENV_PATH/bin/activate"
 export PYTHONPATH="$BASE_PATH${PYTHONPATH:+:$PYTHONPATH}"
 export TOKENIZERS_PARALLELISM=false
 
-export CKPT="${CKPT:-$BASE_PATH/models/Qwen2.5_1.5B-Instruct}"
-export TEACHER_CKPT="${TEACHER_CKPT:-$BASE_PATH/models/Qwen2.5_14B-Instruct}"
-PROCESSED_DATA_ROOT="${PROCESSED_DATA_ROOT:-$BASE_PATH/processed_data/ultraInteract-v2}"
+export CKPT="${CKPT:-$ASSET_ROOT/models/Qwen2.5_1.5B-Instruct}"
+export TEACHER_CKPT="${TEACHER_CKPT:-$ASSET_ROOT/models/Qwen2.5_14B-Instruct}"
+PROCESSED_DATA_ROOT="${PROCESSED_DATA_ROOT:-$ASSET_ROOT/processed_data/ultraInteract-v2}"
 
-# Use the preprocessor's path resolution unless an existing DATA_DIR is supplied.
+# The old preprocessor stores absolute model paths under models/<model name>.
 if [[ -z "${DATA_DIR:-}" ]]; then
-    DATA_DIR="$(python -c 'import sys; from tools.process_data_ultraInteract import resolve_processed_data_dir; print(resolve_processed_data_dir(*sys.argv[1:]))' \
-        "$PROCESSED_DATA_ROOT" "$CKPT" "$BASE_PATH")"
+    DATA_DIR="$PROCESSED_DATA_ROOT/models/$(basename -- "$CKPT")"
 fi
 export DATA_DIR
 export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"

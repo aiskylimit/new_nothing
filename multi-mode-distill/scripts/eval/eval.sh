@@ -4,13 +4,14 @@ set -euo pipefail
 BASE_PATH="${BASE_PATH:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$BASE_PATH"
 unset PYTHONPATH
+ASSET_ROOT="${ASSET_ROOT:-/mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill}"
 
 EVAL_VENV_PATH="${EVAL_VENV_PATH:-/mnt/local/uvenvs/reasoning-velocity-distill-eval}"
 PYTHON_BIN="${EVAL_PYTHON:-$EVAL_VENV_PATH/bin/python}"
 
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICES:-${CUDA_VISIBLE_DEVICES:-4,5}}"
-MODEL_PATH="${MODEL_PATH:-${CKPT:-$BASE_PATH/models/Qwen2.5_1.5B-Instruct}}"
-SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-rvd}"
+MODEL_PATH="${MODEL_PATH:-${CKPT:-$ASSET_ROOT/models/Qwen2.5_1.5B-Instruct}}"
+SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-multi-mode}"
 LORA_PATH="${LORA_PATH:-}"
 OUT="${EVAL_OUTPUT_DIR:-$SAVE_PATH/evaluation}"
 
@@ -34,7 +35,7 @@ ALL_TASKS="$TASK_GSM8K,$TASK_MINERVA,$TASK_SCIQ,$TASK_BBH,$TASK_MMLU,$TASK_GSM_P
 IFS=',' read -r -a GPU_LIST <<< "$CUDA_VISIBLE_DEVICES"
 DATA_PARALLEL_SIZE=${#GPU_LIST[@]}
 
-export EVAL_DATA_DIR="${EVAL_DATA_DIR:-$BASE_PATH/data/eval}"
+export EVAL_DATA_DIR="${EVAL_DATA_DIR:-$ASSET_ROOT/data/eval}"
 export HF_HOME="${EVAL_HF_HOME:-$BASE_PATH/.cache/eval/huggingface}"
 export HF_DATASETS_CACHE="${EVAL_DATASETS_CACHE:-$HF_HOME/datasets}"
 export HF_MODULES_CACHE="${EVAL_MODULES_CACHE:-$BASE_PATH/.cache/eval/modules}"
