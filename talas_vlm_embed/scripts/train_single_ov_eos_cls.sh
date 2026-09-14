@@ -67,7 +67,7 @@ EVAL_SUBSETS=(
 
 python eval_mmeb.py \
   --model_name "training/llava_ov-0.5B_eos_cls/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs_v3/llava_ov-0.5B_eos_cls" \
+  --encode_output_path "./MMEB-eval_outputs_v1/llava_ov-0.5B_eos_cls" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \

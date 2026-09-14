@@ -284,6 +284,7 @@ class TalasJepa(nn.Module):
             energies = energies / energies.mean(dim=-1, keepdim=True).clamp_min(eps)
 
             valid = lengths >= min_valid_tokens                             # [B]
+            
             return energies, valid
 
         energies_0, valid_0 = _projected_energies(z0_padded, mask0, len0)
@@ -313,13 +314,6 @@ class TalasJepa(nn.Module):
 
     def sigreg_dualview(self, z_list: list[torch.Tensor], eos_query: torch.Tensor,
                         num_slices: int = 256, tau: float = 0.05, alpha: float = 0.9):
-        """
-        2 views:
-        - view 1: weighted-average pooling của image tokens, trọng số = attention
-                    giữa eos_query (query) và từng token (key), softmax theo chiều N
-        - view 2: mean-pooling đều (không trọng số) của image tokens
-        Bỏ hoàn toàn Sinkhorn + concept_queries.
-        """
         B = len(z_list)
         if B == 0:
             return 0.0
@@ -335,55 +329,48 @@ class TalasJepa(nn.Module):
         z_padded = pad_sequence(z_list, batch_first=True, padding_value=0.0)  # [B, N_max, D]
 
         idx = torch.arange(N_max, device=device).unsqueeze(0)   # [1, N_max]
-        mask = idx < lengths.view(B, 1)                          # [B, N_max], True = token thật
+        mask = idx < lengths.view(B, 1)                          # [B, N_max]
 
         # ==========================================
-        # 1. VIEW 1: ATTENTION-WEIGHTED POOLING (eos_query làm query)
+        # 1. VIEW 1: ATTENTION-WEIGHTED POOLING
         # ==========================================
         q = F.normalize(eos_query.to(device=device, dtype=dtype), p=2, dim=-1)   # [B, D]
         k = F.normalize(z_padded, p=2, dim=-1)                                   # [B, N_max, D]
 
-        # score[b, n] = <q_b, k_{b,n}> / tau
-        score = torch.einsum('bd,bnd->bn', q, k) / tau                          # [B, N_max]
+        score = torch.einsum('bd,bnd->bn', q, k) / tau                           # [B, N_max]
         score = score.masked_fill(~mask, -float('inf'))
         attn_w = torch.softmax(score, dim=-1)                                    # [B, N_max]
 
         attn_view = torch.einsum('bn,bnd->bd', attn_w, z_padded)                 # [B, D]
-        attn_view = F.normalize(attn_view, p=2, dim=-1)
 
-        # ==========================================
-        # 2. VIEW 2: MEAN POOLING (trọng số đều)
-        # ==========================================
-        denom = lengths.clamp_min(1).view(B, 1).to(dtype)
-        mean_view = z_padded.sum(dim=1) / denom                                  # [B, D]
-        mean_view = F.normalize(mean_view, p=2, dim=-1)
-
-        z_k_concepts = torch.stack([attn_view, mean_view], dim=0)                # [K=2, B, D]
-
-        # ==========================================
-        # 3. RMSNorm & TRỘN NOISE (giữ nguyên)
-        # ==========================================
-        z_normed = z_k_concepts / z_k_concepts.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D)
+        z_k_concepts = attn_view.unsqueeze(0)
 
         if alpha < 1.0:
-            noise = torch.randn_like(z_normed)
-            z_mixed = math.sqrt(alpha) * z_normed + math.sqrt(1.0 - alpha) * noise
+            noise = torch.randn_like(z_k_concepts)
+            z_mixed = math.sqrt(alpha) * z_k_concepts + math.sqrt(1.0 - alpha) * noise
         else:
-            z_mixed = z_normed
+            z_mixed = z_k_concepts
 
-        # ==========================================
-        # 4. SIGREG (giữ nguyên)
-        # ==========================================
-        A = torch.randn(D, num_slices, device=device, dtype=dtype)
+        if self.process_rank == 0:
+            projection_seed = random.randint(0, 2**63 - 1)
+        else:
+            projection_seed = 0
+        g = torch.Generator(device=device)
+        g.manual_seed(projection_seed)
+        
+        A = torch.randn(D, num_slices, generator=g, device=device, dtype=dtype)
         A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
         t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
         exp_f = torch.exp(-0.5 * t.square())
 
         x_proj = z_mixed @ A                   # [K, B, num_slices]
         x_t = x_proj.unsqueeze(-1) * t         # [K, B, num_slices, 17]
-        ecf = torch.exp(1j * x_t).mean(dim=1)  # [K, num_slices, 17]
 
-        err = (ecf - exp_f).abs().square().mul(exp_f)
+        ecf_real = torch.cos(x_t).mean(dim=1)  # [K, num_slices, 17]
+        ecf_imag = torch.sin(x_t).mean(dim=1)  # [K, num_slices, 17]
+
+        err = ((ecf_real - exp_f).square() + ecf_imag.square()).mul(exp_f)
+
         loss_sigreg = torch.trapezoid(err, t, dim=-1).mean(dim=-1) * B
 
         return loss_sigreg.mean()

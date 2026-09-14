@@ -76,7 +76,7 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
+EXP_NAME="talas_jepa_v0_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
 
 OUTPUT_DIR="training/FastVLM-0.5B_vqa_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_vqa"
@@ -181,7 +181,7 @@ SUBSETS=(
   "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs_v3/FastVLM-0.5B_vqa_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs_v1/FastVLM-0.5B_vqa_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -220,5 +220,5 @@ echo "============================================================"
 # 4. Collect result
 # ============================================================
 
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v3}"
-python json_filter.py ./MMEB-eval_outputs_v3 "${JSON_FILTER_DESTINATION}" --overwrite
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v1}"
+python json_filter.py ./MMEB-eval_outputs_v1 "${JSON_FILTER_DESTINATION}" --overwrite
