@@ -173,8 +173,9 @@ Scoring uses HuggingFace `math-verify` 0.9 conventions:
 - LaTeX extraction for MATH-500 gold answers;
 - boxed-LaTeX extraction followed by expression fallback for predictions.
 
-Reported accuracy is mean pass@1 over K independent generations:
+Reported metrics:
 
-```text
-sum(correct generation indicators) / (problems * K)
-```
+- **pass@1**: mean accuracy over K independent generations
+  `sum(correct) / (problems * K)`
+- **pass@3**: unbiased estimator averaged over problems (needs `K >= 3`, default is 4)
+  `1 - C(n - c, 3) / C(n, 3)` per problem, then mean
