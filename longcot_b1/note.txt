@@ -1,3 +1,10 @@
+# Switch model (to Qwen3-8B)
+# MODEL_NAME=Qwen/Qwen3-8B \
+# MASK_DIR=artifacts/qwen3-8b \
+# CHECKPOINT_DIR=checkpoints/qwen3-8b-sgl \
+# EVALUATION_DIR=outputs/qwen3-8b-sgl \
+# bash project_commands.sh
+
 # End-to-end run (1x NVIDIA B200 180GB)
 python -m pip install -e ".[train,dev]"
 
