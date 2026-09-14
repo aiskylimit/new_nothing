@@ -6,7 +6,7 @@ cd "$BASE_PATH"
 unset PYTHONPATH
 ASSET_ROOT="${ASSET_ROOT:-/mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill}"
 
-EVAL_VENV_PATH="${EVAL_VENV_PATH:-/mnt/local/uvenvs/reasoning-velocity-distill-eval}"
+EVAL_VENV_PATH="${EVAL_VENV_PATH:-/mnt/local/uvenvs/multi-mode-distill-eval}"
 PYTHON_BIN="${EVAL_PYTHON:-$EVAL_VENV_PATH/bin/python}"
 
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICES:-${CUDA_VISIBLE_DEVICES:-4,5}}"
