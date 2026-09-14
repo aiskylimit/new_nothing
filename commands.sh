@@ -2,8 +2,15 @@
 #test
 #v2
 
-nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory \
-  --format=csv
+for pid in /proc/[0-9]*; do
+    p=${pid##*/}
+    devs=$(ls -l "$pid"/fd/* 2>/dev/null | grep '/dev/nvidia' | sed 's/.*-> //' | sort -u | tr '\n' ' ')
+    if [ -n "$devs" ]; then
+        echo "=================================================="
+        ps -o pid,ppid,user,stat,etime,cmd -p "$p"
+        echo "GPU devices: $devs"
+    fi
+done
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v1/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
