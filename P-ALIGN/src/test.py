@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 
 import jsonlines
 from transformers import AutoTokenizer
@@ -14,6 +15,26 @@ except ImportError as e:
     _VLLM_IMPORT_ERROR = e
 else:
     _VLLM_IMPORT_ERROR = None
+
+
+def _make_llm(model, max_model_len):
+    """vLLM 0.27 + FLASHINFER on Python 3.11 imports flashinfer.comm, which
+    uses `array.array[int]` and raises TypeError. Prefer FLASH_ATTN; skip
+    torch.compile on <3.12 so that import is never reached."""
+    kwargs = dict(
+        model=model,
+        gpu_memory_utilization=0.8,
+        max_model_len=max_model_len,
+        trust_remote_code=True,
+        tensor_parallel_size=1,
+    )
+    if sys.version_info < (3, 12):
+        kwargs["enforce_eager"] = True
+    try:
+        return LLM(**kwargs, attention_backend="FLASH_ATTN")
+    except TypeError:
+        os.environ.setdefault("VLLM_ATTENTION_BACKEND", "FLASH_ATTN")
+        return LLM(**kwargs)
 
 
 def split_list(lst, batch_size):
@@ -75,13 +96,7 @@ def main():
         n=args.n, temperature=args.temperature, top_p=args.top_p,
         repetition_penalty=args.repetition_penalty, max_tokens=args.max_tokens,
     )
-    llm = LLM(
-        model=args.model,
-        gpu_memory_utilization=0.8,
-        max_model_len=args.max_tokens,
-        trust_remote_code=True,
-        tensor_parallel_size=1,
-    )
+    llm = _make_llm(args.model, args.max_tokens)
     for inp, out in zip(args.input_files, args.output_files):
         process_data(inp, out, llm, args.batch_size, tokenizer, sampling_params)
 

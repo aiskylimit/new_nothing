@@ -6,3 +6,4 @@ wandb/
 *.egg-info/
 .hf_home/
 .env
+models/

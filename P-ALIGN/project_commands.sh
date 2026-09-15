@@ -11,6 +11,9 @@
 #
 # Eval base checkpoint only (skip train/merge):
 #   MODEL=/mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen2.5-7B-Instruct bash project_commands.sh eval
+#
+# Tiny 0.5B flow check (does not replace this 7B script):
+#   bash project_commands_smoke.sh
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -21,7 +24,16 @@ MODEL_PATH="${MODEL_PATH:-$ASSET_ROOT/models/Qwen2.5-7B-Instruct}"
 DATA_DIR="${DATA_DIR:-$ROOT/data}"
 export PALIGN_ASSET_ROOT="$ASSET_ROOT"
 export PALIGN_DATA_DIR="$DATA_DIR"
-source /mnt/local/uvenvs/p-align/bin/activate
+if [ -f "${PALIGN_VENV:-/mnt/local/uvenvs/p-align}/bin/activate" ]; then
+  # shellcheck disable=SC1091
+  source "${PALIGN_VENV:-/mnt/local/uvenvs/p-align}/bin/activate"
+elif [ -f /venv/main/bin/activate ]; then
+  # shellcheck disable=SC1091
+  source /venv/main/bin/activate
+else
+  echo "no python env (PALIGN_VENV or /mnt/local/uvenvs/p-align or /venv/main)" >&2
+  exit 1
+fi
 
 export WANDB_DISABLED=true
 export WANDB_MODE=disabled
