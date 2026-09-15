@@ -1,4 +1,4 @@
-#2 -0-20
+#1 +120
 #multi-mode-eval
 #v2
 
@@ -7,12 +7,8 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/outputs/eval/ +a
 
 # nvidia-smi
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
 # sleep 3
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
 nvidia-smi
 
 
@@ -31,7 +27,7 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
 cd ./multi-mode-distill
-bash .l/project_commands_ablation.sh
+bash ./project_commands_ablation.sh
 # bash ./project_commands.sh
 
 # cd ./cypher-extract

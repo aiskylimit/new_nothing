@@ -39,7 +39,6 @@ CUDA_DEVICES=4,5,6,7 FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
 
 # 2. Evaluate this run's final checkpoint only after training succeeds.
 LORA_PATH="$(cat "$CHECKPOINT_FILE")"
-LORA_PATH="/mnt/local/aiskylimit_new_nothing/multi-mode-distill/results/qwen2.5-1.5B-Instruct-v2/adaptive_sfkl_k512_bs8_ga4_lr1e-4_seed10/e2-bs8-lr0.0001-G4-N4-NN1-kd0.5-lora-16-128-0.05/1238"
 [[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
 printf '\n[2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
 CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
