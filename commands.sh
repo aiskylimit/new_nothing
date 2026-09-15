@@ -1,4 +1,4 @@
-#1 +120
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v1/ +a
 #multi-mode-eval
 #v2
 
@@ -26,8 +26,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
-cd ./multi-mode-distill
-bash ./project_commands_ablation.sh
+# cd ./multi-mode-distill
+# bash ./project_commands_ablation.sh
 # bash ./project_commands.sh
 
 # cd ./cypher-extract
