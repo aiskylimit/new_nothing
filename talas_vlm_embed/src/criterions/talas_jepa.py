@@ -491,14 +491,14 @@ class TalasJepa(nn.Module):
                                             student_pos_input['attention_mask'], 
                                             mode='eos', normalize=True)
         
-        # kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, 
-        #                                      last_stu_pos_hidden_state, 
-        #                                      teacher_qry_reps, teacher_pos_reps, 
-        #                                      tau=self.args.d_cse_temperature)
+        kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, 
+                                             last_stu_pos_hidden_state, 
+                                             teacher_qry_reps, teacher_pos_reps, 
+                                             tau=self.args.d_cse_temperature)
 
-        all_stu_reps = torch.cat([last_stu_qry_hidden_state, last_stu_pos_hidden_state], dim=0)
-        all_tea_reps = torch.cat([teacher_qry_reps, teacher_pos_reps], dim=0)
-        kd_simcse += self.structure_loss(all_stu_reps, all_tea_reps) / self.args.d_cse_temperature
+        # all_stu_reps = torch.cat([last_stu_qry_hidden_state, last_stu_pos_hidden_state], dim=0)
+        # all_tea_reps = torch.cat([teacher_qry_reps, teacher_pos_reps], dim=0)
+        # kd_simcse += self.structure_loss(all_stu_reps, all_tea_reps) / self.args.d_cse_temperature
 
         ##################################
         student_special_ids = torch.tensor(
