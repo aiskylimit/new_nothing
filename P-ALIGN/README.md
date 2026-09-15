@@ -1,6 +1,6 @@
 # P-ALIGN
 
-Long-chain reasoning distillation via adaptive prefix alignment. Student: **Qwen2.5-7B-Instruct**.
+Long-chain reasoning distillation via adaptive prefix alignment. Student: **Qwen3-8B**.
 
 Paper: https://arxiv.org/pdf/2601.10064
 

@@ -1,7 +1,7 @@
-### Qwen2.5-7B-Instruct P-ALIGN SFT (LLaMA-Factory)
+### Qwen3-8B P-ALIGN SFT (LLaMA-Factory)
 ### See HYPERPARAMETERS.md for paper vs assumed values.
 
-model_name_or_path: /mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen2.5-7B-Instruct
+model_name_or_path: /mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen3-8B
 trust_remote_code: true
 flash_attn: auto
 
@@ -15,13 +15,13 @@ lora_dropout: 0.05
 
 dataset: palign_qwen25_7b_sft
 dataset_dir: data
-template: qwen
+template: qwen3
 cutoff_len: 32768
 overwrite_cache: true
 preprocessing_num_workers: 16
 train_on_prompt: false
 
-output_dir: output/palign-qwen2.5-7b-instruct-lora
+output_dir: output/palign-qwen3-8b-lora
 logging_steps: 1
 save_strategy: epoch
 plot_loss: false

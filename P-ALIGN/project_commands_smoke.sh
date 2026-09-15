@@ -87,8 +87,9 @@ torchrun \
   --node_rank "$RANK" \
   --master_addr "$MASTER_ADDR" \
   --master_port "$MASTER_PORT" \
-  src/train.py configs/qwen2.5_7b_palign_sft.yaml \
+  src/train.py configs/qwen3_8b_palign_sft.yaml \
   model_name_or_path="$SMOKE_MODEL" \
+  template=qwen \
   output_dir="$SMOKE_LORA" \
   cutoff_len=1024 \
   max_samples=4 \
@@ -101,8 +102,9 @@ torchrun \
   gradient_checkpointing=false \
   gradient_accumulation_steps="$GRAD_ACCUM"
 
-llamafactory-cli export configs/qwen2.5_7b_palign_export.yaml \
+llamafactory-cli export configs/qwen3_8b_palign_export.yaml \
   model_name_or_path="$SMOKE_MODEL" \
+  template=qwen \
   adapter_name_or_path="$SMOKE_LORA" \
   export_dir="$SMOKE_MERGED" \
   export_size=2

@@ -1,13 +1,13 @@
-# P-ALIGN hyperparameters vs paper (Qwen2.5-7B-Instruct)
+# P-ALIGN hyperparameters vs paper (Qwen3-8B)
 
 Paper: [Long-Chain Reasoning Distillation via Adaptive Prefix Alignment](https://arxiv.org/pdf/2601.10064).
-Values marked **paper** are stated in the paper. Values marked **assumed** are not published and are set in `configs/qwen2.5_7b_palign_sft.yaml` / `project_commands.sh`.
+Values marked **paper** are stated in the paper. Values marked **assumed** are not published and are set in `configs/qwen3_8b_palign_sft.yaml` / `project_commands.sh`.
 
 ## Match check
 
 | Item | Paper | This repo | Match |
 |---|---|---|---|
-| Student | Qwen2.5-7B-Instruct (also Qwen3-8B) | `Qwen/Qwen2.5-7B-Instruct` | yes |
+| Student | Qwen2.5-7B-Instruct (also Qwen3-8B) | `Qwen/Qwen3-8B` | Qwen3-8B variant |
 | Teacher (Long-CoT) | DeepSeek-R1 | data already in `data/palign_sft_qwen2.5-7b.json` | n/a (offline data) |
 | Method | SFT + LoRA | `finetuning_type: lora` | yes |
 | Framework | TRL + LLaMA-Factory | LLaMA-Factory `src/train.py` | yes |
