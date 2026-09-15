@@ -48,7 +48,7 @@ SEED="${SEED:-10}"
 
 KD_LOSS="${KD_LOSS:-sfkl}"
 SKEW_ALPHA="${SKEW_ALPHA:-0.1}"
-KD_RATIO="${KD_RATIO:-0.5}"
+KD_RATIO="${KD_RATIO:-1.0}"
 MAG_WEIGHT="${MAG_WEIGHT:-1.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-1.0}"
 DISTILL_TOP_K="${DISTILL_TOP_K:-512}"
@@ -86,7 +86,7 @@ OPTS=(
     --weight-decay 1e-2 --clip-grad 1.0 --epochs "$EPOCHS"
     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH"
     --t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH"
-    --type kd --distill-mode "$MODE" --kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO"
+    --type kd --distill-mode "$MODE" --kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO" --disable-lm-loss
     --skew-alpha "$SKEW_ALPHA"
     --mag-weight "$MAG_WEIGHT" --gram-weight "$GRAM_WEIGHT"
     --distill-top-k "$DISTILL_TOP_K" --distill-temperature "$DISTILL_TEMPERATURE"
