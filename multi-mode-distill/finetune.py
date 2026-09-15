@@ -34,7 +34,7 @@ from utils import get_tokenizer, get_model
 from src.sampler import SampleGenerator
 from src.losses import forward_kl, reverse_kl, js_distance, tv_distance
 from src.losses import skewed_forward_kl, skewed_reverse_kl
-from src.trajectory import reasoning_velocity_loss
+from src.trajectory import find_step_spans, reasoning_geometry_loss
 from src.modes import (align_response_logits,
                            validate_mode_args, require_shared_vocabulary,
                            geometry_enabled_for_mode)
@@ -235,7 +235,7 @@ def teacher_batch_for_response(args, student_batch):
 
 
 def evaluate_adaptive_losses(args, tokenizer, model, teacher_model, reference_model, dataset, device):
-    """Token-weighted SELF and deterministic ON discrepancies on the dev split."""
+    """Token-weighted SELF and ON discrepancies on deterministic student rollouts."""
     if not dataset.with_teacher or not dataset.needs_self_distill_context:
         raise ValueError("Adaptive dev data must include canonical self-distillation steps")
     world_size, rank = dist.get_world_size(), dist.get_rank()
@@ -244,7 +244,7 @@ def evaluate_adaptive_losses(args, tokenizer, model, teacher_model, reference_mo
     dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.eval_batch_size,
                             num_workers=args.num_workers, collate_fn=dataset.collate)
     generator = SampleGenerator(args, tokenizer, do_sample=False)
-    # Sum of token losses and token counts for PRIV, then ON.
+    # Sum of token losses and token counts for SELF, then ON.
     stats = torch.zeros(4, dtype=torch.float64, device=device)
     offset = 0
     was_training = model.training
@@ -255,6 +255,8 @@ def evaluate_adaptive_losses(args, tokenizer, model, teacher_model, reference_mo
         with torch.no_grad():
             for model_batch, metadata, gen_data, _, _ in dataloader:
                 dataset.move_to_device(model_batch, metadata, gen_data, device)
+                generated_batch = generator.run_sample(model, gen_data)
+                generated_labels = generated_batch.pop("no_model_batch")
                 rows = torch.arange(model_batch["input_ids"].shape[0], device=device) + offset
                 valid_rows = rows * world_size + rank < len(dataset)
                 offset += rows.numel()
@@ -263,13 +265,17 @@ def evaluate_adaptive_losses(args, tokenizer, model, teacher_model, reference_mo
                         sample_ids = (rows * world_size + rank).tolist()
                         rngs = [random.Random(args.self_distill_eval_seed + sample_id)
                                 for sample_id in sample_ids]
+                        generated_meta = {"label": generated_labels,
+                                          "self_distill_steps": metadata["self_distill_steps"],
+                                          "self_distill_records": metadata["self_distill_records"],
+                                          "step_marker_ids": metadata["step_marker_ids"]}
                         student_batch, student_meta, teacher_batch, teacher_meta = prepare_self_distill_batches(
-                            args, tokenizer, model_batch, metadata, rngs)
+                            args, tokenizer, generated_batch, generated_meta, rngs,
+                            on_policy=True)
                         source_model = reference_model
                     else:
-                        student_batch = generator.run_sample(model, gen_data)
-                        labels = student_batch.pop("no_model_batch")
-                        student_meta = {"label": labels}
+                        student_batch = generated_batch
+                        student_meta = {"label": generated_labels}
                         teacher_batch = teacher_batch_for_response(args, student_batch)
                         teacher_meta = student_meta
                         source_model = teacher_model
@@ -317,7 +323,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
     scheduler = AdaptiveScheduler(AdaptiveConfig.from_args(args), seed=getattr(args, "seed", 42)) if adaptive else None
     if adaptive and (teacher_model is None or "dev" not in dataset or args.eval_interval < 1):
         raise ValueError("Adaptive training requires a teacher, dev data, and positive eval_interval")
-    student_gen = adaptive or args.distill_mode in ("on_policy", "opsd")
+    student_gen = adaptive or args.distill_mode in ("on_policy", "self_distill", "opsd")
     student_generator = SampleGenerator(args, tokenizer) if student_gen else None
     if teacher_model is not None:
         teacher_model.requires_grad_(False)
@@ -350,7 +356,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             st_time = time.time()
 
             selected_mode = mode_router.for_microbatch(device)
-            student_gen = selected_mode in ("on_policy", "opsd")
+            student_gen = selected_mode in ("on_policy", "self_distill", "opsd")
             if selected_mode == "opsd":
                 source_model = model
             elif selected_mode == "self_distill":
@@ -361,23 +367,41 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             data_source = "fresh_on_policy" if student_gen else "canonical"
 
             if selected_mode == "self_distill":
-                data_source = "canonical_context_subset"
+                data_source = "student_rollout_canonical_context_subset"
             elif selected_mode == "opsd":
                 data_source = "student_rollout_gold_conditioned_reference"
 
-            # Data generation: always generate a fresh student trajectory.
+            # Generate a fresh student trajectory for modes using student responses.
             if student_gen:
+                if selected_mode in ("self_distill", "on_policy"):
+                    step_marker_ids = no_model_batch["step_marker_ids"]
+                if selected_mode == "self_distill":
+                    self_distill_steps = no_model_batch["self_distill_steps"]
+                    self_distill_records = no_model_batch["self_distill_records"]
                 if selected_mode == "opsd":
                     opsd_records = no_model_batch["opsd_records"]
                     opsd_solutions = no_model_batch["opsd_solutions"]
                 model_batch = student_generator.run_sample(model, gen_data)
                 labels = model_batch.pop("no_model_batch")
                 no_model_batch = {"label": labels, "loss_mask": (labels != -100).float()}
+                if selected_mode in ("self_distill", "on_policy"):
+                    no_model_batch["step_marker_ids"] = step_marker_ids
+                if selected_mode == "self_distill":
+                    no_model_batch["self_distill_steps"] = self_distill_steps
+                    no_model_batch["self_distill_records"] = self_distill_records
 
-            # Prepare teacher context on exactly the selected response tokens.
+            # Prepare the reference batch on exactly the selected response tokens.
             if selected_mode == "self_distill":
                 model_batch, no_model_batch, t_model_batch, t_no_model_batch = prepare_self_distill_batches(
-                    args, tokenizer, model_batch, no_model_batch, context_rng)
+                    args, tokenizer, model_batch, no_model_batch, context_rng,
+                    on_policy=True)
+            elif selected_mode == "on_policy":
+                if use_geometry:
+                    no_model_batch["step_spans"] = find_step_spans(
+                        model_batch["input_ids"], model_batch["attention_mask"],
+                        no_model_batch["label"], no_model_batch["step_marker_ids"])
+                t_model_batch = teacher_batch_for_response(args, model_batch)
+                t_no_model_batch = no_model_batch
             elif selected_mode == "opsd":
                 t_model_batch, t_no_model_batch = prepare_opsd_reference_batch(
                     args, tokenizer, model_batch, no_model_batch["label"],
@@ -418,8 +442,9 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                            get_distil_loss(args, teacher_logits, new_no_model_batch, logits))
                 distil_loss = kl_loss
                 if use_geometry:
-                    magnitude_loss, gram_loss = reasoning_velocity_loss(
+                    magnitude_loss, gram_loss = reasoning_geometry_loss(
                         h_stu, h_tea, no_model_batch["step_spans"], t_no_model_batch["step_spans"],
+                        no_model_batch["label"], t_no_model_batch["label"],
                         pooling=args.step_pooling, normalization=args.magnitude_normalization, eps=args.eps)
                     distil_loss = distil_loss + args.mag_weight * magnitude_loss + args.gram_weight * gram_loss
 
