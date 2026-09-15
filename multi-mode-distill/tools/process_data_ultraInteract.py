@@ -9,6 +9,32 @@ from data_utils.records import get_raw_prompt, get_response
 
 random.seed(42)
 
+
+def reference_response(record):
+    """Use the same first reference for tokenization and JSONL metadata."""
+    response = get_response(record)
+    if isinstance(response, list):
+        response = response[0] if response else None
+    return response if isinstance(response, str) and response.strip() else None
+
+
+def read_raw_data(path):
+    records = []
+    skipped_lines = []
+    with open(path, "r", encoding="utf-8") as source:
+        for line_number, text in enumerate(source, 1):
+            if not text.strip():
+                continue
+            record = json.loads(text)
+            if not isinstance(record, dict):
+                raise ValueError(f"JSONL line {line_number} must contain an object")
+            if reference_response(record) is None:
+                skipped_lines.append(line_number)
+                continue
+            records.append(record)
+    return records, skipped_lines
+
+
 # 1. Implement an Encoder, which gives it a line of input data and it returns you the tokenized result.
 class Encoder(object):
     def __init__(self, args):
@@ -21,10 +47,8 @@ class Encoder(object):
 
     def encode(self, line):
         raw_prompt = get_raw_prompt(line, Encoder.tokenizer)
-        response = get_response(line)
-        if isinstance(response, list):
-            response = response[0] if response else None
-        if not isinstance(response, str) or not response.strip():
+        response = reference_response(line)
+        if response is None:
             raise ValueError("Preprocessing requires a nonempty reference response")
 
         messages = []
@@ -63,7 +87,7 @@ class Encoder(object):
 def processed_record(line, prompt, privileged_prompt):
     # Raw question validity was already checked in the encoding worker.
     record = dict(instruction=get_raw_prompt(line, None), prompt=prompt,
-                  privileged_prompt=privileged_prompt, output=get_response(line))
+                  privileged_prompt=privileged_prompt, output=reference_response(line))
     if "context" in line:
         if not isinstance(line["context"], str) or not line["context"].strip():
             raise ValueError("Prepared raw rows must contain nonempty context")
@@ -105,13 +129,16 @@ def main():
 
     os.makedirs(args.processed_data_dir, exist_ok=True)
 
-    raw_data = []
     print(f"Reading data from: {args.data_dir}")
-    with open(args.data_dir, 'r', encoding='utf-8') as f:
-        for line in f:
-            if line.strip():
-                raw_data.append(json.loads(line))
+    raw_data, skipped_lines = read_raw_data(args.data_dir)
+    if skipped_lines:
+        preview = ", ".join(map(str, skipped_lines[:10]))
+        suffix = ", ..." if len(skipped_lines) > 10 else ""
+        print(f"Skipped {len(skipped_lines)} rows with empty/missing reference responses "
+              f"(JSONL lines: {preview}{suffix}).", file=sys.stderr)
     print(f"Total data instances: {len(raw_data)}")
+    if not raw_data:
+        raise ValueError("No rows with nonempty reference responses remain")
     
     if args.dev_num > 0:
         if args.dev_num >= len(raw_data):
