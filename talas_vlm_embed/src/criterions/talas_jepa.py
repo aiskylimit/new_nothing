@@ -306,7 +306,7 @@ class TalasJepa(nn.Module):
         entropy_L = -(p_L * torch.log(p_L + eps)).sum(dim=1)  # [B]
 
         # Hinge Loss: Ép độ phân tán năng lượng (Entropy) của Layer L >= Layer 0
-        loss_per_sample = F.mse_loss(entropy_0 - entropy_L)       # [B]
+        loss_per_sample = F.mse_loss(entropy_0, entropy_L, reduce="none")       # [B]
 
         return loss_per_sample[valid].mean().to(dtype)
 
