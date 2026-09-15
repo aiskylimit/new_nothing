@@ -53,6 +53,7 @@ DISTILL_TOP_K="${DISTILL_TOP_K:-128}"
 DISTILL_TEMPERATURE="${DISTILL_TEMPERATURE:-1.0}"
 MAG_WEIGHT="${MAG_WEIGHT:-1.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-1.0}"
+GEOMETRY="${GEOMETRY:-1}"
 STEP_SEPARATOR="${STEP_SEPARATOR:-$'\n\n'}"
 LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-128}"
@@ -73,7 +74,7 @@ OPTS=(
     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH"
     --t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH"
     --type kd --kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO"
-    --geometry --dual-adaptive-exposure --do-sample
+    --dual-adaptive-exposure --do-sample
     --rho-self-init "${RHO_SELF_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}"
     --rho-self-max "${RHO_SELF_MAX:-0.25}" --rho-on-max "${RHO_ON_MAX:-0.25}"
     --rho-self-increment "${RHO_SELF_INCREMENT:-0.025}"
@@ -95,6 +96,9 @@ OPTS=(
     --top-k 0 --top-p 1.0 --temperature 1.0 --repetition-penalty 1.0 --num-beams 1
     --deepspeed --deepspeed_config "$DS_CONFIG"
 )
+if [[ "$GEOMETRY" == 1 ]]; then
+    OPTS+=(--geometry)
+fi
 
 export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 export TOKENIZERS_PARALLELISM=false
