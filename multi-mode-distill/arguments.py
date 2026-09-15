@@ -198,7 +198,7 @@ def add_distillation_args(parser: argparse.ArgumentParser):
                        help="Distillation temperature for teacher-selected top-k logits")
 
     # Explicit modes belong to finetune_v2; the original RVD entrypoint is unchanged.
-    group.add_argument("--distill-mode", choices=["off_policy", "on_policy", "self_distill"], default=None)
+    group.add_argument("--distill-mode", choices=["off_policy", "on_policy", "self_distill", "opsd"], default=None)
     group.add_argument("--kd-loss", choices=["fkl", "rkl", "sfkl", "srkl", "jsd", "tvd"], default=None)
     group.add_argument("--skew-alpha", type=float, default=0.1)
     group.add_argument("--off-policy-geometry", action="store_true",
@@ -215,6 +215,10 @@ def add_distillation_args(parser: argparse.ArgumentParser):
                        help="Fixed seed for comparable self-distillation dev contexts")
     group.add_argument("--self-distill-context-template",
                        default="\n\nAdditional context:\n{context}\n\n")
+    group.add_argument("--opsd-context-template",
+                       default="\n\nVerified solution:\n{context}\n\nSolve the problem again using this solution as guidance.\n\n")
+    group.add_argument("--opsd-token-clip", type=float, default=0.05,
+                       help="Cap each positive vocabulary-level FKL contribution; 0 disables clipping")
     # Legacy alias for on_policy in finetune_v2.
     group.add_argument("--student-gen", action="store_true", help=argparse.SUPPRESS)
 

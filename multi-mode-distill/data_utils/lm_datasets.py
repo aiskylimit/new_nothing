@@ -172,6 +172,7 @@ class LMTrainDataset(Dataset):
         self.distill_mode = distill_mode
         self.needs_self_distill_context = distill_mode == "self_distill" or (
             distill_mode is not None and with_teacher and getattr(args, "adaptive_on_policy", False))
+        self.needs_opsd_reference = distill_mode == "opsd"
         self.geometry = geometry
         self.split = split
         self.separator = getattr(args, "step_separator", "\n\n")
@@ -224,8 +225,8 @@ class LMTrainDataset(Dataset):
         total = len(self.lm_ctx) if self.lm_ctx is not None else len(self.raw)
         if self.lm_ctx is not None and self.raw and len(self.raw) != total:
             raise ValueError("JSONL references and indexed data must contain the same number of examples")
-        if self.needs_self_distill_context and len(self.raw) != total:
-            raise ValueError("Self-distillation requires canonical response text and prompt metadata in JSONL")
+        if (self.needs_self_distill_context or self.needs_opsd_reference) and len(self.raw) != total:
+            raise ValueError("Self-distillation/OPSD requires canonical response text and prompt metadata in JSONL")
         self.num = min(int(total * ratio), num if num != -1 else total)
         if self.num == 0:
             raise ValueError(f"No examples selected from {source}")
@@ -269,6 +270,11 @@ class LMTrainDataset(Dataset):
             student["self_distill_steps"] = complete_visible_steps(
                 student, self.tokenizer, self.separator)
             student["self_distill_record"] = record
+        if self.needs_opsd_reference:
+            if not record:
+                raise ValueError("OPSD requires matching JSONL prompt and solution metadata")
+            student["opsd_record"] = record
+            student["opsd_solution"] = student["response"]
         # Explicit v2 modes construct the teacher batch after routing; collating
         # a duplicate student batch here only allocates unused CPU tensors.
         return student, None
@@ -346,6 +352,9 @@ class LMTrainDataset(Dataset):
         if self.needs_self_distill_context:
             no_model_data["self_distill_steps"] = [sample["self_distill_steps"] for sample in samples]
             no_model_data["self_distill_records"] = [sample["self_distill_record"] for sample in samples]
+        if self.needs_opsd_reference:
+            no_model_data["opsd_records"] = [sample["opsd_record"] for sample in samples]
+            no_model_data["opsd_solutions"] = [sample["opsd_solution"] for sample in samples]
         return model_data, no_model_data
 
     def collate(self, samples):

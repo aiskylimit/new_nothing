@@ -39,13 +39,13 @@ def validate_mode_args(args):
             raise ValueError("--student-gen conflicts with --distill-mode")
         args.distill_mode = "on_policy"
     args.distill_mode = args.distill_mode or (
-        legacy_type if legacy_type in ("on_policy", "self_distill") else "off_policy"
+        legacy_type if legacy_type in ("on_policy", "self_distill", "opsd") else "off_policy"
     )
     if args.kd_loss is None:
         args.kd_loss = next((name for name in ("sfkl", "srkl", "jsd", "tvd", "fkl", "rkl")
                              if name in legacy_type), None)
         if args.kd_loss is None:
-            if legacy_type not in ("kd", "lm", "off_policy", "on_policy", "self_distill"):
+            if legacy_type not in ("kd", "lm", "off_policy", "on_policy", "self_distill", "opsd"):
                 raise ValueError("Specify --kd-loss for this legacy --type")
             args.kd_loss = "fkl"
     if args.kd_ratio is None:
@@ -60,7 +60,7 @@ def validate_mode_args(args):
     args.distill_temperature = getattr(args, "distill_temperature", 1.0)
     if not math.isfinite(args.distill_temperature) or args.distill_temperature <= 0:
         raise ValueError("--distill-temperature must be finite and positive")
-    uses_generation = args.distill_mode == "on_policy"
+    uses_generation = args.distill_mode in ("on_policy", "opsd")
     if args.off_policy_geometry and args.distill_mode != "off_policy" and not args.geometry:
         raise ValueError("--off-policy-geometry applies only to off_policy")
     if args.geometry and args.distill_mode not in ("off_policy", "self_distill") and not adaptive:
@@ -69,15 +69,15 @@ def validate_mode_args(args):
         raise ValueError("Geometry weights must be finite and nonnegative")
     if not math.isfinite(args.eps) or args.eps <= 0:
         raise ValueError("--eps must be finite and positive")
-    if args.do_train and not args.teacher_model_path and legacy_type != "lm" and args.distill_mode != "self_distill":
+    if args.do_train and not args.teacher_model_path and legacy_type != "lm" and args.distill_mode not in ("self_distill", "opsd"):
         raise ValueError("Distillation requires --teacher-model-path")
     if legacy_type == "lm" and (uses_generation or args.distill_mode == "self_distill" or args.disable_lm_loss):
         raise ValueError("--type lm requires canonical LM supervision")
     if not 0 < args.max_prompt_length < args.max_length:
         raise ValueError("Require 0 < --max-prompt-length < --max-length")
-    if (args.distill_mode == "self_distill" or adaptive) and not 0 < args.t_max_prompt_length < args.t_max_length:
+    if (args.distill_mode in ("self_distill", "opsd") or adaptive) and not 0 < args.t_max_prompt_length < args.t_max_length:
         raise ValueError("Require 0 < --t-max-prompt-length < --t-max-length")
-    if (args.distill_mode == "self_distill" or adaptive) and args.t_max_length < args.max_length:
+    if (args.distill_mode in ("self_distill", "opsd") or adaptive) and args.t_max_length < args.max_length:
         raise ValueError("Self-distillation reference length must fit the full student response")
     if not 0 <= args.self_distill_context_drop_ratio <= 1 or not math.isfinite(args.self_distill_context_drop_ratio):
         raise ValueError("--self-distill-context-drop-ratio must be finite and in [0, 1]")
@@ -89,6 +89,27 @@ def validate_mode_args(args):
         args.self_distill_context_template.format(context="")
     except (KeyError, ValueError) as error:
         raise ValueError("Invalid --self-distill-context-template") from error
+    if args.distill_mode == "opsd":
+        if args.peft != "lora":
+            raise ValueError("OPSD fixed teacher requires --peft lora")
+        if args.teacher_model_path:
+            raise ValueError("OPSD fixed teacher uses the student's base model; omit --teacher-model-path")
+        if args.geometry or args.off_policy_geometry:
+            raise ValueError("OPSD ablation uses token divergence only; disable geometry")
+        if not args.disable_lm_loss:
+            raise ValueError("OPSD ablation requires --disable-lm-loss")
+        if args.kd_loss != "fkl":
+            raise ValueError("OPSD ablation uses forward KL; set --kd-loss fkl")
+        if args.distill_temperature != 1.0:
+            raise ValueError("OPSD ablation uses temperature 1.0")
+        if not math.isfinite(args.opsd_token_clip) or args.opsd_token_clip < 0:
+            raise ValueError("--opsd-token-clip must be finite and nonnegative")
+        if "{context}" not in args.opsd_context_template:
+            raise ValueError("--opsd-context-template must include {context}")
+        try:
+            args.opsd_context_template.format(context="solution")
+        except (KeyError, ValueError) as error:
+            raise ValueError("Invalid --opsd-context-template") from error
     if args.do_train and (args.batch_size < 1 or args.gradient_accumulation_steps < 1 or args.log_interval < 1):
         raise ValueError("Batch size, gradient accumulation and log interval must be positive")
 

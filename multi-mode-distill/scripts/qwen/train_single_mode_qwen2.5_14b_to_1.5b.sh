@@ -3,8 +3,8 @@ set -euo pipefail
 
 MODE="${1:-}"
 case "$MODE" in
-    off_policy|on_policy|self_distill) shift ;;
-    *) printf 'Usage: %s {off_policy|on_policy|self_distill} [finetune arguments...]\n' "$0" >&2; exit 2 ;;
+    off_policy|on_policy|self_distill|opsd) shift ;;
+    *) printf 'Usage: %s {off_policy|on_policy|self_distill|opsd} [finetune arguments...]\n' "$0" >&2; exit 2 ;;
 esac
 
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICES:-${CUDA_VISIBLE_DEVICES:-${GPU_IDS:-0,1}}}"
@@ -62,13 +62,13 @@ LORA_ALPHA="${LORA_ALPHA:-128}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
 
 DEFAULT_GEOMETRY=0
-if [[ "$MODE" == on_policy ]]; then DEFAULT_GEOMETRY=0; fi
+if [[ "$MODE" == on_policy || "$MODE" == opsd ]]; then DEFAULT_GEOMETRY=0; fi
 GEOMETRY="${GEOMETRY:-$DEFAULT_GEOMETRY}"
 case "$GEOMETRY" in
     0|1) ;;
     *) printf 'GEOMETRY must be 0 or 1\n' >&2; exit 2 ;;
 esac
-if [[ "$MODE" == on_policy && "$GEOMETRY" == 1 ]]; then
+if [[ ( "$MODE" == on_policy || "$MODE" == opsd ) && "$GEOMETRY" == 1 ]]; then
     printf 'Geometry is available only for off_policy and self_distill\n' >&2
     exit 2
 fi
@@ -101,11 +101,11 @@ OPTS=(
     --deepspeed --deepspeed_config "$DS_CONFIG"
 )
 
-if [[ "$MODE" != self_distill ]]; then
+if [[ "$MODE" != self_distill && "$MODE" != opsd ]]; then
     OPTS+=(--teacher-model-path "$TEACHER_CKPT" --teacher-model-type qwen
            --teacher-ckpt-name "$TEACHER_CKPT_NAME")
 fi
-if [[ "$MODE" == on_policy ]]; then
+if [[ "$MODE" == on_policy || "$MODE" == opsd ]]; then
     OPTS+=(--do-sample)
 elif [[ "$GEOMETRY" == 1 ]]; then
     OPTS+=(--geometry)
@@ -113,6 +113,9 @@ fi
 if [[ "$MODE" == self_distill ]]; then
     OPTS+=(--self-distill-context-drop-ratio "$SELF_DISTILL_CONTEXT_DROP_MAX"
            --self-distill-context-max-tokens "$CONTEXT_MAX_NEW_TOKENS")
+fi
+if [[ "$MODE" == opsd ]]; then
+    OPTS+=(--opsd-token-clip "${OPSD_TOKEN_CLIP:-0.05}")
 fi
 
 export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
