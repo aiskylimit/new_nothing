@@ -58,7 +58,7 @@ SUBSETS=(
 
 python eval_mmeb.py \
     --model_name "training/FastVLM-0.5B_simcse_cka_vqa_tau1/checkpoint-epoch-0" \
-    --encode_output_path "./MMEB-eval_outputs_v1/FastVLM-0.5B_simcse_cka_vqa_tau1" \
+    --encode_output_path "./MMEB-eval_outputs_v2/FastVLM-0.5B_simcse_cka_vqa_tau1" \
     --lora True \
     --lora_r 64 \
     --lora_alpha 64 \

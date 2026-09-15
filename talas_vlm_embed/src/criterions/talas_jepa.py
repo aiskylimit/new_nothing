@@ -268,19 +268,15 @@ class TalasJepa(nn.Module):
 
         def _projected_variance(z_padded, mask, lengths):
             mask_f = mask.unsqueeze(-1).to(dtype=torch.float32)                # [B, N_max, 1]
-            
             n_valid = lengths.clamp(min=2).to(torch.float32)                   # [B]
 
             proj = z_padded @ A                                                # [B, N_max, M]
 
             mean_proj = (proj * mask_f).sum(dim=1, keepdim=True) / n_valid.view(-1, 1, 1) # [B, 1, M]
-            
             centered_proj = (proj - mean_proj) * mask_f                        # [B, N_max, M]
-            
             var_proj = (centered_proj ** 2).sum(dim=1) / (n_valid - 1.0).unsqueeze(-1)    # [B, M]
 
             valid = lengths >= min_valid_tokens                                # [B]
-            
             return var_proj, valid
 
         var_0, valid_0 = _projected_variance(z0_padded, mask0, len0)
@@ -288,16 +284,29 @@ class TalasJepa(nn.Module):
 
         valid = valid_0 & valid_L
         if not valid.any():
-            return zL_padded.sum() * 0.0  # Graph hợp lệ, gradient = 0, tránh crash
+            return zL_padded.sum() * 0.0
 
         # ==========================================
         # 2. HINGE VARIANCE LOSS — Phạt nếu Erank của Layer L xẹp hơn Layer 0
         # ==========================================
-        std_0 = torch.sqrt(var_0 + eps)
-        std_L = torch.sqrt(var_L + eps)
+        # std_0 = torch.sqrt(var_0 + eps)
+        # std_L = torch.sqrt(var_L + eps)
         
-        loss_per_slice = F.relu(std_0 - std_L)              # [B, M]
-        loss_per_sample = loss_per_slice.mean(dim=1)        # [B]
+        # loss_per_slice = F.relu(std_0 - std_L)              # [B, M]
+        # loss_per_sample = loss_per_slice.mean(dim=1)        # [B]
+
+        sum_var_0 = var_0.sum(dim=1, keepdim=True).clamp_min(eps)
+        sum_var_L = var_L.sum(dim=1, keepdim=True).clamp_min(eps)
+
+        p_0 = var_0 / sum_var_0  # [B, M]
+        p_L = var_L / sum_var_L  # [B, M]
+
+        # Tính Shannon Entropy (-sum(p * log(p)))
+        entropy_0 = -(p_0 * torch.log(p_0 + eps)).sum(dim=1)  # [B]
+        entropy_L = -(p_L * torch.log(p_L + eps)).sum(dim=1)  # [B]
+
+        # Hinge Loss: Ép độ phân tán năng lượng (Entropy) của Layer L >= Layer 0
+        loss_per_sample = F.mse_loss(entropy_0 - entropy_L)       # [B]
 
         return loss_per_sample[valid].mean().to(dtype)
 
