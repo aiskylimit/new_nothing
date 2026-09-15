@@ -110,10 +110,18 @@ python $INFER_SCRIPT \
     --report_to None
 
 # analyze erank
+echo "normalize"
 python ./er_statistic.py \
     --pt_dir "infer/FastVLM-0.5B_${EXP_NAME}"/${INFER_SUBSETS[0]}/query \
     --start_idx 0 \
     --end_idx 49 \
     --normalize \
+    --output_file "analyze/FastVLM-0.5B_${EXP_NAME}.txt"
+
+echo "no normalize"
+python ./er_statistic.py \
+    --pt_dir "infer/FastVLM-0.5B_${EXP_NAME}"/${INFER_SUBSETS[0]}/query \
+    --start_idx 0 \
+    --end_idx 49 \
     --output_file "analyze/FastVLM-0.5B_${EXP_NAME}.txt"
 
