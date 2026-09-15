@@ -51,6 +51,7 @@ SKEW_ALPHA="${SKEW_ALPHA:-0.1}"
 KD_RATIO="${KD_RATIO:-0.5}"
 MAG_WEIGHT="${MAG_WEIGHT:-1.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-1.0}"
+GEOMETRY="${GEOMETRY:-1}"
 DISTILL_TOP_K="${DISTILL_TOP_K:-512}"
 DISTILL_TEMPERATURE="${DISTILL_TEMPERATURE:-1.0}"
 SELF_DISTILL_CONTEXT_DROP_MAX="${SELF_DISTILL_CONTEXT_DROP_MAX:-0.5}"
@@ -80,7 +81,10 @@ OPTS+=(--max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH")
 OPTS+=(--t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH")
 
 # Adaptive routing uses all three modes
-OPTS+=(--type kd --geometry)
+OPTS+=(--type kd)
+if [[ "$GEOMETRY" == 1 ]]; then
+    OPTS+=(--geometry)
+fi
 OPTS+=(--dual-adaptive-exposure --do-sample)
 OPTS+=(--rho-self-init "${RHO_SELF_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}")
 OPTS+=(--rho-self-max "${RHO_SELF_MAX:-0.25}" --rho-on-max "${RHO_ON_MAX:-0.25}")

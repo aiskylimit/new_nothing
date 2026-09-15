@@ -37,13 +37,14 @@ python tools/process_data_ultraInteract.py \
     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
     --dev-num "$DEV_NUM" --seed "$SEED"
 
+CHECKPOINT_FILE="$(mktemp)"
+trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
+
 #Train gemmma-no ce loss
 # 1. Train synchronously using the existing processed data.
 printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
-CHECKPOINT_FILE="$(mktemp)"
-trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
 CUDA_DEVICES=4,5,6,7 CKPT="$GEMMA_CKPT" TEACHER_CKPT="$GEMMA_TEACHER_CKPT" \
-    DATA_DIR="$GEMMA_DATA_DIR" KD_RATIO=1.0 \
+    DATA_DIR="$GEMMA_DATA_DIR" KD_RATIO=1.0 GEOMETRY=0 \
     FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
     bash scripts/gemma/train_gemma2_9b_to_2b.sh --disable-lm-loss "$@"
 
@@ -59,10 +60,9 @@ CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$GEMMA_CKPT" \
 #train gemma with ce loss
 # 1. Train synchronously using the existing processed data.
 printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
-CHECKPOINT_FILE="$(mktemp)"
-trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
+: > "$CHECKPOINT_FILE"
 CUDA_DEVICES=4,5,6,7 CKPT="$GEMMA_CKPT" TEACHER_CKPT="$GEMMA_TEACHER_CKPT" \
-    DATA_DIR="$GEMMA_DATA_DIR" KD_RATIO="${CE_KD_RATIO:-0.5}" \
+    DATA_DIR="$GEMMA_DATA_DIR" KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 \
     FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
     bash scripts/gemma/train_gemma2_9b_to_2b.sh "$@"
 
@@ -82,9 +82,9 @@ if [[ ! -s "$QWEN_DATA_DIR/train.jsonl" || ( ! -s "$QWEN_DATA_DIR/valid.jsonl" &
 fi
 # 1. Train synchronously using the existing processed data.
 printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
-CHECKPOINT_FILE="$(mktemp)"
-trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
-CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" KD_RATIO=1.0 FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+: > "$CHECKPOINT_FILE"
+CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" KD_RATIO=1.0 GEOMETRY=0 \
+    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
     bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh --disable-lm-loss "$@"
 
 # 2. Evaluate this run's final checkpoint only after training succeeds.
@@ -99,9 +99,9 @@ CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
 #train qwen with ce loss
 # 1. Train synchronously using the existing processed data.
 printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
-CHECKPOINT_FILE="$(mktemp)"
-trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
-CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" KD_RATIO="${CE_KD_RATIO:-0.5}" FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+: > "$CHECKPOINT_FILE"
+CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 \
+    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
     bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
 
 # 2. Evaluate this run's final checkpoint only after training succeeds.
