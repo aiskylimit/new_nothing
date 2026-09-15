@@ -1,6 +1,6 @@
 ### Merge LoRA adapter into Qwen2.5-7B-Instruct for vLLM serving
 ### model
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+model_name_or_path: /mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen2.5-7B-Instruct
 adapter_name_or_path: output/palign-qwen2.5-7b-instruct-lora
 template: qwen
 finetuning_type: lora

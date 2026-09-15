@@ -211,8 +211,9 @@ if __name__ == "__main__":
         torch_dtype="auto",
         device_map="auto",
         trust_remote_code=True,
+        local_files_only=True,
     )
-    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True, local_files_only=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     process_jsonl(args.input_file, args.output_file, sleep_sec=args.sleep_sec)

@@ -1,7 +1,7 @@
 ### Qwen2.5-7B-Instruct P-ALIGN SFT (LLaMA-Factory)
 ### See HYPERPARAMETERS.md for paper vs assumed values.
 
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+model_name_or_path: /mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen2.5-7B-Instruct
 trust_remote_code: true
 flash_attn: auto
 
@@ -30,12 +30,11 @@ report_to: none
 disable_tqdm: false
 
 per_device_train_batch_size: 1
-gradient_accumulation_steps: 32
+gradient_accumulation_steps: 8
 num_train_epochs: 3.0
 learning_rate: 5.0e-5
 lr_scheduler_type: cosine
-# transformers 5.17+: float warmup_steps < 1 is ratio (= warmup_ratio 0.1, LambdaLR cosine-with-warmup)
-warmup_steps: 0.1
+warmup_ratio: 0.1
 optim: adamw_torch
 adam_beta1: 0.9
 adam_beta2: 0.999

@@ -77,7 +77,7 @@ def main():
     p.add_argument("--top_p", type=float, default=0.9)
     args = p.parse_args()
     max_model_len = args.max_model_len or args.max_tokens
-    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True, local_files_only=True)
     sampling_params = SamplingParams(
         n=1, temperature=args.temperature, top_p=args.top_p,
         repetition_penalty=1.05, max_tokens=args.max_tokens,

@@ -3,24 +3,34 @@
 # No Hub upload, no git push. Train JSON is local: data/palign_sft_qwen2.5-7b.json
 #
 # Usage:
-#   bash project_commands.sh            # env + data check + train + merge + eval
+#   bash project_commands.sh            # data check + train + merge + eval
 #   bash project_commands.sh env
 #   bash project_commands.sh data
 #   bash project_commands.sh train
 #   bash project_commands.sh eval       # needs merged weights (or MODEL=...)
 #
 # Eval base checkpoint only (skip train/merge):
-#   MODEL=Qwen/Qwen2.5-7B-Instruct bash project_commands.sh eval
+#   MODEL=/mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen2.5-7B-Instruct bash project_commands.sh eval
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
+
+ASSET_ROOT="${ASSET_ROOT:-/mnt/local/aiskylimit_new_nothing/P-ALIGN}"
+MODEL_PATH="${MODEL_PATH:-$ASSET_ROOT/models/Qwen2.5-7B-Instruct}"
+DATA_DIR="${DATA_DIR:-$ROOT/data}"
+export PALIGN_ASSET_ROOT="$ASSET_ROOT"
+export PALIGN_DATA_DIR="$DATA_DIR"
+source /mnt/local/uvenvs/p-align/bin/activate
 
 export WANDB_DISABLED=true
 export WANDB_MODE=disabled
 export DISABLE_VERSION_CHECK=1
 export TOKENIZERS_PARALLELISM=false
 export PYTHONUNBUFFERED=1
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
 MERGED="${MERGED:-output/palign-qwen2.5-7b-instruct-lora-merged}"
@@ -30,21 +40,21 @@ NNODES="${NNODES:-1}"
 RANK="${RANK:-0}"
 MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
 MASTER_PORT="${MASTER_PORT:-29330}"
-EFFECTIVE_BATCH=32
+EFFECTIVE_BATCH=8
 PER_DEVICE_BS=1
 STAGE="${1:-all}"
 
 cmd_env() {
-  python -m pip install -r requirements.txt
+  python -c "import torch, transformers, llamafactory, vllm; print('env ok')"
 }
 
 cmd_data() {
-  mkdir -p data/raw output/log output/result
-  if [ ! -f data/palign_sft_qwen2.5-7b.json ]; then
-    echo "missing local train file data/palign_sft_qwen2.5-7b.json" >&2
+  mkdir -p "$DATA_DIR/raw" output/log output/result
+  if [ ! -f "$DATA_DIR/palign_sft_qwen2.5-7b.json" ]; then
+    echo "missing local train file $DATA_DIR/palign_sft_qwen2.5-7b.json" >&2
     exit 1
   fi
-  for f in data/raw/aime25.jsonl data/raw/aime24.jsonl data/raw/amc12.jsonl data/raw/math500.jsonl; do
+  for f in "$DATA_DIR/raw/aime25.jsonl" "$DATA_DIR/raw/aime24.jsonl" "$DATA_DIR/raw/amc12.jsonl" "$DATA_DIR/raw/math500.jsonl"; do
     if [ ! -f "$f" ]; then
       python src/fetch_eval.py
       break
@@ -72,7 +82,7 @@ cmd_eval() {
   mkdir -p output/result
   python src/test.py \
     --model "$MODEL" \
-    --input_files data/raw/aime25.jsonl data/raw/aime24.jsonl data/raw/amc12.jsonl data/raw/math500.jsonl \
+    --input_files "$DATA_DIR/raw/aime25.jsonl" "$DATA_DIR/raw/aime24.jsonl" "$DATA_DIR/raw/amc12.jsonl" "$DATA_DIR/raw/math500.jsonl" \
     --output_files output/result/aime25.jsonl output/result/aime24.jsonl output/result/amc12.jsonl output/result/math500.jsonl \
     --batch_size 1000 \
     --n 3 \

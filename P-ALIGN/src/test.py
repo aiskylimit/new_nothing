@@ -70,7 +70,7 @@ def main():
         raise ValueError("input_files and output_files length must match")
     if LLM is None or SamplingParams is None:
         raise ImportError(f"vLLM is required for eval: {_VLLM_IMPORT_ERROR}")
-    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True, local_files_only=True)
     sampling_params = SamplingParams(
         n=args.n, temperature=args.temperature, top_p=args.top_p,
         repetition_penalty=args.repetition_penalty, max_tokens=args.max_tokens,
