@@ -26,16 +26,16 @@ export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEX
 # Reserve the student sequence plus only the extra context budget.
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((MAX_LENGTH + T_MAX_PROMPT_LENGTH - MAX_PROMPT_LENGTH))}"
 
-# Process Gemma data once before both Gemma training modes.
-printf '\n[process] Gemma data: %s\n' "$GEMMA_RAW_DATA"
-# qwen here selects uint32 token storage; --model-path still loads Gemma's tokenizer.
-python tools/process_data_ultraInteract.py \
-    --base-path "$BASE_PATH" --data-dir "$GEMMA_RAW_DATA" \
-    --processed-data-dir "$PROCESSED_DATA_ROOT" \
-    --model-path "$GEMMA_CKPT" --model-type qwen \
-    --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
-    --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
-    --dev-num "$DEV_NUM" --seed "$SEED"
+# # Process Gemma data once before both Gemma training modes.
+# printf '\n[process] Gemma data: %s\n' "$GEMMA_RAW_DATA"
+# # qwen here selects uint32 token storage; --model-path still loads Gemma's tokenizer.
+# python tools/process_data_ultraInteract.py \
+#     --base-path "$BASE_PATH" --data-dir "$GEMMA_RAW_DATA" \
+#     --processed-data-dir "$PROCESSED_DATA_ROOT" \
+#     --model-path "$GEMMA_CKPT" --model-type qwen \
+#     --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
+#     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
+#     --dev-num "$DEV_NUM" --seed "$SEED"
 
 CHECKPOINT_FILE="$(mktemp)"
 trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
