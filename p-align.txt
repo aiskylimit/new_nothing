@@ -1,8 +1,5 @@
 # manager: uv
 # python: 3.11
-# From P-ALIGN/requirements.txt.
-# vllm 0.18.0 requires transformers<5 and torch==2.10.0; 0.27.1 needs
-# transformers>=5.5.3 and torch==2.13.0 (same stack as spectral-guided-learning).
 accelerate==1.11.0
 datasets==4.0.0
 jsonlines
