@@ -1,4 +1,7 @@
 import argparse
+import __future__
+import importlib.abc
+import importlib.machinery
 import json
 import os
 import sys
@@ -6,6 +9,60 @@ import sys
 import jsonlines
 from transformers import AutoTokenizer
 from tqdm import tqdm
+
+
+class _PostponedAnnotationsLoader(importlib.abc.Loader):
+    """Compile one dependency module with postponed annotations."""
+
+    def __init__(self, fullname, delegate):
+        self.fullname = fullname
+        self.delegate = delegate
+
+    def create_module(self, spec):
+        create_module = getattr(self.delegate, "create_module", None)
+        return create_module(spec) if create_module else None
+
+    def exec_module(self, module):
+        get_source = getattr(self.delegate, "get_source", None)
+        source = get_source(self.fullname) if get_source else None
+        if source is None or "array.array[int]" not in source:
+            self.delegate.exec_module(module)
+            return
+
+        get_filename = getattr(self.delegate, "get_filename", None)
+        filename = get_filename(self.fullname) if get_filename else module.__spec__.origin
+        code = compile(
+            source,
+            filename,
+            "exec",
+            flags=__future__.annotations.compiler_flag,
+            dont_inherit=True,
+        )
+        exec(code, module.__dict__)
+
+
+class _FlashInferCompatFinder(importlib.abc.MetaPathFinder):
+    """Work around flashinfer 0.6.16's Python 3.11 annotation bug."""
+
+    _TARGET = "flashinfer.comm.fd_exchange"
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname != self._TARGET:
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(fullname, path)
+        if spec is not None and spec.loader is not None:
+            spec.loader = _PostponedAnnotationsLoader(fullname, spec.loader)
+        return spec
+
+
+def _install_flashinfer_py311_compat():
+    if sys.version_info >= (3, 12):
+        return
+    if not any(isinstance(finder, _FlashInferCompatFinder) for finder in sys.meta_path):
+        sys.meta_path.insert(0, _FlashInferCompatFinder())
+
+
+_install_flashinfer_py311_compat()
 
 try:
     from vllm import LLM, SamplingParams
@@ -15,12 +72,16 @@ except ImportError as e:
     _VLLM_IMPORT_ERROR = e
 else:
     _VLLM_IMPORT_ERROR = None
+    if sys.version_info < (3, 12):
+        try:
+            import flashinfer.comm  # noqa: F401
+        except ImportError:
+            # FlashInfer is optional when vLLM uses the FlashAttention backend.
+            pass
 
 
 def _make_llm(model, max_model_len):
-    """vLLM 0.27 + FLASHINFER on Python 3.11 imports flashinfer.comm, which
-    uses `array.array[int]` and raises TypeError. Prefer FLASH_ATTN; skip
-    torch.compile on <3.12 so that import is never reached."""
+    """Create a vLLM instance using FlashAttention."""
     kwargs = dict(
         model=model,
         gpu_memory_utilization=0.8,
@@ -32,7 +93,9 @@ def _make_llm(model, max_model_len):
         kwargs["enforce_eager"] = True
     try:
         return LLM(**kwargs, attention_backend="FLASH_ATTN")
-    except TypeError:
+    except TypeError as exc:
+        if "attention_backend" not in str(exc):
+            raise
         os.environ.setdefault("VLLM_ATTENTION_BACKEND", "FLASH_ATTN")
         return LLM(**kwargs)
 
