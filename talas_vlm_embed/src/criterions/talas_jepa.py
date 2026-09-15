@@ -381,7 +381,7 @@ class TalasJepa(nn.Module):
         Hàm này chỉ còn nhiệm vụ trích xuất text và vision representations 
         của student, cùng với việc tính toán SIGReg loss.
         """
-        k_layers = self.args.num_layers
+
         batch_size = attention_mask.size(0)
         last_layer_idx = len(student_hidden_states) - 1
         layers = [0, int(last_layer_idx / 10), int(last_layer_idx / 5), last_layer_idx]
@@ -426,8 +426,10 @@ class TalasJepa(nn.Module):
 
             warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
             total_sigreg = 0.0
-            
-            for l in layers[1:-1]:
+
+            k_layers = 0
+            for l in layers[:-1]:
+                k_layers += 1
                 eos_query = pooling(student_hidden_states[l], attention_mask, 
                                     mode='eos', normalize=True).detach()
                 total_sigreg += self.sigreg_dualview(stu_img_tokens[l], eos_query, 
