@@ -1,4 +1,10 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v1/ +a
+#d
+#datasets
+--url https://huggingface.co/datasets/VoCuc/UltraInteract-Infer/resolve/main/google/gemma-2-9b-it/generated_train.jsonl /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/raw/google/gemma-2-9b-it/
+#models
+--hf google/gemma-2-9b-it /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/models/google_gemma-2-9b-it
+--hf google/gemma-2-2b-it /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/models/google_gemma-2-2b-it
+
 #multi-mode-distill
 #v2
 
