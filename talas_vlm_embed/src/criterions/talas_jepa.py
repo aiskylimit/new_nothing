@@ -210,6 +210,24 @@ class TalasJepa(nn.Module):
         if not valid.any():
             return zL_padded.sum() * 0.0
 
+        print("pr0:", pr0)
+        print("prL:", prL)
+        def compute_effective_rank(
+            hidden_state: torch.Tensor, # [N, D]
+            eps: float = 1e-10,
+        ) -> torch.Tensor:
+            X = hidden_state.float() 
+            N = X.size(0)
+            s = torch.linalg.svdvals(X) / torch.sqrt(torch.tensor(N))
+            eigvals = s * s
+            prob = eigvals.clamp(min=eps) / eigvals.sum()
+            entropy = -(prob * torch.log(prob)).sum()
+            effective_rank = torch.exp(entropy) / N
+            return effective_rank.to(dtype=hidden_state.dtype)
+        for hs0, hsL in zip(z_list_first, z_list_last):
+            print("er_hs0: ", compute_effective_rank(hs0))
+            print("er_hsL: ", compute_effective_rank(hsL))
+
         loss_per_sample = F.relu(pr0 - prL)
         return loss_per_sample[valid].mean().to(dtype)
     
