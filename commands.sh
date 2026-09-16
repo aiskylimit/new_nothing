@@ -1,5 +1,5 @@
 #1 +10
-#talas
+#multi-mode-distill
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
@@ -8,6 +8,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+kill -9 1510410
 # sleep 3
 nvidia-smi
 
@@ -26,10 +27,10 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
-# cd ./multi-mode-distill
+cd ./multi-mode-distill
 # bash ./project_commands_opsd_ablation.sh
 # bash ./project_commands_ablation.sh
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./cypher-extract
 # bash ./project_command.sh
