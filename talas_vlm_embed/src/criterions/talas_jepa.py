@@ -195,13 +195,15 @@ class TalasJepa(nn.Module):
             valid = lengths >= min_valid_tokens
             return pr, valid
 
-        def _rms_norm(x, weight=None, eps=1e-8):
-            rms = torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + eps)
-            out = x / rms
-            return out
+        # def _rms_norm(x, weight=None, eps=1e-8):
+        #     rms = torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + eps)
+        #     out = x / rms
+        #     return out
 
-        z0_normed = _rms_norm(z0_padded)
-        zL_normed = _rms_norm(zL_padded)
+        # z0_normed = _rms_norm(z0_padded)
+        # zL_normed = _rms_norm(zL_padded)
+        z0_normed = z0_padded
+        zL_normed = zL_padded
 
         pr0, valid0 = _participation_ratio(z0_normed, mask0, len0)
         prL, validL = _participation_ratio(zL_normed, maskL, lenL)
@@ -222,7 +224,7 @@ class TalasJepa(nn.Module):
             eigvals = s * s
             prob = eigvals.clamp(min=eps) / eigvals.sum()
             entropy = -(prob * torch.log(prob)).sum()
-            effective_rank = torch.exp(entropy) / N
+            effective_rank = torch.exp(entropy)
             return effective_rank.to(dtype=hidden_state.dtype)
         for hs0, hsL in zip(z_list_first, z_list_last):
             e0 = compute_effective_rank(hs0)
