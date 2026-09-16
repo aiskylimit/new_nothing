@@ -439,7 +439,8 @@ class TalasJepa(nn.Module):
                 #                                      tau=0.1, alpha=0.9)
                 # total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
 
-                sigreg_erank_loss += self.sketched_std_erank(stu_img_tokens[l], stu_img_tokens[last_layer_idx])
+                sigreg_erank_loss += self.sketched_participation_ratio_erank(stu_img_tokens[l], 
+                                                                             stu_img_tokens[last_layer_idx])
 
             if self.args.use_sigreg_loss:
                 sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss / max(1, k_layers)
