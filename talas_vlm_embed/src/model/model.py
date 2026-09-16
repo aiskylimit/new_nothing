@@ -415,7 +415,7 @@ class MMEBModel(nn.Module):
             return model
         
         elif model_args.lora:
-            print_master(f'Initializing LoRA adapter from {base_model}')
+            print_master(f'Initializing LoRA adapter')
             if model_args.model_backbone in ["llava_onevision", "llava_next"]:
                 base_targets = [t.strip() for t in model_args.lora_target_modules.split(',')]
     

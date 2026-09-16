@@ -121,7 +121,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "$OUTPUT_DIR" \
-    --per_device_train_batch_size 8 \
+    --per_device_train_batch_size 16 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -149,7 +149,7 @@ torchrun --standalone \
     --kd_weight "$KD_WEIGHT" \
     --sigreg_weight "$SIGREG_WEIGHT" \
     --num_layers "$NUM_LAYER" \
-    --use_mean_anchor "$MEAN_BOOL"
+    --d_cse_temperature "$D_TAU"
 
 
 # ============================================================
