@@ -306,11 +306,10 @@ class TalasJepa(nn.Module):
         entropy_L = -(p_L * torch.log(p_L + eps)).sum(dim=1)  # [B]
 
         # Hinge Loss: Ép độ phân tán năng lượng (Entropy) của Layer L >= Layer 0
-        # loss_per_sample = F.relu(entropy_0 - entropy_L)       # [B]
+        loss_per_sample = F.relu(entropy_0 - entropy_L)       # [B]
+        # loss_per_sample = (entropy_0 - entropy_L) ** 2
 
-        # return loss_per_sample[valid].mean().to(dtype)
-
-        return F.mse_loss(entropy_0, entropy_L)
+        return loss_per_sample[valid].mean().to(dtype)
 
     def sigreg_dualview(self, z_list: list[torch.Tensor], eos_query: torch.Tensor,
                         num_slices: int = 256, tau: float = 0.05, alpha: float = 0.9):
@@ -440,7 +439,7 @@ class TalasJepa(nn.Module):
                 sigreg_erank_loss += self.sketched_std_erank(stu_img_tokens[l], stu_img_tokens[last_layer_idx])
 
             if self.args.use_sigreg_loss:
-                sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss
+                sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers)) + sigreg_erank_loss / max(1, k_layers)
             else:
                 sigreg_final = sigreg_erank_loss  / max(1, k_layers)
 

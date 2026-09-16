@@ -121,7 +121,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "$OUTPUT_DIR" \
-    --per_device_train_batch_size 8 \
+    --per_device_train_batch_size 16 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -189,7 +189,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs_v2/llava_ov-0.5B_cls_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs_v5/llava_ov-0.5B_cls_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -229,5 +229,5 @@ echo "============================================================"
 # 4. Collect result
 # ============================================================
 
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
-python json_filter.py ./MMEB-eval_outputs_v2 "${JSON_FILTER_DESTINATION}" --overwrite
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v5}"
+python json_filter.py ./MMEB-eval_outputs_v5 "${JSON_FILTER_DESTINATION}" --overwrite
