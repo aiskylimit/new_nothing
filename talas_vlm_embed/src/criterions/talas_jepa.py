@@ -195,8 +195,16 @@ class TalasJepa(nn.Module):
             valid = lengths >= min_valid_tokens
             return pr, valid
 
-        pr0, valid0 = _participation_ratio(z0_padded, mask0, len0)
-        prL, validL = _participation_ratio(zL_padded, maskL, lenL)
+        def _rms_norm(x, weight=None, eps=1e-8):
+            rms = torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + eps)
+            out = x / rms
+            return out
+
+        z0_normed = _rms_norm(z0_padded)
+        zL_normed = _rms_norm(zL_padded)
+
+        pr0, valid0 = _participation_ratio(z0_normed, mask0, len0)
+        prL, validL = _participation_ratio(zL_normed, maskL, lenL)
 
         valid = valid0 & validL
         if not valid.any():
