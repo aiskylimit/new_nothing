@@ -225,10 +225,13 @@ class TalasJepa(nn.Module):
             effective_rank = torch.exp(entropy) / N
             return effective_rank.to(dtype=hidden_state.dtype)
         for hs0, hsL in zip(z_list_first, z_list_last):
-            print("er_hs0: ", compute_effective_rank(hs0))
-            print("er_hsL: ", compute_effective_rank(hsL))
+            e0 = compute_effective_rank(hs0)
+            el = compute_effective_rank(hsL)
+            print(f"er_hs0: {e0}, er_hs1: {el}, 0-l: {e0-el}")
 
         loss_per_sample = F.relu(pr0 - prL)
+        print("loss_per_sample:", loss_per_sample)
+        
         return loss_per_sample[valid].mean().to(dtype)
     
     def sketched_std_erank(self, z_list_first: list[torch.Tensor], z_list_last: list[torch.Tensor],
