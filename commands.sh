@@ -1,4 +1,4 @@
-#1 +10
+#2 -0-5
 #test
 #v1
 
@@ -8,8 +8,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 8994 8995 8996 8997 8998 8999 9000 9001
-sleep 3
+# sleep 3
 nvidia-smi
 
 
