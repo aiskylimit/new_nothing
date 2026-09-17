@@ -133,7 +133,7 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --teacher_normalize True \
-    --lr_scheduler_type "cosine" \
+    --lr_scheduler_type "constant" \
     --warmup_ratio 0.05 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \

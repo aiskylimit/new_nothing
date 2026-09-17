@@ -391,7 +391,7 @@ class TalasJepa(nn.Module):
 
         batch_size = attention_mask.size(0)
         last_layer_idx = len(student_hidden_states) - 1
-        layers = [0, int(4 * last_layer_idx / 5), last_layer_idx]
+        layers = [0, int(last_layer_idx / 2), int(4 * last_layer_idx / 5), last_layer_idx]
         
         stu_img_tokens = {l: [] for l in layers}
         stu_text_reps = []
@@ -436,7 +436,7 @@ class TalasJepa(nn.Module):
             sigreg_erank_loss = 0.0
 
             k_layers = 0
-            for l in layers[1:]:
+            for l in layers[1:-1]:
                 k_layers += 1
                 # eos_query = pooling(student_hidden_states[l], attention_mask, 
                 #                     mode='eos', normalize=True).detach()
