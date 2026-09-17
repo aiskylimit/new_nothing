@@ -164,6 +164,71 @@ def reasoning_velocity_loss(
     )
 
 
+def cka_loss_from_steps(student, teacher, s_mask, t_mask, eps=1e-6):
+    if not math.isfinite(eps) or eps <= 0:
+        raise ValueError("eps must be finite and positive")
+    if (
+        student.shape[:2] != teacher.shape[:2]
+        or s_mask.shape != student.shape[:2]
+        or t_mask.shape != teacher.shape[:2]
+    ):
+        raise ValueError(
+            "Representations and masks must align on batch and step indices"
+        )
+
+    student = student.float()
+    teacher = teacher.detach().float()
+    step_mask = s_mask & t_mask
+    pair_mask = step_mask[:, :, None] & step_mask[:, None, :]
+    pair_weight = pair_mask.to(student.dtype)
+    counts = step_mask.sum(-1)
+    safe_counts = counts.clamp_min(1).to(student.dtype)
+
+    student_kernel = student @ student.transpose(-1, -2)
+    teacher_kernel = teacher @ teacher.transpose(-1, -2)
+
+    def center(kernel):
+        masked = kernel * pair_weight
+        row_mean = masked.sum(-1) / safe_counts[:, None]
+        grand_mean = masked.sum((-1, -2)) / safe_counts.square()
+        centered = (
+            kernel
+            - row_mean[:, :, None]
+            - row_mean[:, None, :]
+            + grand_mean[:, None, None]
+        )
+        return centered * pair_weight
+
+    student_kernel = center(student_kernel)
+    teacher_kernel = center(teacher_kernel)
+    hsic = (student_kernel * teacher_kernel).sum((-1, -2))
+    student_norm = student_kernel.square().sum((-1, -2))
+    teacher_norm = teacher_kernel.square().sum((-1, -2))
+    denominator = (student_norm * teacher_norm).clamp_min(eps ** 2).sqrt()
+    # Cauchy-Schwarz bounds CKA by one; clamping only guards round-off.
+    losses = 1.0 - (hsic / denominator).clamp(min=0.0, max=1.0)
+    eligible = counts >= 2
+    return (losses * eligible).sum() / eligible.sum().clamp_min(1)
+
+
+def reasoning_cka_loss(
+    student_hidden,
+    teacher_hidden,
+    student_spans,
+    teacher_spans=None,
+    pooling="mean",
+    eps=1e-6,
+):
+    """Pool each reasoning step and align student/teacher trajectories with CKA."""
+    if teacher_spans is None:
+        teacher_spans = student_spans
+    if student_spans.shape != teacher_spans.shape:
+        raise ValueError("Teacher/student spans must align on batch and step indices")
+    student, s_mask = pool_steps(student_hidden, student_spans, pooling)
+    teacher, t_mask = pool_steps(teacher_hidden.detach(), teacher_spans, pooling)
+    return cka_loss_from_steps(student, teacher, s_mask, t_mask, eps)
+
+
 def _pack_supervised_states(hidden, labels, width):
     """Align hidden states by response token index despite different prompt lengths."""
     supervised = labels != -100

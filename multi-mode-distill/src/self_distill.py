@@ -5,7 +5,6 @@ import copy
 import torch
 
 from .batching import pack_trajectories
-from .trajectory import find_step_spans
 from data_utils.records import get_raw_prompt
 
 
@@ -21,11 +20,35 @@ def refresh_reference_model(reference, student_module):
     reference.load_state_dict(student_module.state_dict())
 
 
+def complete_visible_steps(sample, tokenizer, separator):
+    """Return complete text steps visible in the canonical response window."""
+    # Labels include the final response token even when the causal input ends
+    # one token earlier; use that exact supervised region.
+    visible = sample["label"][len(sample["prompt_ids"]) - 1:]
+    if visible and visible[-1] == tokenizer.eos_token_id:
+        visible = visible[:-1]
+    if not visible:
+        return []
+    response = sample["response"]
+    encoded = tokenizer(response, add_special_tokens=False, return_offsets_mapping=True)
+    if encoded["input_ids"][:len(visible)] != visible:
+        raise ValueError("Canonical response text does not align with visible training tokens")
+    visible_end = encoded["offset_mapping"][len(visible) - 1][1]
+    steps = []
+    start = 0
+    for part in response.split(separator):
+        end = start + len(part)
+        if end > visible_end:
+            break
+        if part.strip():
+            steps.append(part)
+        start = end + len(separator)
+    return steps
+
+
 def sample_context(steps, separator, max_drop_ratio, rng):
-    if not steps:
+    if len(steps) < 2:
         return ""
-    if len(steps) == 1:
-        return steps[0]
     drop_ratio = rng.uniform(0.0, max_drop_ratio)
     kept = [step for step in steps if rng.random() >= drop_ratio]
     if not kept:
@@ -112,25 +135,8 @@ def _rebase_step_spans(spans, original_labels, packed_batch, packed_labels):
     return torch.stack((start, end), dim=-1).masked_fill(~valid[..., None], -1)
 
 
-def _generated_step_count(responses, marker_ids):
-    marker = marker_ids.tolist()
-    count = 1
-    for response in responses:
-        ids = response.tolist()
-        cursor = markers = 0
-        while cursor <= len(ids) - len(marker):
-            if ids[cursor:cursor + len(marker)] == marker:
-                markers += 1
-                cursor += len(marker)
-            else:
-                cursor += 1
-        count = max(count, markers + 1)
-    return count
-
-
-def prepare_self_distill_batches(args, tokenizer, student_batch, metadata, rng,
-                                 *, on_policy=False):
-    """Use student response tokens with a reference prompt from canonical steps."""
+def prepare_self_distill_batches(args, tokenizer, student_batch, metadata, rng):
+    """Use the canonical response with plain and contextual student prompts."""
     batch_size = student_batch["input_ids"].shape[0]
     if any(len(metadata[key]) != batch_size for key in
            ("self_distill_steps", "self_distill_records")):
@@ -166,13 +172,7 @@ def prepare_self_distill_batches(args, tokenizer, student_batch, metadata, rng,
         prompts, responses, pad_id, args.model_type, args.max_length, device)
     reference, ref_meta = pack_trajectories(
         ref_prompts, responses, pad_id, args.model_type, args.t_max_length, device)
-    if on_policy and "step_marker_ids" in metadata:
-        max_steps = _generated_step_count(responses, metadata["step_marker_ids"])
-        for batch, batch_meta in ((student, student_meta), (reference, ref_meta)):
-            batch_meta["step_spans"] = find_step_spans(
-                batch["input_ids"], batch["attention_mask"], batch_meta["label"],
-                metadata["step_marker_ids"], max_steps)
-    elif "step_spans" in metadata:
+    if "step_spans" in metadata:
         student_meta["step_spans"] = _rebase_step_spans(
             metadata["step_spans"], labels, student, student_meta["label"])
         ref_meta["step_spans"] = _rebase_step_spans(

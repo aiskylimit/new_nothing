@@ -202,9 +202,13 @@ def add_distillation_args(parser: argparse.ArgumentParser):
     group.add_argument("--kd-loss", choices=["fkl", "rkl", "sfkl", "srkl", "jsd", "tvd"], default=None)
     group.add_argument("--skew-alpha", type=float, default=0.1)
     group.add_argument("--off-policy-geometry", action="store_true",
-                       help="Enable magnitude/Gram losses for off_policy only (legacy flag)")
+                       help="Enable magnitude/Gram velocity losses for off_policy only (legacy flag)")
     group.add_argument("--geometry", action="store_true",
-                       help="Enable magnitude/Gram losses for off_policy, self_distill, and on_policy batches")
+                       help="Enable magnitude/Gram velocity losses for off_policy, self_distill, and on_policy batches")
+    group.add_argument("--cka", action="store_true",
+                       help="Enable step-level linear CKA for off_policy, self_distill, and on_policy batches")
+    group.add_argument("--cka-weight", type=float, default=1.0,
+                       help="Weight of CKA loss when --cka is enabled")
     group.add_argument("--disable-lm-loss", action="store_true",
                        help="Optimize distillation alone, without kd-ratio scaling")
     group.add_argument("--self-distill-context-drop-ratio", type=float, default=0.5,
