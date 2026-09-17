@@ -51,7 +51,11 @@ SKEW_ALPHA="${SKEW_ALPHA:-0.1}"
 KD_RATIO="${KD_RATIO:-0.5}"
 MAG_WEIGHT="${MAG_WEIGHT:-1.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-1.0}"
-GEOMETRY="${GEOMETRY:-1}"
+CKA_WEIGHT="${CKA_WEIGHT:-1.0}"
+CKA="${CKA:-0}"
+DEFAULT_GEOMETRY=1
+if [[ "$CKA" == 1 ]]; then DEFAULT_GEOMETRY=0; fi
+GEOMETRY="${GEOMETRY:-$DEFAULT_GEOMETRY}"
 DISTILL_TOP_K="${DISTILL_TOP_K:-512}"
 DISTILL_TEMPERATURE="${DISTILL_TEMPERATURE:-1.0}"
 SELF_DISTILL_CONTEXT_DROP_MAX="${SELF_DISTILL_CONTEXT_DROP_MAX:-0.5}"
@@ -61,7 +65,19 @@ MAGNITUDE_NORMALIZATION="${MAGNITUDE_NORMALIZATION:-zscore}"
 LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-128}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
-SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/${CKPT_NAME}-v2/adaptive_${KD_LOSS}_k${DISTILL_TOP_K}_bs${BATCH_SIZE}_ga${GRAD_ACC}_lr${LR}_seed${SEED}}"
+case "$GEOMETRY" in
+    0|1) ;;
+    *) printf 'GEOMETRY must be 0 or 1\n' >&2; exit 2 ;;
+esac
+case "$CKA" in
+    0|1) ;;
+    *) printf 'CKA must be 0 or 1\n' >&2; exit 2 ;;
+esac
+if [[ "$GEOMETRY" == 1 && "$CKA" == 1 ]]; then
+    printf 'GEOMETRY and CKA are mutually exclusive\n' >&2
+    exit 2
+fi
+SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/${CKPT_NAME}-v2/adaptive_${KD_LOSS}_k${DISTILL_TOP_K}_geometry${GEOMETRY}_cka${CKA}_bs${BATCH_SIZE}_ga${GRAD_ACC}_lr${LR}_seed${SEED}}"
 
 OPTS=()
 
@@ -85,6 +101,9 @@ OPTS+=(--type kd)
 if [[ "$GEOMETRY" == 1 ]]; then
     OPTS+=(--geometry)
 fi
+if [[ "$CKA" == 1 ]]; then
+    OPTS+=(--cka)
+fi
 OPTS+=(--dual-adaptive-exposure --do-sample)
 OPTS+=(--rho-self-init "${RHO_SELF_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}")
 OPTS+=(--rho-self-max "${RHO_SELF_MAX:-0.25}" --rho-on-max "${RHO_ON_MAX:-0.25}")
@@ -95,7 +114,7 @@ OPTS+=(--self-distill-context-drop-ratio "$SELF_DISTILL_CONTEXT_DROP_MAX")
 OPTS+=(--self-distill-context-max-tokens "$CONTEXT_MAX_NEW_TOKENS")
 OPTS+=(--kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO")
 OPTS+=(--skew-alpha "$SKEW_ALPHA")
-OPTS+=(--mag-weight "$MAG_WEIGHT" --gram-weight "$GRAM_WEIGHT")
+OPTS+=(--mag-weight "$MAG_WEIGHT" --gram-weight "$GRAM_WEIGHT" --cka-weight "$CKA_WEIGHT")
 OPTS+=(--distill-top-k "$DISTILL_TOP_K" --distill-temperature "$DISTILL_TEMPERATURE")
 OPTS+=(--step-separator "$STEP_SEPARATOR" --step-pooling "$STEP_POOLING")
 OPTS+=(--magnitude-normalization "$MAGNITUDE_NORMALIZATION" --eps 1e-6)

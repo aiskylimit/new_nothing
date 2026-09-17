@@ -11,13 +11,9 @@ export TOKENIZERS_PARALLELISM=false
 
 export CKPT="${CKPT:-$ASSET_ROOT/models/Qwen2.5_1.5B-Instruct}"
 export TEACHER_CKPT="${TEACHER_CKPT:-$ASSET_ROOT/models/Qwen2.5_14B-Instruct}"
-GEMMA_CKPT="${GEMMA_CKPT:-$ASSET_ROOT/models/google_gemma-2-2b-it}"
-GEMMA_TEACHER_CKPT="${GEMMA_TEACHER_CKPT:-$ASSET_ROOT/models/google_gemma-2-9b-it}"
-GEMMA_RAW_DATA="${GEMMA_RAW_DATA:-$ASSET_ROOT/data/raw/google/gemma-2-9b-it/generated_train.jsonl}"
 PROCESSED_DATA_ROOT="${PROCESSED_DATA_ROOT:-$ASSET_ROOT/processed_data/ultraInteract-v2}"
-# The old preprocessor stores absolute model paths under models/<model name>.
-GEMMA_DATA_DIR="${GEMMA_DATA_DIR:-$PROCESSED_DATA_ROOT/models/$(basename -- "$GEMMA_CKPT")}"
 QWEN_DATA_DIR="${QWEN_DATA_DIR:-${DATA_DIR:-$PROCESSED_DATA_ROOT/models/$(basename -- "$CKPT")}}"
+QWEN_RESULTS_ROOT="${QWEN_RESULTS_ROOT:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-v2}"
 
 export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
 export DEV_NUM="${DEV_NUM:-512}" SEED="${SEED:-10}"
@@ -26,88 +22,72 @@ export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEX
 # Reserve the student sequence plus only the extra context budget.
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((MAX_LENGTH + T_MAX_PROMPT_LENGTH - MAX_PROMPT_LENGTH))}"
 
-# # Process Gemma data once before both Gemma training modes.
-# printf '\n[process] Gemma data: %s\n' "$GEMMA_RAW_DATA"
-# # qwen here selects uint32 token storage; --model-path still loads Gemma's tokenizer.
-# python tools/process_data_ultraInteract.py \
-#     --base-path "$BASE_PATH" --data-dir "$GEMMA_RAW_DATA" \
-#     --processed-data-dir "$PROCESSED_DATA_ROOT" \
-#     --model-path "$GEMMA_CKPT" --model-type qwen \
-#     --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
-#     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
-#     --dev-num "$DEV_NUM" --seed "$SEED"
+
+MAG_WEIGHT="${MAG_WEIGHT:-2.0}"
+GRAM_WEIGHT="${GRAM_WEIGHT:-2.0}"
 
 CHECKPOINT_FILE="$(mktemp)"
 trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
 
-#Train gemmma-no ce loss
-# 1. Train synchronously using the existing processed data.
-printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
-CUDA_DEVICES=4,5,6,7 CKPT="$GEMMA_CKPT" TEACHER_CKPT="$GEMMA_TEACHER_CKPT" \
-    DATA_DIR="$GEMMA_DATA_DIR" KD_RATIO=1.0 GEOMETRY=0 \
-    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
-    bash scripts/gemma/train_gemma2_9b_to_2b.sh --disable-lm-loss "$@"
-
-# 2. Evaluate this run's final checkpoint only after training succeeds.
-LORA_PATH="$(cat "$CHECKPOINT_FILE")"
-[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
-printf '\n[2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
-CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$GEMMA_CKPT" \
-    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
-    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
-    bash scripts/eval/eval.sh run
-
-#train gemma with ce loss
-# 1. Train synchronously using the existing processed data.
-printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
-: > "$CHECKPOINT_FILE"
-CUDA_DEVICES=4,5,6,7 CKPT="$GEMMA_CKPT" TEACHER_CKPT="$GEMMA_TEACHER_CKPT" \
-    DATA_DIR="$GEMMA_DATA_DIR" KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 \
-    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
-    bash scripts/gemma/train_gemma2_9b_to_2b.sh "$@"
-
-# 2. Evaluate this run's final checkpoint only after training succeeds.
-LORA_PATH="$(cat "$CHECKPOINT_FILE")"
-[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
-printf '\n[2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
-CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$GEMMA_CKPT" \
-    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
-    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
-    bash scripts/eval/eval.sh run
-
-#Train qwen-no ce loss
 if [[ ! -s "$QWEN_DATA_DIR/train.jsonl" || ( ! -s "$QWEN_DATA_DIR/valid.jsonl" && ! -s "$QWEN_DATA_DIR/dev.jsonl" ) ]]; then
     printf 'Processed train and valid/dev JSONL files are required in: %s\n' "$QWEN_DATA_DIR" >&2
     exit 1
 fi
-# 1. Train synchronously using the existing processed data.
-printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
-: > "$CHECKPOINT_FILE"
-CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" KD_RATIO=1.0 GEOMETRY=0 \
-    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
-    bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh --disable-lm-loss "$@"
 
-# 2. Evaluate this run's final checkpoint only after training succeeds.
-LORA_PATH="$(cat "$CHECKPOINT_FILE")"
-[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
-printf '\n[2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
-CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
-    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
-    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
-    bash scripts/eval/eval.sh run
-
-#train qwen with ce loss
+# Qwen setting 1: full objective (CE + KD + stronger geometry).
 # 1. Train synchronously using the existing processed data.
-printf '\n[1/2] Train v2: dual adaptive OFF/self-distill/ON exposure\n'
+printf '\n[full 1/2] Train Qwen: CE + KD + geometry (mag=%s, gram=%s)\n' "$MAG_WEIGHT" "$GRAM_WEIGHT"
 : > "$CHECKPOINT_FILE"
-CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 \
+CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
+    SAVE_PATH="$QWEN_RESULTS_ROOT/full_mag${MAG_WEIGHT}_gram${GRAM_WEIGHT}" \
+    KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=1 CKA=0 \
+    MAG_WEIGHT="$MAG_WEIGHT" GRAM_WEIGHT="$GRAM_WEIGHT" \
     FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
     bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
 
 # 2. Evaluate this run's final checkpoint only after training succeeds.
 LORA_PATH="$(cat "$CHECKPOINT_FILE")"
 [[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
-printf '\n[2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
+printf '\n[full 2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
+CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
+    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
+    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
+    bash scripts/eval/eval.sh run
+
+# Qwen setting 2: remove geometry (CE + KD only).
+# 1. Train synchronously using the existing processed data.
+printf '\n[no-geo 1/2] Train Qwen: CE + KD, geometry disabled\n'
+: > "$CHECKPOINT_FILE"
+CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
+    SAVE_PATH="$QWEN_RESULTS_ROOT/no_geo" \
+    KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 CKA=0 \
+    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+    bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
+
+# 2. Evaluate this run's final checkpoint only after training succeeds.
+LORA_PATH="$(cat "$CHECKPOINT_FILE")"
+[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
+printf '\n[no-geo 2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
+CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
+    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
+    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
+    bash scripts/eval/eval.sh run
+
+# Qwen setting 3: remove CE (KD + stronger geometry only).
+# 1. Train synchronously using the existing processed data.
+printf '\n[no-CE 1/2] Train Qwen: KD + geometry, CE disabled (mag=%s, gram=%s)\n' "$MAG_WEIGHT" "$GRAM_WEIGHT"
+: > "$CHECKPOINT_FILE"
+CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
+    SAVE_PATH="$QWEN_RESULTS_ROOT/no_ce_mag${MAG_WEIGHT}_gram${GRAM_WEIGHT}" \
+    KD_RATIO=1.0 GEOMETRY=1 CKA=0 \
+    MAG_WEIGHT="$MAG_WEIGHT" GRAM_WEIGHT="$GRAM_WEIGHT" \
+    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+    bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh --disable-lm-loss "$@"
+
+# 2. Evaluate this run's final checkpoint only after training succeeds.
+LORA_PATH="$(cat "$CHECKPOINT_FILE")"
+[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
+printf '\n[no-CE 2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
 CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
     SAVE_PATH="$(dirname -- "$LORA_PATH")" \
     EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \

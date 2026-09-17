@@ -5,7 +5,8 @@ import math
 import torch
 
 def geometry_enabled_for_mode(args, mode):
-    return (args.geometry and mode in ("off_policy", "self_distill", "on_policy")) or (
+    return ((args.geometry or getattr(args, "cka", False))
+            and mode in ("off_policy", "self_distill", "on_policy")) or (
         args.off_policy_geometry and mode == "off_policy")
 
 
@@ -60,13 +61,19 @@ def validate_mode_args(args):
     args.distill_temperature = getattr(args, "distill_temperature", 1.0)
     if not math.isfinite(args.distill_temperature) or args.distill_temperature <= 0:
         raise ValueError("--distill-temperature must be finite and positive")
+    args.cka = getattr(args, "cka", False)
+    args.cka_weight = getattr(args, "cka_weight", 1.0)
     uses_generation = args.distill_mode in ("on_policy", "opsd")
+    if args.cka and (args.geometry or args.off_policy_geometry):
+        raise ValueError("--cka conflicts with --geometry and --off-policy-geometry")
     if args.off_policy_geometry and args.distill_mode != "off_policy" and not args.geometry:
         raise ValueError("--off-policy-geometry applies only to off_policy")
     if args.geometry and args.distill_mode not in ("off_policy", "self_distill", "on_policy") and not adaptive:
         raise ValueError("--geometry applies to off_policy, self_distill, and on_policy only")
-    if any(not math.isfinite(w) or w < 0 for w in (args.mag_weight, args.gram_weight)):
-        raise ValueError("Geometry weights must be finite and nonnegative")
+    if args.cka and args.distill_mode not in ("off_policy", "self_distill", "on_policy") and not adaptive:
+        raise ValueError("--cka applies to off_policy, self_distill, and on_policy only")
+    if any(not math.isfinite(w) or w < 0 for w in (args.mag_weight, args.gram_weight, args.cka_weight)):
+        raise ValueError("Geometry/CKA weights must be finite and nonnegative")
     if not math.isfinite(args.eps) or args.eps <= 0:
         raise ValueError("--eps must be finite and positive")
     if args.do_train and not args.teacher_model_path and legacy_type != "lm" and args.distill_mode not in ("self_distill", "opsd"):
@@ -94,8 +101,8 @@ def validate_mode_args(args):
             raise ValueError("OPSD fixed teacher requires --peft lora")
         if args.teacher_model_path:
             raise ValueError("OPSD fixed teacher uses the student's base model; omit --teacher-model-path")
-        if args.geometry or args.off_policy_geometry:
-            raise ValueError("OPSD ablation uses token divergence only; disable geometry")
+        if args.geometry or args.off_policy_geometry or args.cka:
+            raise ValueError("OPSD ablation uses token divergence only; disable geometry and CKA")
         if not args.disable_lm_loss:
             raise ValueError("OPSD ablation requires --disable-lm-loss")
         if args.kd_loss != "fkl":
