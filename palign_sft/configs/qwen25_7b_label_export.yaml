@@ -1,0 +1,12 @@
+### Merge Qwen2.5-7B-Instruct SFT (Label) LoRA
+model_name_or_path: /mnt/local/aiskylimit_new_nothing/palign_sft/models/Qwen2.5-7B-Instruct
+adapter_name_or_path: output/qwen25-7b-label/lora
+template: qwen
+finetuning_type: lora
+trust_remote_code: true
+
+export_dir: output/qwen25-7b-label/merged
+export_size: 5
+export_device: cpu
+export_legacy_format: false
+

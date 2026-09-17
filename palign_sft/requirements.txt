@@ -1,0 +1,12 @@
+transformers>=4.55.0,<=5.6.0
+accelerate
+peft
+datasets
+jsonlines
+tqdm
+math-verify
+pyyaml
+sentencepiece
+llamafactory
+vllm
+
