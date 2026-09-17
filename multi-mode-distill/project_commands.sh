@@ -11,6 +11,7 @@ export TOKENIZERS_PARALLELISM=false
 
 export CKPT="${CKPT:-$ASSET_ROOT/models/Qwen2.5_1.5B-Instruct}"
 export TEACHER_CKPT="${TEACHER_CKPT:-$ASSET_ROOT/models/Qwen2.5_14B-Instruct}"
+QWEN_RAW_DATA="${QWEN_RAW_DATA:-$ASSET_ROOT/data/raw/Qwen/Qwen2.5-14B-Instruct/generated_train.jsonl}"
 PROCESSED_DATA_ROOT="${PROCESSED_DATA_ROOT:-$ASSET_ROOT/processed_data/ultraInteract-v2}"
 QWEN_DATA_DIR="${QWEN_DATA_DIR:-${DATA_DIR:-$PROCESSED_DATA_ROOT/models/$(basename -- "$CKPT")}}"
 QWEN_RESULTS_ROOT="${QWEN_RESULTS_ROOT:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-v2}"
@@ -22,6 +23,15 @@ export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEX
 # Reserve the student sequence plus only the extra context budget.
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((MAX_LENGTH + T_MAX_PROMPT_LENGTH - MAX_PROMPT_LENGTH))}"
 
+# Process Qwen data before training.
+printf '\n[process] Qwen data: %s\n' "$QWEN_RAW_DATA"
+python tools/process_data_ultraInteract.py \
+    --base-path "$BASE_PATH" --data-dir "$QWEN_RAW_DATA" \
+    --processed-data-dir "$PROCESSED_DATA_ROOT" \
+    --model-path "$CKPT" --model-type qwen \
+    --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
+    --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
+    --dev-num "$DEV_NUM" --seed "$SEED"
 
 MAG_WEIGHT="${MAG_WEIGHT:-2.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-2.0}"
