@@ -110,7 +110,7 @@ python $INFER_SCRIPT \
     --tgt_prefix_mod \
     --encode_output_path "infer/llava_ov-0.5B_${EXP_NAME}" \
     --per_device_eval_batch_size 8 \
-    --image_resolution "low" \
+    --image_resolution "tiny" \
     --load_pretrained_lora True \
     --report_to None
 
