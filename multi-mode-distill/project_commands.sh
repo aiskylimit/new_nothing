@@ -44,8 +44,8 @@ if [[ ! -s "$QWEN_DATA_DIR/train.jsonl" || ( ! -s "$QWEN_DATA_DIR/valid.jsonl" &
     exit 1
 fi
 
-Qwen setting 1: full objective (CE + KD + stronger geometry).
-1. Train synchronously using the existing processed data.
+# Qwen setting 1: full objective (CE + KD + stronger geometry).
+# 1. Train synchronously using the existing processed data.
 printf '\n[full 1/2] Train Qwen: CE + KD + geometry (mag=%s, gram=%s)\n' "$MAG_WEIGHT" "$GRAM_WEIGHT"
 : > "$CHECKPOINT_FILE"
 CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
