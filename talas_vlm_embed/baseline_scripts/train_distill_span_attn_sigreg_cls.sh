@@ -72,14 +72,14 @@ EVAL_SUBSETS=(
 
 
 
-python eval_mmeb_2.py \
+python eval_mmeb.py \
   --model_name "training/FastVLM-0.5B_span_attn_sigreg_cls/checkpoint-epoch-0" \
   --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_span_attn_sigreg_cls" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \
   --pooling eos \
-  --model_backbone llava_qwen2_old \
+  --model_backbone llava_qwen2 \
   --normalize True \
   --bf16 \
   --dataset_name vlm2vec_eval/MMEB-eval \

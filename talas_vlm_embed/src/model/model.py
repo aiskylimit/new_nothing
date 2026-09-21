@@ -10,7 +10,7 @@ import os
 from src.arguments import ModelArguments, TrainingArguments
 from src.model.modules import ModalityGatedPooling
 from src.model.processor import LLAVA_NEXT, QWEN2_VL, PHI3V, get_backbone_name, print_master, QWEN2_5_VL, \
-    backbone2model, QWEN2_VL_TOKENSELECTION, QWEN2_5_VL_TOKENSELECTION, LLAVA_ONEVISION, LLAVA_QWEN2
+    backbone2model, QWEN2_VL_TOKENSELECTION, QWEN2_5_VL_TOKENSELECTION, LLAVA_ONEVISION, LLAVA_QWEN2, LLAVA_ONEVISION_OLD, LLAVA_QWEN2_OLD
 
 from src.arguments import ModelArguments
 from src.model.processor import LLAVA_NEXT, QWEN2_VL, PHI3V, get_backbone_name, print_master, QWEN2_5_VL, \
@@ -119,7 +119,7 @@ class MMEBModel(nn.Module):
                 - image_features: (batch, num_image_tokens, embed_dim), 
                 - attention_matrix: list of (batch, num_heads, num_tokens, num_tokens)
             """
-        elif getattr(self, "model_backbone", None) in [LLAVA_NEXT, LLAVA_ONEVISION]:
+        elif getattr(self, "model_backbone", None) in [LLAVA_NEXT, LLAVA_ONEVISION, LLAVA_ONEVISION_OLD]:
             # print("Encoding input for LLAVA model backbone")
             if hasattr(input, 'pixel_values'):
                 input['pixel_values'] = input['pixel_values'].squeeze(1)
@@ -136,7 +136,7 @@ class MMEBModel(nn.Module):
             pooled_output = self._pooling(last_hidden_state, input['attention_mask'])
             # print("len image features:", None if image_features is None else image_features.shape)
             return pooled_output, image_features, attention_matrix, output_hidden_states
-        elif getattr(self, "model_backbone", None) in [LLAVA_QWEN2, QWEN2_VL]:
+        elif getattr(self, "model_backbone", None) in [LLAVA_QWEN2, QWEN2_VL, LLAVA_QWEN2_OLD]:
             # print("Encoding input for FastVLM model backbone")
             hidden_states = self.encoder(**input, return_dict=True, output_hidden_states=True, output_attentions=True)
             if hasattr(hidden_states, 'batch_image_embeds'):
@@ -269,7 +269,7 @@ class MMEBModel(nn.Module):
                 torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
             )
-        elif model_backbone == LLAVA_ONEVISION:
+        elif model_backbone == LLAVA_ONEVISION or model_backbone == LLAVA_ONEVISION_OLD:
             config._attn_implementation = "eager"
             config.use_cache = False
             config.padding_side = "left"
@@ -324,7 +324,7 @@ class MMEBModel(nn.Module):
                 vis_skip_layer=vis_skip_layer,
             )
         
-        elif model_backbone in [LLAVA_QWEN2]:
+        elif model_backbone in [LLAVA_QWEN2, LLAVA_QWEN2_OLD]:
             config._attn_implementation = "eager"
             base_model = LlavaQwen2ForCausalLM.from_pretrained(
                 model_args.model_name,
@@ -387,7 +387,7 @@ class MMEBModel(nn.Module):
             projector_path = os.path.join(model_name_or_path, "mm_projector.pth")
 
             if os.path.exists(projector_path):
-                if model_args.model_backbone in ["llava_onevision", "llava_next"]:
+                if model_args.model_backbone in ["llava_onevision", "llava_next", "llava_onevision_old"]:
                     lora_model.base_model.model.multi_modal_projector.load_state_dict(
                         torch.load(projector_path)
                     )
@@ -416,7 +416,7 @@ class MMEBModel(nn.Module):
         
         elif model_args.lora:
             print_master(f'Initializing LoRA adapter')
-            if model_args.model_backbone in ["llava_onevision", "llava_next"]:
+            if model_args.model_backbone in ["llava_onevision", "llava_next", "llava_onevision_old"]:
                 base_targets = [t.strip() for t in model_args.lora_target_modules.split(',')]
     
                 # Liệt kê TƯỜNG MINH tất cả modules trong language_model
@@ -546,7 +546,7 @@ class MMEBModel(nn.Module):
         elif model_args.model_backbone == COLPALI:
             base_model = ColPali.from_pretrained(model_args.model_name)
             setattr(base_model, 'config', config)
-        elif model_args.model_backbone == LLAVA_QWEN2:
+        elif model_args.model_backbone == LLAVA_QWEN2 or model_args.model_backbone == LLAVA_QWEN2_OLD:
             config._attn_implementation = "eager"
             base_model = LlavaQwen2ForCausalLM.from_pretrained(
                 model_args.model_name,
@@ -609,7 +609,7 @@ class MMEBModel(nn.Module):
             projector_path = os.path.join(model_name_or_path, "mm_projector.pth")
 
             if os.path.exists(projector_path):
-                if model_args.model_backbone in ["llava_onevision", "llava_next"]:
+                if model_args.model_backbone in ["llava_onevision", "llava_next", "llava_onevision_old"]:
                     lora_model.base_model.model.multi_modal_projector.load_state_dict(
                         torch.load(projector_path)
                     )
@@ -626,7 +626,7 @@ class MMEBModel(nn.Module):
                         repo_id=model_name_or_path,
                         filename="mm_projector.pth",
                     )
-                    if model_args.model_backbone in ["llava_onevision", "llava_next"]:
+                    if model_args.model_backbone in ["llava_onevision", "llava_next", "llava_onevision_old"]:
                         lora_model.base_model.model.multi_modal_projector.load_state_dict(
                             torch.load(projector_path)
                         )

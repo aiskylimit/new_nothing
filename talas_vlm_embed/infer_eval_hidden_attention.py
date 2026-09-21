@@ -514,13 +514,8 @@ def infer_side(
                     desc=f"Infer {side} - {subset} rank{rank}",
                     disable=not is_main_process(),)):
             
-            # if not batch_idx in range(10, 20):
-            #     continue
-            
-            if MAX_INFER_BATCHES == 0:
+            if batch_idx >= MAX_INFER_BATCHES:
                 exit(0)
-            else:
-                MAX_INFER_BATCHES -= 1
 
             input_texts = batch.get("text")
             image_paths = batch.get("image_paths")

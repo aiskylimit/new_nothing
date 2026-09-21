@@ -462,7 +462,7 @@ class TalasJepa(nn.Module):
     def forward(self, model_wrapper, input_data):
         student_model = model_wrapper.model
         student_processor = model_wrapper.get_processor()
-        student_tokenizer = student_processor.tokenizer 
+        student_tokenizer = student_processor.tokenizer
 
         student_qry_input = input_data['qry']
         student_pos_input = input_data['pos']
@@ -539,15 +539,15 @@ class TalasJepa(nn.Module):
             student_hidden_states=student_qry_hidden_states, 
             image_features=student_qry_image_features,
             text_token_counts=num_student_text_qry_tokens, 
-            attention_mask=student_qry_input['attention_mask'], 
+            attention_mask=student_qry_input['attention_mask']
         )
 
         # Trích xuất Representations từ POS
         pos_stu_txt, pos_stu_img, pos_sigreg = self._compute_modality_distill(
             student_hidden_states=student_pos_hidden_states, 
             image_features=student_pos_image_features,
-            text_token_counts=num_student_text_pos_tokens, 
-            attention_mask=student_pos_input['attention_mask'], 
+            text_token_counts=num_student_text_pos_tokens,
+            attention_mask=student_pos_input['attention_mask']
         )
 
         stu_modality_features = []
