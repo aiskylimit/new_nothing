@@ -54,36 +54,38 @@ tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_7B_
 # CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 5 0.02 &
 # # # wait
 
-CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 0 1 1 1.0 1.0 5 0.02 &
-CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 0 1 1.0 1.0 5 0.1 &
-CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 0 1.0 1.0 5 0.1 &
-CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 0 0 1.0 1.0 5 0.1 &
-CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 0 0 1 1.0 1.0 5 0.02 &
-CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_cls.sh 1 0 1 0 1.0 1.0 5 0.02 &
+# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 0 1 1 1.0 1.0 5 0.02 &
+# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 0 1 1.0 1.0 5 0.1 &
+# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 0 1.0 1.0 5 0.1 &
+# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 0 0 1.0 1.0 5 0.1 &
+# CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 0 0 1 1.0 1.0 5 0.02 &
+# CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_cls.sh 1 0 1 0 1.0 1.0 5 0.02 &
+
+CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 0 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 0 1 1.0 0.5 256 0.05 &
+CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 0 1 1.0 0.5 256 0.07 &
+
+CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 0 1.0 1.0 256 0.07 &
+CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 64 0.02 &
+CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 128 0.02 &
+
+CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 1.0 256 0.02 &
+CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 2.0 256 0.02 &
+
+CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 1.0 256 0.02 &
+CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_cls_abaltion_l.sh
+
+CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=4 bash script_full/train_tea_distill_sigreg_grounding.sh 1 1 1 1 1.0 0.5 256 0.02 &
+
+CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=5 bash script_full/train_tea_qwen2-7B_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 256 0.02 &
 
 
-# CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 1.0 5 0.02 &
-# # # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.2 &
-# # # CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.01 &
-# # # CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.1 &
-# # # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.2 &
-# # # wait
-
-CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 1.0 5 0.02 &
-CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 2.0 5 0.02 &
-CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 5 0.02 &
-CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 1.0 5 0.02 &
-
-# # CUDA_VISIBLE_DEVICES=2 bash scripts/train_single_ov_eos_cls.sh &
-# # CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 0.1 6 1&
-# # CUDA_VISIBLE_DEVICES=6 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.05 &
-# # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.01 &
-# # CUDA_VISIBLE_DEVICES=7 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.2 &
-# # CUDA_VISIBLE_DEVICES=5 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 0.5 &
-# CUDA_VISIBLE_DEVICES=2 bash scripts/train_distill_span_propose_llava_ov_cls.sh &
-# CUDA_VISIBLE_DEVICES=3 bash scripts/train_distill_span_propose_llava_ov_cls_2.sh &
-# CUDA_VISIBLE_DEVICES=2 bash scripts/train_distill_simcse_cka_cls.sh &
-# CUDA_VISIBLE_DEVICES=3 bash scripts/train_distill_simcse_cka_vqa.sh &
+CUDA_VISIBLE_DEVICES=6 bash baseline_scripts/train_distill_span_attn_sigreg_cls.sh
+CUDA_VISIBLE_DEVICES=7 bash baseline_scripts/train_distill_ckd_sigreg_cls.sh
 
 wait
 
