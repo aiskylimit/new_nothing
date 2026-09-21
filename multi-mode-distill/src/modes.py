@@ -10,6 +10,12 @@ def geometry_enabled_for_mode(args, mode):
         args.off_policy_geometry and mode == "off_policy")
 
 
+def menger_enabled_for_mode(args, mode):
+    """Menger distillation is defined for the three teacher/reference modes."""
+    return (getattr(args, "menger_weight", 0.0) > 0
+            and mode in ("off_policy", "self_distill", "on_policy"))
+
+
 def validate_mode_args(args):
     from .adaptive import DEPRECATED_ADAPTIVE_ARGUMENTS
     old_flags = [name.replace("_", "-") for name in DEPRECATED_ADAPTIVE_ARGUMENTS
@@ -63,6 +69,8 @@ def validate_mode_args(args):
         raise ValueError("--distill-temperature must be finite and positive")
     args.cka = getattr(args, "cka", False)
     args.cka_weight = getattr(args, "cka_weight", 1.0)
+    args.menger_weight = getattr(args, "menger_weight", 0.0)
+    args.menger_eps = getattr(args, "menger_eps", 1.0e-6)
     uses_generation = args.distill_mode in ("on_policy", "opsd")
     if args.cka and (args.geometry or args.off_policy_geometry):
         raise ValueError("--cka conflicts with --geometry and --off-policy-geometry")
@@ -72,10 +80,13 @@ def validate_mode_args(args):
         raise ValueError("--geometry applies to off_policy, self_distill, and on_policy only")
     if args.cka and args.distill_mode not in ("off_policy", "self_distill", "on_policy") and not adaptive:
         raise ValueError("--cka applies to off_policy, self_distill, and on_policy only")
-    if any(not math.isfinite(w) or w < 0 for w in (args.mag_weight, args.gram_weight, args.cka_weight)):
-        raise ValueError("Geometry/CKA weights must be finite and nonnegative")
+    if any(not math.isfinite(w) or w < 0 for w in (
+            args.mag_weight, args.gram_weight, args.cka_weight, args.menger_weight)):
+        raise ValueError("Geometry/CKA/Menger weights must be finite and nonnegative")
     if not math.isfinite(args.eps) or args.eps <= 0:
         raise ValueError("--eps must be finite and positive")
+    if not math.isfinite(args.menger_eps) or args.menger_eps <= 0:
+        raise ValueError("--menger-eps must be finite and positive")
     if args.do_train and not args.teacher_model_path and legacy_type != "lm" and args.distill_mode not in ("self_distill", "opsd"):
         raise ValueError("Distillation requires --teacher-model-path")
     if legacy_type == "lm" and (uses_generation or args.distill_mode == "self_distill" or args.disable_lm_loss):
