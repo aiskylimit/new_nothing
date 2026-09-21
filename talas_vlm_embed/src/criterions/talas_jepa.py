@@ -391,7 +391,12 @@ class TalasJepa(nn.Module):
 
         batch_size = attention_mask.size(0)
         last_layer_idx = len(student_hidden_states) - 1
-        layers = [0, int(last_layer_idx / 2), int(4 * last_layer_idx / 5), last_layer_idx]
+
+        layer_mapping = self.args.student_layer_mapping
+        if 0 in layer_mapping and last_layer_idx in layer_mapping:
+            layers = [0] + layer_mapping + [last_layer_idx]
+        else:
+            layers = [0, int(last_layer_idx / 2), int(4 * last_layer_idx / 5), last_layer_idx]
         
         stu_img_tokens = {l: [] for l in layers}
         stu_text_reps = []
@@ -436,6 +441,7 @@ class TalasJepa(nn.Module):
             sigreg_erank_loss = 0.0
 
             k_layers = 0
+            num_slides = self.args.num_layers
             for l in layers[1:-1]:
                 k_layers += 1
                 # eos_query = pooling(student_hidden_states[l], attention_mask, 
@@ -445,7 +451,8 @@ class TalasJepa(nn.Module):
                 # total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
 
                 sigreg_erank_loss += self.sketched_participation_ratio_erank(stu_img_tokens[0], 
-                                                                             stu_img_tokens[l])
+                                                                             stu_img_tokens[l], 
+                                                                             num_slices=num_slides)
 
             if self.args.use_sigreg_loss:
                 sigreg_final = sigreg_erank_loss  / max(1, k_layers)
@@ -539,7 +546,7 @@ class TalasJepa(nn.Module):
         pos_stu_txt, pos_stu_img, pos_sigreg = self._compute_modality_distill(
             student_hidden_states=student_pos_hidden_states, 
             image_features=student_pos_image_features,
-            text_token_counts=num_student_text_pos_tokens, 
+            text_token_counts=num_student_text_pos_tokens,
             attention_mask=student_pos_input['attention_mask']
         )
 

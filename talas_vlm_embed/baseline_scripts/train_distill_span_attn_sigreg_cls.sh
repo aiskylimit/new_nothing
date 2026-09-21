@@ -47,7 +47,6 @@ torchrun --standalone \
     --lr_scheduler_type "cosine" \
     --warmup_ratio 0.03 \
     --kd_weight 0.3 \
-    --kd_weight 2.5 \
     --w_cross_modal_loss 2.5 \
     --kd_loss_type "span_attn_sigreg_kd" \
     --image_resolution "low" \
@@ -75,7 +74,7 @@ EVAL_SUBSETS=(
 
 python eval_mmeb_2.py \
   --model_name "training/FastVLM-0.5B_span_attn_sigreg_cls/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs/FastVLM-0.5B_span_attn_sigreg_cls" \
+  --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_span_attn_sigreg_cls" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \

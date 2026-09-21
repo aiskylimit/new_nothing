@@ -205,13 +205,6 @@ class SingleWrapper(nn.Module):
                 "lr": lr
             })
             print("-----------Projector parameters added to optimizer.----------")
-
-        if hasattr(self, 'concept_queries') and self.concept_queries is not None:
-            optimizer.add_param_group({
-                "params": [self.concept_queries],
-                "lr": self.training_args.learning_rate
-            })
-            print("-----------concept_queries parameters added to optimizer.----------")
         
         return optimizer
     

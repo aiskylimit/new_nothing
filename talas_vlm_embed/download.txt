@@ -69,8 +69,8 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/OK-VQA.zip /mnt/local/@PROJECT@/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/MSCOCO.zip /mnt/local/@PROJECT@/talas_vlm_embed/datasets
 --url https://huggingface.co/VoCuc/en_core_web_sm/resolve/main/en_core_web_sm.zip /mnt/local/@PROJECT@/talas_vlm_embed/en_core_web_sm.zip
---url "https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_grounding.tar.gz" /mnt/local/@PROJECT@/talas_vlm_embed/datasets
---url "https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_7B_cls.tar.gz" /mnt/local/@PROJECT@/talas_vlm_embed/datasets
+--url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_grounding.tar.gz /mnt/local/@PROJECT@/talas_vlm_embed/datasets
+--url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_7B_cls.tar.gz /mnt/local/@PROJECT@/talas_vlm_embed/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/RefCOCO/test-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_eval/MMEB-eval/RefCOCO
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/RefCOCO-Matching/test-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_eval/MMEB-eval/RefCOCO-Matching
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/Visual7W-Pointing/test-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_eval/MMEB-eval/Visual7W-Pointing

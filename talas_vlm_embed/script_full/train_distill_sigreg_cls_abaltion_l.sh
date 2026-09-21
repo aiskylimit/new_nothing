@@ -78,8 +78,8 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 
 EXP_NAME="talas_jepa_v2_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
 
-OUTPUT_DIR="training/FastVLM-0.5B_grounding_${EXP_NAME}"
-CACHE_DIR="caching/B3_Qwen2_2B_grounding"
+OUTPUT_DIR="training/FastVLM-0.5B_cls_${EXP_NAME}"
+CACHE_DIR="caching/B3_Qwen2_2B_cls"
 
 echo "============================================================"
 echo "Experiment:"
@@ -102,12 +102,10 @@ echo "============================================================"
 NUM_GPUS_PER_NODE=1
 TRAIN_SCRIPT="train_ddp.py"
 
-#teacher model name not affect training. Still keep B3_Qwen2_2B but change the cache_dir to B3_Qwen2_7B
-
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
     --model_name models/FastVLM-0.5B \
-    --teacher_model_name "models/B3_Qwen2_2B" \
+    --teacher_model_name "raghavlite/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
     --lora_r 64 \
@@ -118,7 +116,7 @@ torchrun --standalone \
     --model_backbone "llava_qwen2" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
-    --subset_name "MSCOCO" \
+    --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
@@ -151,7 +149,8 @@ torchrun --standalone \
     --kd_weight "$KD_WEIGHT" \
     --sigreg_weight "$SIGREG_WEIGHT" \
     --num_layers "$NUM_LAYER" \
-    --d_cse_temperature "$D_TAU"
+    --d_cse_temperature "$D_TAU" \
+    --student_layer_mapping 0 18 21 24 \
 
 
 # ============================================================
@@ -179,36 +178,38 @@ echo "============================================================"
 # ============================================================
 
 SUBSETS=(
-    MSCOCO
-    RefCOCO 
-    RefCOCO-Matching
-    Visual7W-Pointing
+    "ImageNet-1K"
+    "N24News"
+    "HatefulMemes"
+    "VOC2007"
+    "SUN397"
+    "Place365"
+    "ImageNet-A"
+    "ImageNet-R"
+    "ObjectNet"
+    "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs_v5/FastVLM-0.5B_grounding_${EXP_NAME}"
+EVAL_OUTPUT="./MMEB-eval_outputs_v5/FastVLM-0.5B_cls_${EXP_NAME}/"
 
-for i in {1..3}; do
-    echo "========== Run $i / 3 =========="
-
-    python eval_mmeb.py \
-        --model_name "$MODEL" \
-        --encode_output_path "${EVAL_OUTPUT}_batch_$((8 - i))/" \
-        --lora True \
-        --lora_r 64 \
-        --lora_alpha 64 \
-        --pooling eos \
-        --model_backbone llava_qwen2 \
-        --normalize True \
-        --bf16 \
-        --dataset_name vlm2vec_eval/MMEB-eval \
-        --subset_name "${SUBSETS[@]}" \
-        --dataset_split test \
-        --per_device_eval_batch_size $((8 - i)) \
-        --image_dir eval_images/ \
-        --tgt_prefix_mod \
-        --load_pretrained_lora True \
-        --report_to none
-done
+python eval_mmeb.py \
+    --model_name "$MODEL" \
+    --encode_output_path "$EVAL_OUTPUT" \
+    --lora True \
+    --lora_r 64 \
+    --lora_alpha 64 \
+    --pooling eos \
+    --model_backbone llava_qwen2 \
+    --normalize True \
+    --bf16 \
+    --dataset_name vlm2vec_eval/MMEB-eval \
+    --subset_name "${SUBSETS[@]}" \
+    --dataset_split test \
+    --per_device_eval_batch_size 32 \
+    --image_dir eval_images/ \
+    --tgt_prefix_mod \
+    --load_pretrained_lora True \
+    --report_to none
 
 echo ""
 echo "============================================================"
@@ -222,6 +223,7 @@ echo ""
 echo "Eval:"
 echo "  $EVAL_OUTPUT"
 echo "============================================================"
+
 
 # ============================================================
 # 4. Collect result

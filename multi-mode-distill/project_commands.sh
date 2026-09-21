@@ -44,25 +44,25 @@ if [[ ! -s "$QWEN_DATA_DIR/train.jsonl" || ( ! -s "$QWEN_DATA_DIR/valid.jsonl" &
     exit 1
 fi
 
-# Qwen setting 1: full objective (CE + KD + stronger geometry).
-# 1. Train synchronously using the existing processed data.
-printf '\n[full 1/2] Train Qwen: CE + KD + geometry (mag=%s, gram=%s)\n' "$MAG_WEIGHT" "$GRAM_WEIGHT"
-: > "$CHECKPOINT_FILE"
-CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
-    SAVE_PATH="$QWEN_RESULTS_ROOT/full_mag${MAG_WEIGHT}_gram${GRAM_WEIGHT}" \
-    KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 CKA=1 \
-    MAG_WEIGHT="$MAG_WEIGHT" GRAM_WEIGHT="$GRAM_WEIGHT" \
-    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
-    bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
+# # Qwen setting 1: full objective (CE + KD + stronger geometry).
+# # 1. Train synchronously using the existing processed data.
+# printf '\n[full 1/2] Train Qwen: CE + KD + geometry (mag=%s, gram=%s)\n' "$MAG_WEIGHT" "$GRAM_WEIGHT"
+# : > "$CHECKPOINT_FILE"
+# CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
+#     SAVE_PATH="$QWEN_RESULTS_ROOT/full_mag${MAG_WEIGHT}_gram${GRAM_WEIGHT}" \
+#     KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 CKA=1 \
+#     MAG_WEIGHT="$MAG_WEIGHT" GRAM_WEIGHT="$GRAM_WEIGHT" \
+#     FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+#     bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
 
-# 2. Evaluate this run's final checkpoint only after training succeeds.
-LORA_PATH="$(cat "$CHECKPOINT_FILE")"
-[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
-printf '\n[full 2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
-CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
-    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
-    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
-    bash scripts/eval/eval.sh run
+# # 2. Evaluate this run's final checkpoint only after training succeeds.
+# LORA_PATH="$(cat "$CHECKPOINT_FILE")"
+# [[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
+# printf '\n[full 2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
+# CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
+#     SAVE_PATH="$(dirname -- "$LORA_PATH")" \
+#     EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
+#     bash scripts/eval/eval.sh run
 
 # Qwen setting 2: remove geometry (CE + KD only).
 # 1. Train synchronously using the existing processed data.
@@ -102,3 +102,22 @@ CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
 #     SAVE_PATH="$(dirname -- "$LORA_PATH")" \
 #     EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
 #     bash scripts/eval/eval.sh run
+
+# Ablation fixed OFF/SELF/ON exposure, without adaptive ratio updates.
+# run_no_adaptive.sh performs both training and final-checkpoint evaluation.
+NO_ADAPTIVE_OFF_RATIO="${NO_ADAPTIVE_OFF_RATIO:-${OFF_POLICY_RATIO:-0.90}}"
+NO_ADAPTIVE_SELF_RATIO="${NO_ADAPTIVE_SELF_RATIO:-${SELF_DISTILL_RATIO:-0.05}}"
+NO_ADAPTIVE_ON_RATIO="${NO_ADAPTIVE_ON_RATIO:-${ON_POLICY_RATIO:-0.05}}"
+NO_ADAPTIVE_SAVE_PATH="${NO_ADAPTIVE_SAVE_PATH:-$QWEN_RESULTS_ROOT/no_adaptive_off${NO_ADAPTIVE_OFF_RATIO}_self${NO_ADAPTIVE_SELF_RATIO}_on${NO_ADAPTIVE_ON_RATIO}}"
+
+printf '\n[no-adaptive] Train + evaluate fixed-ratio Qwen: OFF=%s, SELF=%s, ON=%s\n' \
+    "$NO_ADAPTIVE_OFF_RATIO" "$NO_ADAPTIVE_SELF_RATIO" "$NO_ADAPTIVE_ON_RATIO"
+CUDA_DEVICES=4,5,6,7 \
+    CKPT="$CKPT" TEACHER_CKPT="$TEACHER_CKPT" DATA_DIR="$QWEN_DATA_DIR" \
+    SAVE_PATH="$NO_ADAPTIVE_SAVE_PATH" \
+    OFF_POLICY_RATIO="$NO_ADAPTIVE_OFF_RATIO" \
+    SELF_DISTILL_RATIO="$NO_ADAPTIVE_SELF_RATIO" \
+    ON_POLICY_RATIO="$NO_ADAPTIVE_ON_RATIO" \
+    KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 CKA=0 \
+    MAG_WEIGHT="$MAG_WEIGHT" GRAM_WEIGHT="$GRAM_WEIGHT" \
+    bash "$BASE_PATH/run_no_adaptive.sh" "$@"

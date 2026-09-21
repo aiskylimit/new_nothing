@@ -75,6 +75,10 @@ wget -c "https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/image
 wget -c "https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/OK-VQA.zip" -P "datasets"
 wget -c "https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/MSCOCO.zip" -P "datasets"
 wget -c "https://huggingface.co/VoCuc/en_core_web_sm/resolve/main/en_core_web_sm.zip" -O "en_core_web_sm.zip"
+
+wget -c "https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_grounding.tar.gz" -P "datasets"
+wget -c "https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_7B_cls.tar.gz" -P "datasets"
+
 # models
 
 hf download "raghavlite/B3_Qwen2_2B" --local-dir "models/B3_Qwen2_2B"
