@@ -191,7 +191,7 @@ SUBSETS=(
     # "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/Qwen2_7B_FastVLM-0.5B_cls_${EXP_NAME}"
+EVAL_OUTPUT="./MMEB-eval_outputs_v5/Qwen2_7B_FastVLM-0.5B_cls_${EXP_NAME}"
 
 for i in {1..3}; do
     echo "========== Run $i / 3 =========="
@@ -233,5 +233,5 @@ echo "============================================================"
 # 4. Collect result
 # ============================================================
 
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
-python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v5}"
+python json_filter.py ./MMEB-eval_outputs_v5 "${JSON_FILTER_DESTINATION}" --overwrite

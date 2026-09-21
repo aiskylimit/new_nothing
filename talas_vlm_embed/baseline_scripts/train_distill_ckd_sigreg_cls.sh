@@ -69,7 +69,7 @@ EVAL_SUBSETS=(
 
 python eval_mmeb_2.py \
   --model_name "training/FastVLM-0.5B_ckd_sigreg_cls/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs/FastVLM-0.5B_ckd_sigreg_cls" \
+  --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_ckd_sigreg_cls" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \
