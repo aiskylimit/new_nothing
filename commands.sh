@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
+#i talas-vlm-embed.txt
 #multi-mode-distill
 #v2
 
