@@ -99,7 +99,6 @@ class SingleWrapper(nn.Module):
         self.student_hidden_dim = self.model_args.student_hidden_dim
         self.teacher_hidden_dim = self.model_args.teacher_hidden_dim
         self.set_projector()
-        self.concept_queries = nn.Parameter(torch.randn(8, self.student_hidden_dim))
     
     def _load_model(self):
         print("Load single model with lora rank:", self.model_args.lora_r)

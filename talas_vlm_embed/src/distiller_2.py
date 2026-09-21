@@ -94,6 +94,9 @@ class Distiller(nn.Module):
         super(Distiller, self).__init__()
         self.model_args = model_args
         self.training_args = training_args
+
+        self.model_args.student_backbone = model_args.model_backbone
+
         self.student = self._load_student()
         self.teacher = self._load_teacher()
         self.student_hidden_dim = self.model_args.student_hidden_dim
@@ -313,7 +316,7 @@ class DistillationCollator:
         if self.batch_size is not None and bs < self.batch_size:
             raise RuntimeError(f"Expected batch size {self.batch_size}, but got {bs}.")
         
-        process_student_fn = process_vlm_inputs_fns[self.model_args.model_backbone]
+        process_student_fn = process_vlm_inputs_fns[self.model_args.student_backbone]
         process_teacher_fn = process_vlm_inputs_fns[self.model_args.teacher_backbone]
         
         processed_student_qry_inputs = process_student_fn(student_qry_inputs, processor=self.student_processor, max_length=self.data_args.max_len)

@@ -95,13 +95,36 @@ class IndexedDataset(Dataset):
 
 
 class StrideDistributedSampler(Sampler):
-    def __init__(self, dataset):
+    def __init__(self, dataset, shuffle=False, seed=42):
         self.dataset = dataset
         self.rank = dist.get_rank() if dist.is_initialized() else 0
         self.world_size = dist.get_world_size() if dist.is_initialized() else 1
 
+        self.shuffle = shuffle
+        self.seed = seed
+        self.epoch = 0
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
     def __iter__(self):
-        return iter(range(self.rank, len(self.dataset), self.world_size))
+        n = len(self.dataset)
+
+        if self.shuffle:
+            generator = torch.Generator()
+            generator.manual_seed(self.seed + self.epoch)
+
+            indices = torch.randperm(
+                n,
+                generator=generator,
+            ).tolist()
+        else:
+            indices = list(range(n))
+
+        # Chia theo stride sau khi shuffle
+        indices = indices[self.rank::self.world_size]
+
+        return iter(indices)
 
     def __len__(self):
         total = len(self.dataset)
@@ -500,7 +523,7 @@ def infer_side(
                     disable=not is_main_process(),)):
             
             if batch_idx >= MAX_INFER_BATCHES:
-                break
+                exit(0)
 
             input_texts = batch.get("text")
             image_paths = batch.get("image_paths")
@@ -516,6 +539,7 @@ def infer_side(
 
                 num_image_tokens = count_image_tokens(image_features, local_idx)
                 num_text_tokens = count_text_tokens(model_inputs, special_ids_tensor, local_idx)
+
                 num_valid_tokens = num_image_tokens + num_text_tokens
                 token_slice = get_clean_token_slice(
                     model_inputs["attention_mask"][local_idx],
