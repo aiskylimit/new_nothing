@@ -95,13 +95,36 @@ class IndexedDataset(Dataset):
 
 
 class StrideDistributedSampler(Sampler):
-    def __init__(self, dataset):
+    def __init__(self, dataset, shuffle=False, seed=42):
         self.dataset = dataset
         self.rank = dist.get_rank() if dist.is_initialized() else 0
         self.world_size = dist.get_world_size() if dist.is_initialized() else 1
 
+        self.shuffle = shuffle
+        self.seed = seed
+        self.epoch = 0
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
     def __iter__(self):
-        return iter(range(self.rank, len(self.dataset), self.world_size))
+        n = len(self.dataset)
+
+        if self.shuffle:
+            generator = torch.Generator()
+            generator.manual_seed(self.seed + self.epoch)
+
+            indices = torch.randperm(
+                n,
+                generator=generator,
+            ).tolist()
+        else:
+            indices = list(range(n))
+
+        # Chia theo stride sau khi shuffle
+        indices = indices[self.rank::self.world_size]
+
+        return iter(indices)
 
     def __len__(self):
         total = len(self.dataset)
@@ -337,17 +360,9 @@ def append_unique(values, value):
 
 
 def load_eval_rows_for_mapping(data_args, model_args, subset):
-    # eval_data = load_dataset(
-    #     data_args.dataset_name,
-    #     subset,
-    #     split=data_args.dataset_split,
-    # )
     eval_data = load_dataset(
-        "parquet",
-        data_files={
-            data_args.dataset_split:
-                f"{data_args.dataset_name}/{subset}/{data_args.dataset_split}-00000-of-00001.parquet"
-        },
+        data_args.dataset_name,
+        subset,
         split=data_args.dataset_split,
     )
     if (subset == "WebQA" or subset == "EDIS") and "qry_text" in eval_data.column_names and model_args.model_backbone == "llava_qwen2":
@@ -490,7 +505,7 @@ def infer_side(
     special_ids = get_special_ids_for_text_count(tokenizer)
     special_ids_tensor = torch.tensor(sorted(special_ids), device=device, dtype=torch.long)
 
-    MAX_INFER_BATCHES = 60
+    MAX_INFER_BATCHES = 50
 
     with torch.no_grad():
         for batch_idx, (sample_indices, batch) in enumerate(
@@ -499,8 +514,13 @@ def infer_side(
                     desc=f"Infer {side} - {subset} rank{rank}",
                     disable=not is_main_process(),)):
             
-            if batch_idx >= MAX_INFER_BATCHES:
-                break
+            # if not batch_idx in range(10, 20):
+            #     continue
+            
+            if MAX_INFER_BATCHES == 0:
+                exit(0)
+            else:
+                MAX_INFER_BATCHES -= 1
 
             input_texts = batch.get("text")
             image_paths = batch.get("image_paths")
@@ -516,6 +536,7 @@ def infer_side(
 
                 num_image_tokens = count_image_tokens(image_features, local_idx)
                 num_text_tokens = count_text_tokens(model_inputs, special_ids_tensor, local_idx)
+
                 num_valid_tokens = num_image_tokens + num_text_tokens
                 token_slice = get_clean_token_slice(
                     model_inputs["attention_mask"][local_idx],

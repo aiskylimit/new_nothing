@@ -4,14 +4,16 @@
 NUM_GPUS_PER_NODE=1
 
 # Đường dẫn tới file script training của bạn
-TRAIN_SCRIPT="train_distill_ddp.py"
+TRAIN_SCRIPT="train_distill_ddp_2.py"
+
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 # =========================================================================
 # Dùng torchrun để khởi chạy
 # =========================================================================
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name models/FastVLM-0.5B \
+    --model_name "models/llava-onevision-qwen2-0.5b-ov-hf" \
     --teacher_model_name "models/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
@@ -20,15 +22,15 @@ torchrun --standalone \
     --teacher_lora_r 8 \
     --teacher_pooling "eos" \
     --teacher_backbone "qwen2_vl" \
-    --model_backbone "llava_qwen2" \
+    --model_backbone "llava_onevision_old" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
-    --output_dir "training/FastVLM-0.5B_simcse_cka_cls_tau1" \
-    --per_device_train_batch_size 16 \
+    --output_dir "training/llava_ov-0.5B_ckd_sigreg_cls" \
+    --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -40,14 +42,13 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --teacher_normalize True \
-    --lr_scheduler_type "constant" \
-    --warmup_ratio 0.05 \
-    --kd_weight 1.0 \
-    --kd_loss_type "simcse_cka_loss" \
-    --image_resolution "low" \
-    --num_self_kd_layers 3 \
-    --projector_lr 5e-5 \
-    --report_to None
+    --lr_scheduler_type "cosine" \
+    --warmup_ratio 0.03 \
+    --kd_weight 0.3 \
+    --kd_loss_type "ckd_sigreg_kd" \
+    --image_resolution "tiny" \
+    --projector_config_path "./config/projector_config_emo.json" \
+    --projector_lr 5e-4 
 
 
 EVAL_SUBSETS=(
@@ -65,21 +66,22 @@ EVAL_SUBSETS=(
 
 
 
-python eval_mmeb.py \
-  --model_name "training/FastVLM-0.5B_simcse_cka_cls_tau1/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_simcse_cka_cls_tau1" \
+python eval_mmeb_2.py \
+  --model_name "training/llava_ov-0.5B_ckd_sigreg_cls/checkpoint-epoch-0" \
+  --encode_output_path "./MMEB-eval_outputs/llava_ov-0.5B_ckd_sigreg_cls" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \
   --pooling eos \
-  --model_backbone llava_qwen2 \
+  --model_backbone llava_onevision_old \
   --normalize True \
   --bf16 \
   --dataset_name vlm2vec_eval/MMEB-eval \
   --subset_name "${EVAL_SUBSETS[@]}" \
   --dataset_split test \
-  --per_device_eval_batch_size 16 \
+  --per_device_eval_batch_size 4 \
   --image_dir eval_images/ \
+  --image_resolution "low" \
   --tgt_prefix_mod \
   --load_pretrained_lora True \
   --report_to none

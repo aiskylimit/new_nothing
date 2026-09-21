@@ -24,7 +24,6 @@ from src.model.vlm_backbone.qwen2_vl_tokenselection import \
     Qwen2VLForConditionalGeneration as Qwen2VLTokenSelectionForConditionalGeneration, \
     Qwen2VLProcessor as Qwen2VLTokenSelectionProcessor
 from src.model.vlm_backbone.internvideo2.modeling_internvideo2 import InternVideo2_Stage2
-
 from src.model.llava.model.language_model.llava_qwen import LlavaQwen2ForCausalLM
 from src.model.llava.processing_fastvlm import FastVLMProcessor, FastVLMProcessor2
 from transformers import AutoTokenizer, AutoModel
@@ -35,6 +34,7 @@ from peft import PeftConfig
 PHI_IMAGE_TOKEN_MAX_INPUT_ID = int(1e9)
 LLAVA_IMAGE_TOKEN_ID = 32000
 LLAVA_ONEVISION_IMAGE_TOKEN_ID = 151646
+QWEN3_VL_IMAGE_TOKEN_ID = 151655
 
 PHI3V = 'phi3_v'
 LLAVA_NEXT = 'llava_next'
@@ -50,6 +50,10 @@ GME = 'gme'  # QWEN2-VL
 LamRA = 'lamra'  # QWEN2-VL
 COLPALI = 'colpali'  # PaliGemma-3B
 LLAVA_QWEN2 = 'llava_qwen2'
+
+LLAVA_QWEN2_OLD = 'llava_qwen2_old'
+LLAVA_ONEVISION_OLD = 'llava_onevision_old'
+
 MODEL2BACKBONE = {  # keys are from hf_config.model_type or manually added if not provided
     'phi3_v': PHI3V,
     'llava_next': LLAVA_NEXT,
@@ -96,6 +100,7 @@ VLM_VIDEO_TOKENS = {
     LamRA: "<|video_pad|>",
     INTERNVIDEO2: "",
     LLAVA_QWEN2: ""
+
 }
 
 backbone2model = {
@@ -108,7 +113,7 @@ backbone2model = {
     QWEN2_VL_TOKENSELECTION: Qwen2VLTokenSelectionForConditionalGeneration,
     QWEN2_5_VL_TOKENSELECTION: Qwen2_5_VL_TokenSelectionForConditionalGeneration,
     INTERNVIDEO2: InternVideo2_Stage2,
-    LLAVA_QWEN2: LlavaQwen2ForCausalLM
+    LLAVA_QWEN2: LlavaQwen2ForCausalLM,
 }
 
 def expand2square(pil_img, background_color):
@@ -162,7 +167,7 @@ def load_processor(model_args, data_args=None):
             trust_remote_code=True,
             tokenizer=tokenizer
         )
-    elif model_args.model_backbone == LLAVA_ONEVISION:
+    elif model_args.model_backbone == LLAVA_ONEVISION or model_args.model_backbone == LLAVA_ONEVISION_OLD:
         from src.model.vlm_backbone.llava_onevision.processing_llava_onevision import LlavaOnevisionProcessor
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
@@ -269,7 +274,7 @@ def load_processor(model_args, data_args=None):
     elif model_args.model_backbone == COLPALI:
         from transformers import AutoProcessor
         processor = ColPaliProcessor.from_pretrained(model_args.model_name)
-    elif model_args.model_backbone == LLAVA_QWEN2:
+    elif model_args.model_backbone == LLAVA_QWEN2 or model_args.model_backbone == LLAVA_QWEN2_OLD:
         print("Processor load here for LLAVA-QWEN2")
         from transformers import CLIPImageProcessor, AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
@@ -833,6 +838,79 @@ def Intern_VL3_process_fn(model_inputs: dict, processor, max_length=None, IMG_ST
     return model_inputs
 
 
+def FastVLM_old_process_fn(model_inputs: dict, processor: FastVLMProcessor | FastVLMProcessor2 , max_length=None, square_padding=False):
+    texts, visual_inputs = model_inputs['text'], model_inputs['images']
+    # print(f'This process_fn is for FastVLM_old, which is deprecated. Please use FastVLM_process_fn instead.')
+    inputs = processor(
+        images=visual_inputs,
+        texts=texts,
+    )
+    return inputs
+
+
+def Llava_ONEVISION_old_process_fn(model_inputs: dict, processor, max_length=None):
+    texts = model_inputs["text"]
+    images = model_inputs["images"]
+
+    # Trường hợp không có ảnh nào
+    if all(img is None or (isinstance(img, list) and all(i is None for i in img)) for img in images):
+        inputs = processor(
+            images=None,
+            text=texts,
+            return_tensors="pt",
+            max_length=max_length,
+            truncation=True,
+            padding=True,
+        )
+        batch_encoding = {
+            "input_ids": inputs["input_ids"].long(),
+            "attention_mask": inputs["attention_mask"].long(),
+            "texts": texts,
+            "images": images,
+        }
+        return batch_encoding
+
+    inputs = processor(
+        images=images,
+        text=texts,
+        return_tensors="pt",
+        max_length=max_length,
+        truncation=True,
+        padding=True,
+        input_data_format=ChannelDimension.LAST,  # giữ format chuẩn (H, W, C)
+    )
+
+    image_sizes = []
+    for img_size in inputs["image_sizes"]:
+        if isinstance(img_size, (list, tuple)):
+            if len(img_size) == 2:
+                image_sizes.append(img_size)
+            elif len(img_size) == 1 and len(img_size[0]) == 2:
+                image_sizes.append(img_size[0])
+            else:
+                raise ValueError(f"Unexpected image_sizes format: {img_size}")
+        elif hasattr(img_size, "shape"):
+            if img_size.shape == (1, 2):
+                image_sizes.append(img_size[0])
+            elif img_size.shape == (2,):
+                image_sizes.append(img_size)
+            else:
+                raise ValueError(f"Unexpected image_sizes shape: {img_size.shape}")
+        else:
+            raise ValueError(f"Unknown image_sizes type: {type(img_size)}")
+
+    batch_encoding = {
+        "input_ids": inputs["input_ids"].long(),
+        "attention_mask": inputs["attention_mask"].long(),
+        "texts": texts,
+        "images": images,
+        "pixel_values": inputs["pixel_values"],   # đã được pad (batch_size, max_patches, C, H, W)
+        # "image_sizes": image_sizes,
+        "image_sizes": torch.tensor(np.array(image_sizes)).long(),
+    }
+    # print("Last 10 input_ids:", batch_encoding["input_ids"][:, -10:])
+    return batch_encoding
+
 process_vlm_inputs_fns = {
     PHI3V: Phi3V_process_fn,
     LLAVA_NEXT: Llava_NEXT_process_fn,
@@ -846,5 +924,7 @@ process_vlm_inputs_fns = {
     LamRA: Gme_process_fn,
     COLPALI: ColPali_process_fn,
     LLAVA_ONEVISION: Llava_ONEVISION_process_fn,
+    LLAVA_ONEVISION_OLD: Llava_ONEVISION_old_process_fn,
     LLAVA_QWEN2: FastVLM_process_fn,
+    LLAVA_QWEN2_OLD: FastVLM_old_process_fn,
 }

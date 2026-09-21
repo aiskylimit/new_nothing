@@ -4,7 +4,9 @@
 NUM_GPUS_PER_NODE=1
 
 # Đường dẫn tới file script training của bạn
-TRAIN_SCRIPT="train_distill_ddp.py"
+TRAIN_SCRIPT="train_distill_ddp_2.py"
+
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 # =========================================================================
 # Dùng torchrun để khởi chạy
@@ -20,18 +22,18 @@ torchrun --standalone \
     --teacher_lora_r 8 \
     --teacher_pooling "eos" \
     --teacher_backbone "qwen2_vl" \
-    --model_backbone "llava_qwen2" \
+    --model_backbone "llava_qwen2_old" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
-    --percent_data 1.0 \
-    --output_dir "training/FastVLM-0.5B_simcse_cka_vqa_tau1" \
-    --per_device_train_batch_size 16 \
+    --percent_data 0.3 \
+    --output_dir "training/FastVLM-0.5B_em_sigreg_vqa" \
+    --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
-    --num_train_epochs 1 \
+    --num_train_epochs 2 \
     --bf16 \
     --save_total_limit 5 \
     --logging_steps 1 \
@@ -40,37 +42,38 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --teacher_normalize True \
-    --lr_scheduler_type "constant" \
-    --warmup_ratio 0.05 \
-    --kd_weight 1.0 \
-    --kd_loss_type "simcse_cka_loss" \
+    --lr_scheduler_type "cosine" \
+    --warmup_ratio 0.03 \
+    --kd_weight 0.3 \
+    --kd_loss_type "em_sigreg_kd" \
     --image_resolution "low" \
-    --num_self_kd_layers 3 \
-    --projector_lr 5e-5 \
-    --report_to None
+    --projector_config_path "./config/projector_config_emo.json" \
+    --projector_lr 5e-5
 
 
-SUBSETS=(
+EVAL_SUBSETS=(
   "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W"
   "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
 
-python eval_mmeb.py \
-    --model_name "training/FastVLM-0.5B_simcse_cka_vqa_tau1/checkpoint-epoch-0" \
-    --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_simcse_cka_vqa_tau1" \
-    --lora True \
-    --lora_r 64 \
-    --lora_alpha 64 \
-    --pooling eos \
-    --model_backbone llava_qwen2 \
-    --normalize True \
-    --bf16 \
-    --dataset_name vlm2vec_eval/MMEB-eval \
-    --subset_name "${SUBSETS[@]}" \
-    --dataset_split test \
-    --per_device_eval_batch_size 16 \
-    --image_dir eval_images/ \
-    --tgt_prefix_mod \
-    --load_pretrained_lora True \
-    --report_to none
+
+python eval_mmeb_2.py \
+  --model_name "training/FastVLM-0.5B_em_sigreg_vqa/checkpoint-epoch-0" \
+  --encode_output_path "./MMEB-eval_outputs/FastVLM-0.5B_em_sigreg_vqa" \
+  --lora True \
+  --lora_r 64 \
+  --lora_alpha 64 \
+  --pooling eos \
+  --model_backbone llava_qwen2_old \
+  --normalize True \
+  --bf16 \
+  --dataset_name vlm2vec_eval/MMEB-eval \
+  --subset_name "${EVAL_SUBSETS[@]}" \
+  --dataset_split test \
+  --per_device_eval_batch_size 4 \
+  --image_dir eval_images/ \
+  --image_resolution "low" \
+  --tgt_prefix_mod \
+  --load_pretrained_lora True \
+  --report_to none
