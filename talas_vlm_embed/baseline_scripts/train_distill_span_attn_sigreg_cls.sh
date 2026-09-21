@@ -4,7 +4,7 @@
 NUM_GPUS_PER_NODE=1
 
 # Đường dẫn tới file script training của bạn
-TRAIN_SCRIPT="train_distill_ddp_2.py"
+TRAIN_SCRIPT="train_distill_ddp.py"
 
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
@@ -24,7 +24,7 @@ torchrun --standalone \
     --teacher_lora_r 8 \
     --teacher_pooling "eos" \
     --teacher_backbone "qwen2_vl" \
-    --model_backbone "llava_qwen2_old" \
+    --model_backbone "llava_qwen2" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
