@@ -394,7 +394,7 @@ class TalasJepa(nn.Module):
 
         layer_mapping = self.args.student_layer_mapping
         if 0 in layer_mapping and last_layer_idx in layer_mapping:
-            layers = [0] + layer_mapping + [last_layer_idx]
+            layers = layer_mapping
         else:
             layers = [0, int(last_layer_idx / 2), int(4 * last_layer_idx / 5), last_layer_idx]
         
