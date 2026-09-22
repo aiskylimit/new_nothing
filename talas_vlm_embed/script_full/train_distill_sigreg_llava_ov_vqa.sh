@@ -185,7 +185,7 @@ EVAL_OUTPUT="./MMEB-eval_outputs_v5/llava_ov-0.5B_vqa_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
-    --encode_output_path "${EVAL_OUTPUT}_1" \
+    --encode_output_path "${EVAL_OUTPUT}_3" \
     --lora True \
     --lora_r 64 \
     --lora_alpha 64 \
@@ -196,7 +196,7 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 8 \
+    --per_device_eval_batch_size 7 \
     --image_dir eval_images/ \
     --image_resolution "low" \
     --tgt_prefix_mod \
@@ -205,7 +205,7 @@ python eval_mmeb.py \
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
-    --encode_output_path "${EVAL_OUTPUT}_2" \
+    --encode_output_path "${EVAL_OUTPUT}_5" \
     --lora True \
     --lora_r 64 \
     --lora_alpha 64 \
@@ -216,7 +216,7 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 8 \
+    --per_device_eval_batch_size 6 \
     --image_dir eval_images/ \
     --image_resolution "low" \
     --tgt_prefix_mod \
