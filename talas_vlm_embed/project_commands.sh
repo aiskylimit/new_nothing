@@ -63,19 +63,19 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 # CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 0 1 1 1.0 0.5 256 0.02 &
 # CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 0 1 1.0 0.5 256 0.05 &
-# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_vqa.sh 1 1 1 1 1.0 0.5 256 0.02 &
 # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 0 1 1.0 0.5 256 0.07 &
 
 # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 0 1.0 1.0 256 0.07 &
 # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 64 0.02 &
-# CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.00 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.00 0.5 256 0.02 &
 # CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_cls.sh 1 1 1 1 1.0 0.5 128 0.02 &
 
-CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 1.0 256 0.02 &
+# CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 1.0 256 0.02 &
 # CUDA_VISIBLE_DEVICES=2 bash script_full/train_distill_sigreg_llava_ov_cls.sh 1 1 1 1 1.0 2.0 256 0.02 &
 CUDA_VISIBLE_DEVICES=1 bash script_full/train_distill_sigreg_llava_ov_cls_bz16.sh 1 1 1 1 1.0 1.0 256 0.02 &
 
-# CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 1.0 256 0.02 &
+CUDA_VISIBLE_DEVICES=3 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 1.0 256 0.02 &
 # CUDA_VISIBLE_DEVICES=0 bash script_full/train_distill_sigreg_cls_abaltion_l.sh &
 
 # CUDA_VISIBLE_DEVICES=4 bash script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 0.5 256 0.02 &
