@@ -1,4 +1,4 @@
-#i reasoning-velocity-distill.txt
+#i multi-mode-distill-eval.txt
 #talas-7b
 #v2
 
