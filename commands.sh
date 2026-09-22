@@ -24,7 +24,7 @@ export NCCL_DEBUG=WARN
 
 cd ./talas_vlm_embed
 tree -L 2 training
-# bash ./project_commands.sh
+bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
 # cd ./multi-mode-distill
