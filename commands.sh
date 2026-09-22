@@ -1,4 +1,4 @@
-#2 -0-5
+#1 +10
 #test
 #v2
 
@@ -23,7 +23,7 @@ export NCCL_DEBUG=WARN
 
 
 cd ./talas_vlm_embed
-ls training
+tree -L 2 training
 # bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
