@@ -1,4 +1,4 @@
-#1 +120
+#i reasoning-velocity-distill.txt
 #talas-7b
 #v2
 
