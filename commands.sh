@@ -1,5 +1,5 @@
-#2 -0-10
-#test
+#1 +10
+#talas-r
 #v2
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -23,8 +23,8 @@ export NCCL_DEBUG=WARN
 
 
 cd ./talas_vlm_embed
-tree -L 2 training
-# bash ./project_commands.sh
+# tree -L 2 training
+bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
 # cd ./multi-mode-distill
