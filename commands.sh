@@ -1,5 +1,5 @@
 #1 +30
-#talas-rerun
+#talas-cls7b
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -8,6 +8,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+kill -9 43144 47754
 # sleep 2
 nvidia-smi
 
