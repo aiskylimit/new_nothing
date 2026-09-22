@@ -1,7 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/MSCOCO/test-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_eval/MMEB-eval/MSCOCO
-
+#1 +120
 #eval-grounding
 #v1
 
