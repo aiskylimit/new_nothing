@@ -23,28 +23,28 @@ export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEX
 # Reserve the student sequence plus only the extra context budget.
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((MAX_LENGTH + T_MAX_PROMPT_LENGTH - MAX_PROMPT_LENGTH))}"
 
-# # Process Qwen data before training.
-# printf '\n[process] Qwen data: %s\n' "$QWEN_RAW_DATA"
-# python tools/process_data_ultraInteract.py \
-#     --base-path "$BASE_PATH" --data-dir "$QWEN_RAW_DATA" \
-#     --processed-data-dir "$PROCESSED_DATA_ROOT" \
-#     --model-path "$CKPT" --model-type qwen \
-#     --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
-#     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
-#     --dev-num "$DEV_NUM" --seed "$SEED"
+# Process Qwen data before training.
+printf '\n[process] Qwen data: %s\n' "$QWEN_RAW_DATA"
+python tools/process_data_ultraInteract.py \
+    --base-path "$BASE_PATH" --data-dir "$QWEN_RAW_DATA" \
+    --processed-data-dir "$PROCESSED_DATA_ROOT" \
+    --model-path "$CKPT" --model-type qwen \
+    --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
+    --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
+    --dev-num "$DEV_NUM" --seed "$SEED"
 
-# MAG_WEIGHT="${MAG_WEIGHT:-2.0}"
-# GRAM_WEIGHT="${GRAM_WEIGHT:-2.0}"
-# MENGER_WEIGHT="${MENGER_WEIGHT:-1.0}"
-# MENGER_EPS="${MENGER_EPS:-1.0e-6}"
+MAG_WEIGHT="${MAG_WEIGHT:-2.0}"
+GRAM_WEIGHT="${GRAM_WEIGHT:-2.0}"
+MENGER_WEIGHT="${MENGER_WEIGHT:-1.0}"
+MENGER_EPS="${MENGER_EPS:-1.0e-6}"
 
-# CHECKPOINT_FILE="$(mktemp)"
-# trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
+CHECKPOINT_FILE="$(mktemp)"
+trap 'rm -f -- "$CHECKPOINT_FILE"' EXIT
 
-# if [[ ! -s "$QWEN_DATA_DIR/train.jsonl" || ( ! -s "$QWEN_DATA_DIR/valid.jsonl" && ! -s "$QWEN_DATA_DIR/dev.jsonl" ) ]]; then
-#     printf 'Processed train and valid/dev JSONL files are required in: %s\n' "$QWEN_DATA_DIR" >&2
-#     exit 1
-# fi
+if [[ ! -s "$QWEN_DATA_DIR/train.jsonl" || ( ! -s "$QWEN_DATA_DIR/valid.jsonl" && ! -s "$QWEN_DATA_DIR/dev.jsonl" ) ]]; then
+    printf 'Processed train and valid/dev JSONL files are required in: %s\n' "$QWEN_DATA_DIR" >&2
+    exit 1
+fi
 
 # # CKA comparison: CE + KD + CKA only.
 # printf '\n[cka 1/2] Train Qwen: CE + KD + CKA\n'
@@ -83,25 +83,25 @@ export T_MAX_LENGTH="${T_MAX_LENGTH:-$((MAX_LENGTH + T_MAX_PROMPT_LENGTH - MAX_P
 #     EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
 #     bash scripts/eval/eval.sh run
 
-# # Qwen setting 1: full objective (CE + KD + stronger geometry).
-# # 1. Train synchronously using the existing processed data.
-# printf '\n[full 1/2] Train Qwen: CE + KD + geometry (mag=%s, gram=%s)\n' "$MAG_WEIGHT" "$GRAM_WEIGHT"
-# : > "$CHECKPOINT_FILE"
-# CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
-#     SAVE_PATH="$QWEN_RESULTS_ROOT/full_mag${MAG_WEIGHT}_gram${GRAM_WEIGHT}" \
-#     KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=0 CKA=1 \
-#     MAG_WEIGHT="$MAG_WEIGHT" GRAM_WEIGHT="$GRAM_WEIGHT" \
-#     FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
-#     bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
+# Qwen setting 1: full objective (CE + KD + stronger geometry).
+# 1. Train synchronously using the existing processed data.
+printf '\n[full 1/2] Train Qwen: CE + KD + geometry (mag=%s, gram=%s)\n' "$MAG_WEIGHT" "$GRAM_WEIGHT"
+: > "$CHECKPOINT_FILE"
+CUDA_DEVICES=4,5,6,7 DATA_DIR="$QWEN_DATA_DIR" \
+    SAVE_PATH="$QWEN_RESULTS_ROOT/full_mag${MAG_WEIGHT}_gram${GRAM_WEIGHT}" \
+    KD_RATIO="${CE_KD_RATIO:-0.5}" GEOMETRY=10 CKA=0 \
+    MAG_WEIGHT="$MAG_WEIGHT" GRAM_WEIGHT="$GRAM_WEIGHT" \
+    FINAL_CHECKPOINT_FILE="$CHECKPOINT_FILE" \
+    bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
 
-# # 2. Evaluate this run's final checkpoint only after training succeeds.
-# LORA_PATH="$(cat "$CHECKPOINT_FILE")"
-# [[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
-# printf '\n[full 2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
-# CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
-#     SAVE_PATH="$(dirname -- "$LORA_PATH")" \
-#     EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
-#     bash scripts/eval/eval.sh run
+# 2. Evaluate this run's final checkpoint only after training succeeds.
+LORA_PATH="$(cat "$CHECKPOINT_FILE")"
+[[ -f "$LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$LORA_PATH" >&2; exit 1; }
+printf '\n[full 2/2] Evaluate checkpoint: %s\n' "$LORA_PATH"
+CUDA_DEVICES=4,5,6,7 LORA_PATH="$LORA_PATH" MODEL_PATH="$CKPT" \
+    SAVE_PATH="$(dirname -- "$LORA_PATH")" \
+    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
+    bash scripts/eval/eval.sh run
 
 # Qwen setting 2: remove geometry (CE + KD only).
 # 1. Train synchronously using the existing processed data.
