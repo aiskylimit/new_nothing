@@ -5,7 +5,7 @@ source .venv/bin/activate
 
 
 bash set_base_model_path.sh
-python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
+# python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
 python fix_lib.py
 
 #
