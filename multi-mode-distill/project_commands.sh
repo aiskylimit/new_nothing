@@ -24,14 +24,14 @@ export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEX
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((MAX_LENGTH + T_MAX_PROMPT_LENGTH - MAX_PROMPT_LENGTH))}"
 
 # Process Qwen data before training.
-printf '\n[process] Qwen data: %s\n' "$QWEN_RAW_DATA"
-python tools/process_data_ultraInteract.py \
-    --base-path "$BASE_PATH" --data-dir "$QWEN_RAW_DATA" \
-    --processed-data-dir "$PROCESSED_DATA_ROOT" \
-    --model-path "$CKPT" --model-type qwen \
-    --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
-    --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
-    --dev-num "$DEV_NUM" --seed "$SEED"
+# printf '\n[process] Qwen data: %s\n' "$QWEN_RAW_DATA"
+# python tools/process_data_ultraInteract.py \
+#     --base-path "$BASE_PATH" --data-dir "$QWEN_RAW_DATA" \
+#     --processed-data-dir "$PROCESSED_DATA_ROOT" \
+#     --model-path "$CKPT" --model-type qwen \
+#     --data-process-workers "${DATA_PROCESS_WORKERS:-8}" \
+#     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH" \
+#     --dev-num "$DEV_NUM" --seed "$SEED"
 
 MAG_WEIGHT="${MAG_WEIGHT:-2.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-2.0}"
