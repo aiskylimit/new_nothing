@@ -1,5 +1,5 @@
-#2 -0-10
-#eval-grounding
+#1 +30
+#talas-rerun
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
