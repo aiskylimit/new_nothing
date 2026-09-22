@@ -77,6 +77,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/MSCOCO/diverse_instruction-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_train/MMEB-train/MSCOCO
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/MSCOCO/original-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_train/MMEB-train/MSCOCO
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/MSCOCO/train-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_train/MMEB-train/MSCOCO
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/MSCOCO/test-00000-of-00001.parquet /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_eval/MMEB-eval/MSCOCO
 #models
 --hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/talas_vlm_embed/models/B3_Qwen2_2B
 --hf raghavlite/B3_Qwen2_7B /mnt/local/@PROJECT@/talas_vlm_embed/models/B3_Qwen2_7B
