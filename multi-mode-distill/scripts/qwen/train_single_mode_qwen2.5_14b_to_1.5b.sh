@@ -48,7 +48,11 @@ SEED="${SEED:-10}"
 
 KD_LOSS="${KD_LOSS:-sfkl}"
 SKEW_ALPHA="${SKEW_ALPHA:-0.1}"
-KD_RATIO="${KD_RATIO:-1.0}"
+if [[ "$MODE" == off_policy || "$MODE" == self_distill ]]; then
+    KD_RATIO="${KD_RATIO:-0.5}"
+else
+    KD_RATIO="${KD_RATIO:-1.0}"
+fi
 MAG_WEIGHT="${MAG_WEIGHT:-1.0}"
 GRAM_WEIGHT="${GRAM_WEIGHT:-1.0}"
 CKA_WEIGHT="${CKA_WEIGHT:-1.0}"
@@ -95,7 +99,7 @@ OPTS=(
     --weight-decay 1e-2 --clip-grad 1.0 --epochs "$EPOCHS"
     --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH"
     --t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH"
-    --type kd --distill-mode "$MODE" --kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO" --disable-lm-loss
+    --type kd --distill-mode "$MODE" --kd-loss "$KD_LOSS" --kd-ratio "$KD_RATIO"
     --skew-alpha "$SKEW_ALPHA"
     --mag-weight "$MAG_WEIGHT" --gram-weight "$GRAM_WEIGHT" --cka-weight "$CKA_WEIGHT"
     --distill-top-k "$DISTILL_TOP_K" --distill-temperature "$DISTILL_TEMPERATURE"
@@ -128,7 +132,7 @@ if [[ "$MODE" == self_distill ]]; then
            --self-distill-context-max-tokens "$CONTEXT_MAX_NEW_TOKENS")
 fi
 if [[ "$MODE" == opsd ]]; then
-    OPTS+=(--opsd-token-clip "${OPSD_TOKEN_CLIP:-0.05}")
+    OPTS+=(--disable-lm-loss --opsd-token-clip "${OPSD_TOKEN_CLIP:-0.05}")
 fi
 
 export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"

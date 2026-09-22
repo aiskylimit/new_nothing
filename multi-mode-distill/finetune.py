@@ -2,6 +2,7 @@ import time
 import os
 import copy
 import random
+from contextlib import contextmanager
 
 import torch
 import torch.nn as nn
@@ -34,10 +35,11 @@ from utils import get_tokenizer, get_model
 from src.sampler import SampleGenerator
 from src.losses import forward_kl, reverse_kl, js_distance, tv_distance
 from src.losses import skewed_forward_kl, skewed_reverse_kl
+from src.menger import menger_loss_per_response
 from src.trajectory import find_step_spans, reasoning_geometry_loss, reasoning_cka_loss
 from src.modes import (align_response_logits,
                            validate_mode_args, require_shared_vocabulary,
-                           geometry_enabled_for_mode)
+                           geometry_enabled_for_mode, menger_enabled_for_mode)
 from src.self_distill import (make_reference_model, prepare_self_distill_batches,
                               refresh_reference_model)
 from src.opsd import (prepare_opsd_reference_batch, opsd_forward_kl,
@@ -46,6 +48,38 @@ from src.adaptive import (AdaptiveConfig, AdaptiveScheduler,
                                OptimizerStepModeRouter)
 
 torch.set_num_threads(4)
+
+
+@contextmanager
+def capture_last_hidden(model, enabled):
+    """Capture only the final hidden state passed into the LM head."""
+    captured = []
+    if not enabled:
+        yield captured
+        return
+    module = model.module if hasattr(model, "module") else model
+    output_embeddings = module.get_output_embeddings()
+    if output_embeddings is None:
+        raise ValueError("Model does not expose output embeddings for Menger loss")
+
+    def capture(_module, inputs):
+        if not inputs:
+            raise RuntimeError("LM head received no hidden-state input")
+        captured.append(inputs[0])
+
+    handle = output_embeddings.register_forward_pre_hook(capture)
+    try:
+        yield captured
+    finally:
+        handle.remove()
+
+
+def captured_hidden(captured):
+    if len(captured) != 1:
+        raise RuntimeError(
+            f"Expected one LM-head invocation, captured {len(captured)}"
+        )
+    return captured[0]
 
 
 def get_teacher_model(args, device):
@@ -334,8 +368,9 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
     step, global_step = 1, 1
     mode_router = OptimizerStepModeRouter(scheduler, args.distill_mode)
     total_time, log_steps = 0.0, 0
-    # loss, distil, lm, kl, magnitude, direction, CKA, context tokens, generated samples
-    total_losses = torch.zeros(9, dtype=torch.float64, device=device)
+    # loss, distil, lm, kl, magnitude, direction, CKA, Menger, context tokens,
+    # generated samples
+    total_losses = torch.zeros(10, dtype=torch.float64, device=device)
     log_modes = (*AdaptiveScheduler.MODES, "opsd")
     mode_kl_totals = dict.fromkeys(log_modes, 0.)
     mode_log_counts = dict.fromkeys(log_modes, 0)
@@ -359,6 +394,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             else:
                 source_model = teacher_model
             use_geometry = source_model is not None and geometry_enabled_for_mode(args, selected_mode)
+            use_menger = source_model is not None and menger_enabled_for_mode(args, selected_mode)
             data_source = "fresh_on_policy" if student_gen else "canonical"
 
             if selected_mode == "self_distill":
@@ -398,26 +434,35 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 t_model_batch = teacher_batch_for_response(args, model_batch)
                 t_no_model_batch = no_model_batch
 
-            outputs = model(**model_batch, use_cache=False, output_hidden_states=use_geometry, return_dict=True)
+            with capture_last_hidden(model, use_menger) as student_capture:
+                outputs = model(
+                    **model_batch, use_cache=False,
+                    output_hidden_states=use_geometry, return_dict=True)
 
             logits = outputs.logits
-            h_stu = outputs.hidden_states[-1] if use_geometry else None
+            h_stu = (captured_hidden(student_capture) if use_menger else
+                     outputs.hidden_states[-1] if use_geometry else None)
+            # Fresh ON-policy trajectories are optimized only through their
+            # teacher/reference objectives, without a next-token CE term.
+            use_lm_loss = not args.disable_lm_loss and selected_mode != "on_policy"
             lm_loss = logits.reshape(-1)[:0].sum()
-            if not args.disable_lm_loss:
+            if use_lm_loss:
                 lm_loss = loss_func(
                     logits.float().reshape(-1, logits.shape[-1]), no_model_batch["label"].reshape(-1))
                 lm_loss = lm_loss / (no_model_batch["label"] != -100).sum().clamp_min(1)
 
-            kl_loss = magnitude_loss = gram_loss = cka_loss = distil_loss = logits.reshape(-1)[:0].sum()
+            kl_loss = magnitude_loss = gram_loss = cka_loss = menger_loss = distil_loss = logits.reshape(-1)[:0].sum()
             if source_model is not None:
                 if selected_mode == "opsd":
                     teacher_outputs = fixed_base_teacher_forward(model, t_model_batch)
                 else:
                     with torch.no_grad():
-                        teacher_outputs = source_model(
-                            **t_model_batch, use_cache=False,
-                            output_hidden_states=use_geometry, return_dict=True)
-                h_tea = teacher_outputs.hidden_states[-1] if use_geometry else None
+                        with capture_last_hidden(source_model, use_menger) as teacher_capture:
+                            teacher_outputs = source_model(
+                                **t_model_batch, use_cache=False,
+                                output_hidden_states=use_geometry, return_dict=True)
+                h_tea = (captured_hidden(teacher_capture) if use_menger else
+                         teacher_outputs.hidden_states[-1] if use_geometry else None)
 
                 response_lengths = (no_model_batch["label"] != -100).sum(-1)
                 logits, teacher_logits, response_labels = align_response_logits(
@@ -443,10 +488,19 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                             pooling=args.step_pooling, normalization=args.magnitude_normalization, eps=args.eps)
                         distil_loss = distil_loss + args.mag_weight * magnitude_loss + args.gram_weight * gram_loss
 
-                if args.disable_lm_loss:
-                    loss = distil_loss
-                else:
+                if use_menger:
+                    menger_loss = menger_loss_per_response(
+                        h_stu, h_tea,
+                        model_batch, no_model_batch["label"],
+                        t_model_batch, t_no_model_batch["label"],
+                        tokenizer, separator=args.step_separator,
+                        eps=args.menger_eps).mean()
+
+                if use_lm_loss:
                     loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
+                else:
+                    loss = distil_loss
+                loss = loss + args.menger_weight * menger_loss
             else:
                 loss = lm_loss
 
@@ -467,9 +521,9 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             fresh_count = loss.new_tensor(model_batch["input_ids"].shape[0] if student_gen else 0)
             global_losses = torch.stack((
                 loss, distil_loss, lm_loss, kl_loss, magnitude_loss, gram_loss, cka_loss,
-                context_count, fresh_count)).detach().double()
+                menger_loss, context_count, fresh_count)).detach().double()
             dist.all_reduce(global_losses, dist.ReduceOp.SUM, group=dp_group)
-            global_losses[:7] /= dp_world_size
+            global_losses[:8] /= dp_world_size
             mode_kl_totals[selected_mode] += global_losses[3].item()
             mode_log_counts[selected_mode] += 1
             total_losses += global_losses
@@ -482,7 +536,8 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
 
             # Logging
             def get_log(log_losses, log_time, aggregate=False):
-                log_loss, log_distil_loss, log_lm, log_kl, log_mag, log_dir, log_cka, context, fresh = log_losses.tolist()
+                (log_loss, log_distil_loss, log_lm, log_kl, log_mag, log_dir,
+                 log_cka, log_menger, context, fresh) = log_losses.tolist()
                 log_str = (
                     "train | epoch {:3d} | Iter: {:6d}/{:6d} | global iter: {:6d}/{:6d} | "
                     "loss: {:.4f} | ds_loss: {:.4f} | lr: {:.4e} | scale: {:.4f} | "
@@ -496,6 +551,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 log_str += (
                     f" | mode: {'adaptive' if adaptive and aggregate else selected_mode} | loss/lm: {log_lm:.6f} | loss/total: {log_loss:.6f}"
                     f" | loss/mag: {log_mag:.6f} | loss/dir: {log_dir:.6f} | loss/cka: {log_cka:.6f}"
+                    f" | loss/menger: {log_menger:.6f}"
                     f" | data/source: {'mixed' if adaptive and aggregate else data_source} | data/on_policy_fresh_count: {fresh:.0f}"
                     f" | data/self_distill_context_tokens: {context:.0f}")
                 for mode in log_modes:
@@ -511,7 +567,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
 
             if boundary and (global_step % args.log_interval == 0 or global_step == args.total_iters):
                 log_losses = total_losses.clone()
-                log_losses[:7] /= log_steps
+                log_losses[:8] /= log_steps
                 log_str = get_log(log_losses, total_time, aggregate=True)
                 print_rank("*" * 100)
                 print_rank(log_str)

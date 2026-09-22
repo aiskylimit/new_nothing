@@ -209,6 +209,10 @@ def add_distillation_args(parser: argparse.ArgumentParser):
                        help="Enable step-level linear CKA for off_policy, self_distill, and on_policy batches")
     group.add_argument("--cka-weight", type=float, default=1.0,
                        help="Weight of CKA loss when --cka is enabled")
+    group.add_argument("--menger-weight", type=float, default=1.0,
+                       help="Weight of Menger-curvature MSE in OFF/SELF/ON modes; 0 disables it")
+    group.add_argument("--menger-eps", type=float, default=1.0e-6,
+                       help="Numerical threshold for degenerate Menger-curvature triples")
     group.add_argument("--disable-lm-loss", action="store_true",
                        help="Optimize distillation alone, without kd-ratio scaling")
     group.add_argument("--self-distill-context-drop-ratio", type=float, default=0.5,
