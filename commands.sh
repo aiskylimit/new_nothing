@@ -1,4 +1,4 @@
-#2
+#1
 #test
 #v1
 
@@ -21,10 +21,10 @@ export NCCL_DEBUG=WARN
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
-
+ps aux | grep '[t]ar -xzf'
 cd ./talas_vlm_embed
 # tree -L 2 training
-bash ./project_commands.sh
+# bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
 # cd ./multi-mode-distill
