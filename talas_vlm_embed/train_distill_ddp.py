@@ -149,10 +149,6 @@ class Trainer:
         kd_mse_losses, kd_penultimate_losses = [], []
         span_losses, cross_modal_losses = [], []
         
-        gpu_mems = [] 
-        
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
         
         steps_per_epoch = len(self.train_data.dataset) // self.training_args.per_device_train_batch_size // self.training_args.gradient_accumulation_steps // dist.get_world_size()
         
@@ -186,10 +182,6 @@ class Trainer:
             kd_mse_losses.append(kd_mse_loss.detach().item())
             kd_penultimate_losses.append(kd_penultimate_loss.detach().item())
             
-            if torch.cuda.is_available():
-                current_mem_gb = torch.cuda.memory_allocated() / (1024 ** 3)
-                gpu_mems.append(current_mem_gb)
-            
             batch_loss = sum(losses) / len(losses)
             batch_contrastive_loss = sum(contrastive_losses) / len(contrastive_losses)
             batch_kd_loss = sum(kd_losses) / len(kd_losses)
@@ -201,11 +193,6 @@ class Trainer:
             batch_kd_loss_mse = sum(kd_mse_losses) / len(kd_mse_losses)
             batch_kd_penultimate_loss = sum(kd_penultimate_losses) / len(kd_penultimate_losses)
             
-            if torch.cuda.is_available():
-                avg_gpu_mem = sum(gpu_mems) / len(gpu_mems)
-                peak_vram = torch.cuda.max_memory_allocated() / (1024 ** 3)
-            else:
-                avg_gpu_mem, peak_vram = 0.0, 0.0
             
             loss.backward()
             
@@ -226,9 +213,7 @@ class Trainer:
                         'kd_dtw_loss': f"{batch_kd_dtw_loss:.4f}",
                         'kd_loss_mse': f"{batch_kd_loss_mse:.4f}",
                         'kd_penultimate_loss': f"{batch_kd_penultimate_loss:.4f}",
-                        'lr': f"{current_lr:.6f}",
-                        'avg_vram(GB)': f"{avg_gpu_mem:.2f}",   # Log Average VRAM
-                        'peak_vram(GB)': f"{peak_vram:.2f}", # Log Peak VRAM
+                        'lr': f"{current_lr:.6f}"
                     })
                     progress_bar.update(1)
 
