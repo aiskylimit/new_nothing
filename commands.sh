@@ -1,4 +1,4 @@
-#1 +120
+#1 +10
 #rivad
 #v1
 
@@ -25,13 +25,13 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
-# cd ./multi-mode-distill
+cd ./multi-mode-distill
 # bash ./project_commands_opsd_ablation.sh
 # bash ./project_commands_ablation.sh
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./reasoning_velocity_distill
-bash ./project_commands.sh
+# cd ./reasoning_velocity_distill
+# bash ./project_commands.sh
