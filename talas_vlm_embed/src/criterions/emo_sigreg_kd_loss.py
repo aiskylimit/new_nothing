@@ -133,9 +133,12 @@ class EMOSigRegLoss(nn.Module):
             input_data, topk_token_text_results,
             k_layer=3
         )
-        sigreg_qry_loss = self.sigreg(student_qry_reps)
-        sigreg_pos_loss = self.sigreg(student_pos_reps)
-        sigreg_loss = sigreg_qry_loss + sigreg_pos_loss
+        if self.args.sigreg_weight < 0:
+            sigreg_loss = torch.zeros_like(contrastive_loss)
+        else:
+            sigreg_qry_loss = self.sigreg(student_qry_reps)
+            sigreg_pos_loss = self.sigreg(student_pos_reps)
+            sigreg_loss = sigreg_qry_loss + sigreg_pos_loss
 
         total_loss = self.kd_loss_weight * contrastive_loss + (1 - self.kd_loss_weight) * (self.ot_loss + self.attention_loss) + self.args.sigreg_weight * sigreg_loss
         return {
@@ -144,9 +147,7 @@ class EMOSigRegLoss(nn.Module):
             'ot_loss': self.ot_loss,
             'attention_loss': self.attention_loss,
             'kd_loss': self.attention_loss + self.ot_loss,
-            'sigreg_loss': sigreg_loss,
-            'sigreg_qry_loss': sigreg_qry_loss,
-            'sigreg_pos_loss': sigreg_pos_loss
+            'sigreg_loss': sigreg_loss
         }
         
     def extract_top_k_text_token(self, input_data, teacher_qry_attention, teacher_pos_attention, num_text_qry_tokens, num_text_pos_tokens):

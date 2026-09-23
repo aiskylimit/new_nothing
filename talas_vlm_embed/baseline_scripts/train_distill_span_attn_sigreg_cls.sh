@@ -8,7 +8,7 @@ TRAIN_SCRIPT="train_distill_ddp.py"
 
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
-python -m spacy download en_core_web_sm
+# python -m spacy download en_core_web_sm
 
 # =========================================================================
 # Dùng torchrun để khởi chạy

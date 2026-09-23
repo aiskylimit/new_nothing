@@ -4,11 +4,11 @@
 NUM_GPUS_PER_NODE=1
 
 # Đường dẫn tới file script training của bạn
-TRAIN_SCRIPT="train_distill_ddp_2.py"
+TRAIN_SCRIPT="train_distill_ddp.py"
 
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
-python -m spacy download en_core_web_sm
+# python -m spacy download en_core_web_sm
 
 # =========================================================================
 # Dùng torchrun để khởi chạy
@@ -24,7 +24,7 @@ torchrun --standalone \
     --teacher_lora_r 8 \
     --teacher_pooling "eos" \
     --teacher_backbone "qwen2_vl" \
-    --model_backbone "llava_qwen2_old" \
+    --model_backbone "llava_qwen2" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
@@ -55,7 +55,8 @@ torchrun --standalone \
     --student_layer_mapping 0 18 21 24 \
     --split_layer_mapping 0 1 4 4 4 \
     --projector_lr 5e-4 \
-    --use_sigreg_loss false
+    --use_sigreg_loss false \
+    --sigreg_weight -1
 
 
 EVAL_SUBSETS=(

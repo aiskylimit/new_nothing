@@ -183,9 +183,12 @@ class EMSigRegKDLoss(nn.Module):
             + F.mse_loss(student_pos_reps, distiller.projectors['t2s'](teacher_pos_reps))
         )
 
-        sigreg_qry_loss = self.sigreg(student_qry_reps)
-        sigreg_pos_loss = self.sigreg(student_pos_reps)
-        sigreg_loss = sigreg_qry_loss + sigreg_pos_loss
+        if self.args.sigreg_weight < 0:
+            sigreg_loss = torch.zeros_like(contrastive_loss)
+        else:
+            sigreg_qry_loss = self.sigreg(student_qry_reps)
+            sigreg_pos_loss = self.sigreg(student_pos_reps)
+            sigreg_loss = sigreg_qry_loss + sigreg_pos_loss
 
         loss = (
             0.5 * contrastive_loss + 0.5 * representation_kd_loss + em_kd_loss
@@ -196,7 +199,5 @@ class EMSigRegKDLoss(nn.Module):
             'loss': loss,
             'contrastive_loss': contrastive_loss,
             'kd_loss': em_kd_loss,
-            'sigreg_loss': sigreg_loss,
-            'sigreg_qry_loss': sigreg_qry_loss,
-            'sigreg_pos_loss': sigreg_pos_loss,
+            'sigreg_loss': sigreg_loss
         }

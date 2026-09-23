@@ -165,9 +165,12 @@ class RKDSigRegLoss(nn.Module):
         # =====================================================
         # SIGReg
         # =====================================================
-        sigreg_qry_loss = self.sigreg(student_qry_reps)
-        sigreg_pos_loss = self.sigreg(student_pos_reps)
-        sigreg_loss = sigreg_qry_loss + sigreg_pos_loss
+        if self.args.sigreg_weight < 0:
+            sigreg_loss = torch.zeros_like(contrastive_loss)
+        else:
+            sigreg_qry_loss = self.sigreg(student_qry_reps)
+            sigreg_pos_loss = self.sigreg(student_pos_reps)
+            sigreg_loss = sigreg_qry_loss + sigreg_pos_loss
 
         # =====================================================
         # Total loss
@@ -180,7 +183,5 @@ class RKDSigRegLoss(nn.Module):
             "kd_loss": kd_loss,
             "rkd_distance_loss": rkd_distance_loss,
             "rkd_angle_loss": rkd_angle_loss,
-            "sigreg_loss": sigreg_loss,
-            "sigreg_qry_loss": sigreg_qry_loss,
-            "sigreg_pos_loss": sigreg_pos_loss,
+            "sigreg_loss": sigreg_loss
         }

@@ -151,8 +151,10 @@ class MSESigRegLoss(nn.Module):
         kd_loss = F.mse_loss(student_qry_reps, projected_tea_qry_reps) + \
             F.mse_loss(student_pos_reps, projected_tea_pos_reps)
 
-        # Compute signature regularization loss
-        sigreg_loss = self.sigreg(student_qry_reps) + self.sigreg(student_pos_reps)
+        if self.args.sigreg_weight < 0:
+            sigreg_loss = torch.zeros_like(contrastive_loss)
+        else:
+            sigreg_loss = self.sigreg(student_qry_reps) + self.sigreg(student_pos_reps)
 
         loss = contrastive_loss + self.kd_loss_weight * kd_loss + self.args.sigreg_weight * sigreg_loss
 
