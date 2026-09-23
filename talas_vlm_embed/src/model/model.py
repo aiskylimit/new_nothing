@@ -246,9 +246,22 @@ class MMEBModel(nn.Module):
         #     config = AutoConfig.from_pretrained(model_args.model_name, trust_remote_code=True)
         config = AutoConfig.from_pretrained(model_args.model_name, trust_remote_code=True)
 
-        model_backbone = get_backbone_name(hf_config=config)
-        setattr(model_args, 'model_backbone', model_backbone)
-        print_master(f'Loading backbone [{model_backbone}] from {model_args.model_name}')
+        # model_backbone = get_backbone_name(hf_config=config)
+        # setattr(model_args, 'model_backbone', model_backbone)
+        # print_master(f'Loading backbone [{model_backbone}] from {model_args.model_name}')
+
+        model_backbone = getattr(model_args, "model_backbone", None)
+        if not model_backbone:
+            model_backbone = get_backbone_name(
+                hf_config=config,
+                model_type=getattr(model_args, "model_type", None),
+            )
+            setattr(model_args, "model_backbone", model_backbone)
+
+        print_master(
+            f"Loading backbone [{model_backbone}] from {model_args.model_name}"
+        )
+
         # Loading the base model
         if model_backbone == PHI3V:
             config._attn_implementation = "eager"
@@ -491,15 +504,28 @@ class MMEBModel(nn.Module):
         INTERNVIDEO2 = "internvideo2"
         model_name_or_path = model_args.checkpoint_path if model_args.checkpoint_path else model_args.model_name
         config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
-        model_backbone = get_backbone_name(hf_config=config)
-        setattr(model_args, 'model_backbone', model_backbone)
-        print_master(f'Loading backbone [{model_backbone}] from {model_name_or_path}')
+
+        # model_backbone = get_backbone_name(hf_config=config)
+        # setattr(model_args, 'model_backbone', model_backbone)
+        # print_master(f'Loading backbone [{model_backbone}] from {model_name_or_path}')
+
+        model_backbone = getattr(model_args, "model_backbone", None)
+        if not model_backbone:
+            model_backbone = get_backbone_name(
+                hf_config=config,
+                model_type=getattr(model_args, "model_type", None),
+            )
+            setattr(model_args, "model_backbone", model_backbone)
+
+        print_master(
+            f"Loading backbone [{model_backbone}] from {model_args.model_name}"
+        )
         
         if not hasattr(model_args, "model_backbone") or not model_args.model_backbone:
             model_backbone = get_backbone_name(hf_config=config, model_type=model_args.model_type)
             setattr(model_args, 'model_backbone', model_backbone)
         print_master(f'Loading backbone [{model_args.model_backbone}] from {model_args.model_name}')
-        if model_args.model_backbone in {LLAVA_ONEVISION, LLAVA_NEXT, QWEN2_VL, QWEN2_5_VL, QWEN2_VL_TOKENSELECTION, QWEN2_5_VL_TOKENSELECTION}:
+        if model_args.model_backbone in {LLAVA_ONEVISION, LLAVA_NEXT, QWEN2_VL, QWEN2_5_VL, QWEN2_VL_TOKENSELECTION, QWEN2_5_VL_TOKENSELECTION, LLAVA_ONEVISION_OLD}:
             config = AutoConfig.from_pretrained(model_args.model_name, trust_remote_code=True)
             config._attn_implementation = "eager"
             config.vision_config._attn_implementation = "eager"
@@ -611,11 +637,11 @@ class MMEBModel(nn.Module):
             if os.path.exists(projector_path):
                 if model_args.model_backbone in ["llava_onevision", "llava_next", "llava_onevision_old"]:
                     lora_model.base_model.model.multi_modal_projector.load_state_dict(
-                        torch.load(projector_path)
+                        torch.load(projector_path, map_location="cpu")
                     )
                 else:   
                     lora_model.base_model.model.model.mm_projector.load_state_dict(
-                        torch.load(projector_path)
+                        torch.load(projector_path, map_location="cpu")
                     )
                 
                 print("Successfully loading the projector's weight from local path")
@@ -628,11 +654,11 @@ class MMEBModel(nn.Module):
                     )
                     if model_args.model_backbone in ["llava_onevision", "llava_next", "llava_onevision_old"]:
                         lora_model.base_model.model.multi_modal_projector.load_state_dict(
-                            torch.load(projector_path)
+                            torch.load(projector_path, map_location="cpu")
                         )
                     else:
                         lora_model.base_model.model.model.mm_projector.load_state_dict(
-                            torch.load(projector_path)
+                            torch.load(projector_path, map_location="cpu")
                         )
                 except:
                     print("No projector weight found in the hub.")
