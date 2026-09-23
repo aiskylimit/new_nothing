@@ -22,8 +22,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
 
-# cd ./talas_vlm_embed
-# rm -rf datasets/B3_Qwen2_7B_cls.tar.gz
+cd ./talas_vlm_embed
+tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_7B_cls.tar.gz -C .
 # tree -L 2 training
 # bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
