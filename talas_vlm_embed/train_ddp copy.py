@@ -148,11 +148,6 @@ class Trainer:
         losses, contrastive_losses, kd_losses = [], [], []
         kd_simcse_losses, sigreg_losses, kd_dtw_losses = [], [], []
         kd_mse_losses, kd_penultimate_losses = [], []
-
-        gpu_mems = [] 
-        
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
         
         steps_per_epoch = len(self.train_data.dataset) // self.training_args.per_device_train_batch_size // self.training_args.gradient_accumulation_steps // dist.get_world_size()
         
@@ -182,9 +177,6 @@ class Trainer:
             kd_mse_losses.append(kd_mse_loss.detach().item())
             kd_penultimate_losses.append(kd_penultimate_loss.detach().item())
             
-            if torch.cuda.is_available():
-                current_mem_gb = torch.cuda.memory_allocated() / (1024 ** 3)
-                gpu_mems.append(current_mem_gb)
             
             batch_loss = sum(losses) / len(losses)
             batch_contrastive_loss = sum(contrastive_losses) / len(contrastive_losses)
@@ -194,12 +186,6 @@ class Trainer:
             batch_kd_dtw_loss = sum(kd_dtw_losses) / len(kd_dtw_losses)
             batch_kd_loss_mse = sum(kd_mse_losses) / len(kd_mse_losses)
             batch_kd_penultimate_loss = sum(kd_penultimate_losses) / len(kd_penultimate_losses)
-            
-            if torch.cuda.is_available():
-                avg_gpu_mem = sum(gpu_mems) / len(gpu_mems)
-                peak_vram = torch.cuda.max_memory_allocated() / (1024 ** 3)
-            else:
-                avg_gpu_mem, peak_vram = 0.0, 0.0
             
             loss.backward()
             
@@ -219,24 +205,70 @@ class Trainer:
                         'kd_dtw_loss': f"{batch_kd_dtw_loss:.4f}",
                         'kd_loss_mse': f"{batch_kd_loss_mse:.4f}",
                         'kd_penultimate_loss': f"{batch_kd_penultimate_loss:.4f}",
-                        'lr': f"{current_lr:.6f}",
-                        'avg_vram(GB)': f"{avg_gpu_mem:.2f}",   # Log Average VRAM
-                        'peak_vram(GB)': f"{peak_vram:.2f}", # Log Peak VRAM
+                        'lr': f"{current_lr:.6f}"
                     })
                     progress_bar.update(1)
 
             # LƯU Ý VỀ HIỆU NĂNG: Xóa cache liên tục mỗi batch sẽ làm quá trình training bị chậm đi rất nhiều.
             # torch.cuda.empty_cache()
-
-            if batch_idx > 100:
-                break
             
         progress_bar.close()
 
     def train(self):
+
         for epoch in range(self.training_args.num_train_epochs):
             self.run_epoch(epoch)
-        
+            if is_main_process() and self.training_args.save_strategy == "epoch":
+                ckpt_dir = os.path.join(self.training_args.output_dir, f"checkpoint-epoch-{epoch}")
+                projector_dir = os.path.join(ckpt_dir, "mm_projector.pth")
+                os.makedirs(ckpt_dir, exist_ok=True)
+                
+                model = self.model_wrapper.module.model
+                model.encoder.save_pretrained(ckpt_dir)
+                if self.model_args.model_backbone in ["llava_onevision", "llava_two_vision"]:
+                    torch.save(model.encoder.model.multi_modal_projector.state_dict(), projector_dir)
+                else:
+                    torch.save(model.encoder.model.model.mm_projector.state_dict(), projector_dir)
+                model_config = AutoConfig.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                tokenizer = AutoTokenizer.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                if model_config:
+                    model_config.save_pretrained(ckpt_dir)
+                if tokenizer:
+                    tokenizer.save_pretrained(ckpt_dir)
+                try:
+                    processor = AutoProcessor.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                    if processor:
+                        processor.save_pretrained(ckpt_dir)
+                except Exception as e:
+                    print_rank(f"Warning: Could not save processor: {e}")
+                print_rank(f"Saved checkpoint to {ckpt_dir}")
+
+        if is_main_process():
+            final_ckpt_dir = os.path.join(self.training_args.output_dir, f"checkpoint-final")
+            projector_dir =  os.path.join(final_ckpt_dir, "mm_projector.pth")
+            os.makedirs(final_ckpt_dir, exist_ok=True)
+            model = self.model_wrapper.module.model
+            model.encoder.save_pretrained(final_ckpt_dir)
+            if self.model_args.model_backbone in ["llava_onevision", "llava_two_vision"]:
+                torch.save(model.encoder.model.multi_modal_projector.state_dict(), projector_dir)
+            else:
+                torch.save(model.encoder.model.model.mm_projector.state_dict(), projector_dir)
+            model_config = AutoConfig.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+            tokenizer = AutoTokenizer.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+            if model_config:
+                model_config.save_pretrained(final_ckpt_dir)
+            if tokenizer:
+                tokenizer.save_pretrained(final_ckpt_dir)
+            try:
+                processor = AutoProcessor.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                if processor:
+                    processor.save_pretrained(final_ckpt_dir)
+            except Exception as e:
+                print_rank(f"Warning: Could not save processor: {e}")
+            print_rank(f"Saved final model to {final_ckpt_dir}")
+            
+            # if self.use_wandb:
+            #     wandb.finish()
                 
 def main():
     for arg in sys.argv:
