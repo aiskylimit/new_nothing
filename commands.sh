@@ -1,4 +1,4 @@
-#2 -0-5
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/time_mem/ +a
 #talas-time
 #v1
 
