@@ -1,4 +1,4 @@
-#1 +120
+#2
 #talas
 #v1
 
@@ -8,7 +8,6 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 451850 451851 451852
 # sleep 2
 nvidia-smi
 
@@ -22,9 +21,9 @@ export NCCL_DEBUG=WARN
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
-cd ./talas_vlm_embed
+# cd ./talas_vlm_embed
 # tree -L 2 training
-bash ./project_commands.sh
+# bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
 # cd ./multi-mode-distill
