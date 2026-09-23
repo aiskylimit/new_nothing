@@ -218,6 +218,57 @@ class Trainer:
 
         for epoch in range(self.training_args.num_train_epochs):
             self.run_epoch(epoch)
+            if is_main_process() and self.training_args.save_strategy == "epoch":
+                ckpt_dir = os.path.join(self.training_args.output_dir, f"checkpoint-epoch-{epoch}")
+                projector_dir = os.path.join(ckpt_dir, "mm_projector.pth")
+                os.makedirs(ckpt_dir, exist_ok=True)
+                
+                model = self.model_wrapper.module.model
+                model.encoder.save_pretrained(ckpt_dir)
+                if self.model_args.model_backbone in ["llava_onevision", "llava_two_vision"]:
+                    torch.save(model.encoder.model.multi_modal_projector.state_dict(), projector_dir)
+                else:
+                    torch.save(model.encoder.model.model.mm_projector.state_dict(), projector_dir)
+                model_config = AutoConfig.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                tokenizer = AutoTokenizer.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                if model_config:
+                    model_config.save_pretrained(ckpt_dir)
+                if tokenizer:
+                    tokenizer.save_pretrained(ckpt_dir)
+                try:
+                    processor = AutoProcessor.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                    if processor:
+                        processor.save_pretrained(ckpt_dir)
+                except Exception as e:
+                    print_rank(f"Warning: Could not save processor: {e}")
+                print_rank(f"Saved checkpoint to {ckpt_dir}")
+
+        if is_main_process():
+            final_ckpt_dir = os.path.join(self.training_args.output_dir, f"checkpoint-final")
+            projector_dir =  os.path.join(final_ckpt_dir, "mm_projector.pth")
+            os.makedirs(final_ckpt_dir, exist_ok=True)
+            model = self.model_wrapper.module.model
+            model.encoder.save_pretrained(final_ckpt_dir)
+            if self.model_args.model_backbone in ["llava_onevision", "llava_two_vision"]:
+                torch.save(model.encoder.model.multi_modal_projector.state_dict(), projector_dir)
+            else:
+                torch.save(model.encoder.model.model.mm_projector.state_dict(), projector_dir)
+            model_config = AutoConfig.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+            tokenizer = AutoTokenizer.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+            if model_config:
+                model_config.save_pretrained(final_ckpt_dir)
+            if tokenizer:
+                tokenizer.save_pretrained(final_ckpt_dir)
+            try:
+                processor = AutoProcessor.from_pretrained(self.model_args.model_name) if self.model_args.model_name else None
+                if processor:
+                    processor.save_pretrained(final_ckpt_dir)
+            except Exception as e:
+                print_rank(f"Warning: Could not save processor: {e}")
+            print_rank(f"Saved final model to {final_ckpt_dir}")
+            
+            # if self.use_wandb:
+            #     wandb.finish()
                 
 def main():
     for arg in sys.argv:

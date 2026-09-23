@@ -220,9 +220,6 @@ class Trainer:
             # LƯU Ý VỀ HIỆU NĂNG: Xóa cache liên tục mỗi batch sẽ làm quá trình training bị chậm đi rất nhiều.
             # torch.cuda.empty_cache()
 
-            if batch_idx > 100:
-                break
-            
         progress_bar.close()
 
     def train(self):
