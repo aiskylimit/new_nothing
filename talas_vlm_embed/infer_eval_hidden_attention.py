@@ -365,6 +365,14 @@ def load_eval_rows_for_mapping(data_args, model_args, subset):
         subset,
         split=data_args.dataset_split,
     )
+    eval_data = load_dataset(
+        "parquet",
+        data_files={
+            data_args.dataset_split:
+                f"{data_args.dataset_name}/{subset}/{data_args.dataset_split}-00000-of-00001.parquet"
+        },
+        split=data_args.dataset_split,
+    )
     if (subset == "WebQA" or subset == "EDIS") and "qry_text" in eval_data.column_names and model_args.model_backbone == "llava_qwen2":
         eval_data = eval_data.map(
             lambda x: {"qry_text": x["qry_text"].replace("<|image_1|>", "").strip()}
