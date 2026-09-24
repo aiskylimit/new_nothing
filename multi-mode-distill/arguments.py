@@ -217,6 +217,9 @@ def add_distillation_args(parser: argparse.ArgumentParser):
                        help="Optimize distillation alone, without kd-ratio scaling")
     group.add_argument("--self-distill-context-drop-ratio", type=float, default=0.5,
                        help="Upper bound for a per-sample drop probability drawn uniformly from [0, bound]")
+    group.add_argument("--self-distill-context-fixed-drop-ratio", type=float, default=None,
+                       help="Fixed fraction of trailing context steps to remove; "
+                            "overrides stochastic context dropping when set")
     group.add_argument("--self-distill-context-max-tokens", type=int, default=512,
                        help="Maximum token count of sampled self-distillation context, before template text")
     group.add_argument("--self-distill-eval-seed", type=int, default=1234,
@@ -234,7 +237,10 @@ def add_distillation_args(parser: argparse.ArgumentParser):
     defaults = AdaptiveConfig()
     group.add_argument("--dual-adaptive-exposure", "--adaptive-on-policy",
                        dest="adaptive_on_policy", action="store_true",
-                       help="Sample OFF/SELF/ON once per optimizer step using dev discrepancies")
+                       help="Sample one enabled distillation mode per optimizer step using dev discrepancies")
+    group.add_argument("--adaptive-mode-set", choices=["all", "on_self", "off_self"],
+                       default="all",
+                       help="Modes available to adaptive routing; pairwise choices are ablations")
     for name in ("rho_self_init", "rho_on_init", "rho_self_max", "rho_on_max",
                  "rho_self_increment", "rho_on_increment"):
         group.add_argument("--" + name.replace("_", "-"), type=float, default=getattr(defaults, name))

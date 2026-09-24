@@ -60,6 +60,7 @@ CKA="${CKA:-0}"
 DISTILL_TOP_K="${DISTILL_TOP_K:-5120}"
 DISTILL_TEMPERATURE="${DISTILL_TEMPERATURE:-1.0}"
 SELF_DISTILL_CONTEXT_DROP_MAX="${SELF_DISTILL_CONTEXT_DROP_MAX:-0.5}"
+SELF_DISTILL_CONTEXT_FIXED_DROP_RATIO="${SELF_DISTILL_CONTEXT_FIXED_DROP_RATIO:-}"
 STEP_SEPARATOR="${STEP_SEPARATOR:-$'\n\n'}"
 STEP_POOLING="${STEP_POOLING:-mean}"
 MAGNITUDE_NORMALIZATION="${MAGNITUDE_NORMALIZATION:-zscore}"
@@ -130,6 +131,10 @@ fi
 if [[ "$MODE" == self_distill ]]; then
     OPTS+=(--self-distill-context-drop-ratio "$SELF_DISTILL_CONTEXT_DROP_MAX"
            --self-distill-context-max-tokens "$CONTEXT_MAX_NEW_TOKENS")
+    if [[ -n "$SELF_DISTILL_CONTEXT_FIXED_DROP_RATIO" ]]; then
+        OPTS+=(--self-distill-context-fixed-drop-ratio
+               "$SELF_DISTILL_CONTEXT_FIXED_DROP_RATIO")
+    fi
 fi
 if [[ "$MODE" == opsd ]]; then
     OPTS+=(--disable-lm-loss --opsd-token-clip "${OPSD_TOKEN_CLIP:-0.05}")
