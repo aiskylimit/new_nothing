@@ -360,11 +360,11 @@ def append_unique(values, value):
 
 
 def load_eval_rows_for_mapping(data_args, model_args, subset):
-    eval_data = load_dataset(
-        data_args.dataset_name,
-        subset,
-        split=data_args.dataset_split,
-    )
+    # eval_data = load_dataset(
+    #     data_args.dataset_name,
+    #     subset,
+    #     split=data_args.dataset_split,
+    # )
     eval_data = load_dataset(
         "parquet",
         data_files={
