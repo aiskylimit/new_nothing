@@ -1,4 +1,8 @@
-#d stop 2026-09-24_14-49-22
+#d
+#models
+--hf Qwen/Qwen3-8B /mnt/local/@PROJECT@/eval_math/models/
+--hf Qwen/Qwen3-1.7B /mnt/local/@PROJECT@/eval_math/models/
+
 #erank
 #v2
 
