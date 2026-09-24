@@ -1,4 +1,9 @@
-#1 +120
+#d
+#datasets
+--hf-dataset math-ai/aime26 /mnt/local/@PROJECT@/eval_math/data/
+--hf-dataset yentinglin/aime_2025 /mnt/local/@PROJECT@/eval_math/data/
+--hf-dataset HuggingFaceH4/aime_2024 /mnt/local/@PROJECT@/eval_math/data/
+
 #erank
 #v2
 
