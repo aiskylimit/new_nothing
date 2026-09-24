@@ -4,5 +4,5 @@
 --hf-dataset yentinglin/aime_2025 /mnt/local/@PROJECT@/eval_math/data/
 --hf-dataset HuggingFaceH4/aime_2024 /mnt/local/@PROJECT@/eval_math/data/
 #models
---hf Qwen/Qwen3-8B /mnt/local/@PROJECT@/eval_math/models/
---hf Qwen/Qwen3-1.7B /mnt/local/@PROJECT@/eval_math/models/
+--hf Qwen/Qwen3-8B /mnt/local/@PROJECT@/eval_math/models/Qwen3-8B
+--hf Qwen/Qwen3-1.7B /mnt/local/@PROJECT@/eval_math/models/Qwen3-1.7B
