@@ -4,7 +4,7 @@
 NUM_GPUS_PER_NODE=1
 
 # Đường dẫn tới file script training của bạn
-TRAIN_SCRIPT="train_distill_ddp.py"
+TRAIN_SCRIPT="train_distill_ddp_time.py"
 
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
