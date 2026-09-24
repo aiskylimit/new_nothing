@@ -1,4 +1,4 @@
-#1 +120
+#2 +a
 #time-ckd
 #v2
 
@@ -21,10 +21,7 @@ export NCCL_DEBUG=WARN
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
-cd ./talas_vlm_embed
-ls models
-source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
-CUDA_VISIBLE_DEVICES=4 bash ./baseline_scripts/train_distill_ckd_sigreg_cls.sh 2>&1 | tee time_mem/train_distill_ckd_sigreg_cls.log
+# cd ./talas_vlm_embed
 # bash ./project_commands.sh
 # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
 
