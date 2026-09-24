@@ -94,10 +94,10 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 wait
 
-CUDA_VISIBLE_DEVICES=7 bash script_full/infer_erank_analyze_cls.sh 1 1 1 0 1.0 1.0 256 0.07 &
+# CUDA_VISIBLE_DEVICES=7 bash script_full/infer_erank_analyze_cls.sh 1 1 1 0 1.0 1.0 256 0.07 &
 # CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 0.5 5 0.02 &
 # CUDA_VISIBLE_DEVICES=7 bash script_full/infer_erank_analyze_cls_ov.sh 1 1 1 1 1.0 1.0 256 0.02 &
-# CUDA_VISIBLE_DEVICES=6 bash script_full/infer_erank_analyze_cls_ov.sh 1 1 1 1 1.0 2.0 256 0.02 &
+CUDA_VISIBLE_DEVICES=6 bash script_full/infer_erank_analyze_cls_ov.sh 1 1 1 1 1.0 2.0 256 0.02 &
 # CUDA_VISIBLE_DEVICES=7 bash ./script_full/infer_erank_analyze_cls_2.sh
 
 # =========================
