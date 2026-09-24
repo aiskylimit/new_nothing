@@ -90,15 +90,15 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 # CUDA_VISIBLE_DEVICES=4 bash ./script_full/train_distill_sigreg_cls_pr.sh &
 # CUDA_VISIBLE_DEVICES=5 bash ./script_full/train_distill_sigreg_cls_abl.sh &
-
+CUDA_VISIBLE_DEVICES=6 bash ./script_full/train_distill_sigreg_llava_ov_cls_bz16_2.sh 1 1 1 1 1.0 2.0 256 0.02 &
 
 wait
 
 # CUDA_VISIBLE_DEVICES=1 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 1.0 5 0.02 &
 # CUDA_VISIBLE_DEVICES=2 bash script_full/infer_erank_analyze_cls.sh 1 1 1 1 1.0 0.5 5 0.02 &
-CUDA_VISIBLE_DEVICES=7 bash script_full/infer_erank_analyze_cls_ov.sh 1 1 1 1 1.0 1.0 256 0.02 &
-CUDA_VISIBLE_DEVICES=6 bash script_full/infer_erank_analyze_cls_ov.sh 1 1 1 1 1.0 2.0 256 0.02 &
-# CUDA_VISIBLE_DEVICES=0 bash ./script_full/infer_erank_analyze_cls_2.sh
+# CUDA_VISIBLE_DEVICES=7 bash script_full/infer_erank_analyze_cls_ov.sh 1 1 1 1 1.0 1.0 256 0.02 &
+# CUDA_VISIBLE_DEVICES=6 bash script_full/infer_erank_analyze_cls_ov.sh 1 1 1 1 1.0 2.0 256 0.02 &
+# CUDA_VISIBLE_DEVICES=7 bash ./script_full/infer_erank_analyze_cls_2.sh
 
 # =========================
 # 9. Copy JSON eval outputs

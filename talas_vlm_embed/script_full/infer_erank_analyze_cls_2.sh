@@ -8,7 +8,7 @@ INFER_SCRIPT="infer_eval_hidden_attention.py"
 
 
 python $INFER_SCRIPT \
-    --model_name "training/FastVLM-0.5B_simcse_cka_cls/checkpoint-epoch-0" \
+    --model_name "training/FastVLM-0.5B_ckd_sigreg_cls/checkpoint-epoch-0" \
     --lora True \
     --lora_r 64 \
     --lora_alpha 64 \
@@ -21,16 +21,19 @@ python $INFER_SCRIPT \
     --dataset_split "test" \
     --image_dir "eval_images/" \
     --tgt_prefix_mod \
-    --encode_output_path "infer/FastVLM-0.5B_simcse_cka_cls" \
+    --encode_output_path "infer/FastVLM-0.5B_ckd_sigreg_cls" \
     --per_device_eval_batch_size 8 \
     --load_pretrained_lora True \
     --report_to None
 
 # analyze erank
 python ./er_statistic.py \
-    --pt_dir "infer/FastVLM-0.5B_simcse_cka_cls"/${INFER_SUBSETS[0]}/query \
-    --start_idx 0 \
-    --end_idx 49 \
-    --normalize \
-    --output_file "analyze/FastVLM-0.5B_simcse_cka_cls.txt"
+    --pt_dir "infer/FastVLM-0.5B_ckd_sigreg_cls"/${INFER_SUBSETS[0]}/query \
+    --normalize_by_min_dim \
+    --output_file "analyze/FastVLM-0.5B_ckd_sigreg_cls.txt"
+
+echo "no normalize"
+python ./er_statistic.py \
+    --pt_dir "infer/FastVLM-0.5B_ckd_sigreg_cls"/${INFER_SUBSETS[0]}/query \
+    --output_file "analyze/FastVLM-0.5B_ckd_sigreg_cls.txt"
 
