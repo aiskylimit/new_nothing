@@ -20,7 +20,7 @@ torchrun --standalone \
     --lora_alpha 64 \
     --teacher_lora_r 8 \
     --teacher_pooling "eos" \
-    --model_backbone "llava_qwen2_old" \
+    --model_backbone "llava_qwen2" \
     --pooling "eos" \
     --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
@@ -73,7 +73,7 @@ python eval_mmeb.py \
   --lora_r 64 \
   --lora_alpha 64 \
   --pooling eos \
-  --model_backbone llava_qwen2_old \
+  --model_backbone llava_qwen2 \
   --normalize True \
   --bf16 \
   --dataset_name vlm2vec_eval/MMEB-eval \
