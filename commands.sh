@@ -1,12 +1,4 @@
-#d
-#datasets
---hf-dataset math-ai/aime26 /mnt/local/@PROJECT@/eval_math/data/
---hf-dataset math-ai/aime25 /mnt/local/@PROJECT@/eval_math/data/
---hf-dataset math-ai/aime24 /mnt/local/@PROJECT@/eval_math/data/
-#models
---hf Savoxism/nuno-kd-checkpoints /mnt/local/@PROJECT@/eval_math/models/
---hf Qwen/Qwen3-8B /mnt/local/@PROJECT@/eval_math/models/
---hf Qwen/Qwen3-1.7B /mnt/local/@PROJECT@/eval_math/models/
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 
 #erank-hierd
 #v2
