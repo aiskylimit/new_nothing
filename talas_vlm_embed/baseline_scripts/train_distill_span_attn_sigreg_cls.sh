@@ -4,7 +4,7 @@
 NUM_GPUS_PER_NODE=1
 
 # Đường dẫn tới file script training của bạn
-TRAIN_SCRIPT="train_distill_ddp.py"
+TRAIN_SCRIPT="train_distill_ddp_2.py"
 
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
@@ -72,7 +72,7 @@ EVAL_SUBSETS=(
 
 
 
-python eval_mmeb.py \
+python eval_mmeb_2.py \
   --model_name "training/FastVLM-0.5B_span_attn_sigreg_cls/checkpoint-epoch-0" \
   --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_span_attn_sigreg_cls" \
   --lora True \

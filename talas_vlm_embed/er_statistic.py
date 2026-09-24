@@ -98,8 +98,8 @@ def load_hidden_layers(
 
     if image_hidden_layers.size(1) != num_image_tokens:
         raise ValueError(
-            f"Extracted {image_hidden_layers.size(1)} image tokens "
-            f"from {pt_path}, expected {num_image_tokens}."
+            f"Extracted {image_hidden_layers.size(1)} image tokens from {pt_path}, "
+            f"expected {num_image_tokens}."
         )
 
     if text_hidden_layers.size(1) <= 0:
@@ -255,6 +255,7 @@ def main():
                 normalize_by_min_dim=args.normalize_by_min_dim,
             )
         )
+
         image_hidden_samples.append(image_hidden_layers)
         text_hidden_samples.append(text_hidden_layers)
         last_token_all_layers_samples.append(last_token_all_layers)
