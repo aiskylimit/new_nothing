@@ -33,14 +33,34 @@ fi
 
 MODE_CHECKPOINT_FILE="$(mktemp)"
 trap 'rm -f -- "$MODE_CHECKPOINT_FILE"' EXIT
-# CUDA_DEVICES=4,5,6,7 FINAL_CHECKPOINT_FILE="$MODE_CHECKPOINT_FILE" bash scripts/qwen/train_single_mode_qwen2.5_14b_to_1.5b.sh off_policy
-# CUDA_DEVICES=4,5,6,7 FINAL_CHECKPOINT_FILE="$MODE_CHECKPOINT_FILE" bash scripts/qwen/train_single_mode_qwen2.5_14b_to_1.5b.sh on_policy
-CUDA_DEVICES=4,5,6,7 FINAL_CHECKPOINT_FILE="$MODE_CHECKPOINT_FILE" bash scripts/qwen/train_single_mode_qwen2.5_14b_to_1.5b.sh self_distill
+RESULTS_ROOT="${RESULTS_ROOT:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-v2/adaptive_mode_ablation}"
+read -r -a ADAPTIVE_ABLATIONS <<< "${ADAPTIVE_ABLATIONS:-on_self off_self}"
 
-MODE_LORA_PATH="$(cat "$MODE_CHECKPOINT_FILE")"
+for ADAPTIVE_MODE_SET in "${ADAPTIVE_ABLATIONS[@]}"; do
+    case "$ADAPTIVE_MODE_SET" in
+        on_self|off_self) ;;
+        *) printf 'Unsupported adaptive ablation: %s\n' "$ADAPTIVE_MODE_SET" >&2; exit 2 ;;
+    esac
 
-[[ -f "$MODE_LORA_PATH/adapter_config.json" ]] || { printf 'Final LoRA checkpoint missing: %s\n' "$MODE_LORA_PATH" >&2; exit 1; }
-CUDA_DEVICES=4,5,6,7 LORA_PATH="$MODE_LORA_PATH" MODEL_PATH="$CKPT" \
-    SAVE_PATH="$(dirname -- "$MODE_LORA_PATH")" \
-    EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
-    bash scripts/eval/eval.sh run
+    printf '\n[%s 1/2] Train adaptive Qwen with modes: %s\n' \
+        "$ADAPTIVE_MODE_SET" "$ADAPTIVE_MODE_SET"
+    : > "$MODE_CHECKPOINT_FILE"
+    CUDA_DEVICES="${CUDA_DEVICES:-4,5,6,7}" \
+        DATA_DIR="$DATA_DIR" ADAPTIVE_MODE_SET="$ADAPTIVE_MODE_SET" \
+        SAVE_PATH="$RESULTS_ROOT/$ADAPTIVE_MODE_SET" \
+        FINAL_CHECKPOINT_FILE="$MODE_CHECKPOINT_FILE" \
+        bash scripts/qwen/train_v2_qwen2.5_14b_to_1.5b.sh "$@"
+
+    MODE_LORA_PATH="$(cat "$MODE_CHECKPOINT_FILE")"
+    [[ -f "$MODE_LORA_PATH/adapter_config.json" ]] || {
+        printf 'Final LoRA checkpoint missing: %s\n' "$MODE_LORA_PATH" >&2
+        exit 1
+    }
+    printf '\n[%s 2/2] Evaluate checkpoint: %s\n' \
+        "$ADAPTIVE_MODE_SET" "$MODE_LORA_PATH"
+    CUDA_DEVICES="${CUDA_DEVICES:-4,5,6,7}" \
+        LORA_PATH="$MODE_LORA_PATH" MODEL_PATH="$CKPT" \
+        SAVE_PATH="$(dirname -- "$MODE_LORA_PATH")" \
+        EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}" \
+        bash scripts/eval/eval.sh run
+done

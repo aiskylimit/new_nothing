@@ -45,7 +45,12 @@ NUM_WORKERS="${NUM_WORKERS:-4}"
 DEV_NUM="${DEV_NUM:-512}"
 SEED="${SEED:-10}"
 
-# Dual adaptive across OFF, self-distillation, and ON-policy updates.
+# Adaptive routing defaults to OFF + SELF + ON; pairwise sets are ablations.
+ADAPTIVE_MODE_SET="${ADAPTIVE_MODE_SET:-all}"
+case "$ADAPTIVE_MODE_SET" in
+    all|on_self|off_self) ;;
+    *) printf 'ADAPTIVE_MODE_SET must be all, on_self, or off_self\n' >&2; exit 2 ;;
+esac
 KD_LOSS="${KD_LOSS:-sfkl}"
 SKEW_ALPHA="${SKEW_ALPHA:-0.1}"
 KD_RATIO="${KD_RATIO:-0.5}"
@@ -77,7 +82,11 @@ if [[ "$GEOMETRY" == 1 && "$CKA" == 1 ]]; then
     printf 'GEOMETRY and CKA are mutually exclusive\n' >&2
     exit 2
 fi
-SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/${CKPT_NAME}-v2/adaptive_${KD_LOSS}_k${DISTILL_TOP_K}_geometry${GEOMETRY}_cka${CKA}_bs${BATCH_SIZE}_ga${GRAD_ACC}_lr${LR}_seed${SEED}}"
+ADAPTIVE_MODE_SUFFIX=""
+if [[ "$ADAPTIVE_MODE_SET" != all ]]; then
+    ADAPTIVE_MODE_SUFFIX="_${ADAPTIVE_MODE_SET}"
+fi
+SAVE_PATH="${SAVE_PATH:-$BASE_PATH/results/${CKPT_NAME}-v2/adaptive${ADAPTIVE_MODE_SUFFIX}_${KD_LOSS}_k${DISTILL_TOP_K}_geometry${GEOMETRY}_cka${CKA}_bs${BATCH_SIZE}_ga${GRAD_ACC}_lr${LR}_seed${SEED}}"
 
 OPTS=()
 
@@ -96,7 +105,7 @@ OPTS+=(--weight-decay 1e-2 --clip-grad 1.0 --epochs "$EPOCHS")
 OPTS+=(--max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH")
 OPTS+=(--t-max-length "$T_MAX_LENGTH" --t-max-prompt-length "$T_MAX_PROMPT_LENGTH")
 
-# Adaptive routing uses all three modes
+# Adaptive routing mode set.
 OPTS+=(--type kd)
 if [[ "$GEOMETRY" == 1 ]]; then
     OPTS+=(--geometry)
@@ -105,6 +114,7 @@ if [[ "$CKA" == 1 ]]; then
     OPTS+=(--cka)
 fi
 OPTS+=(--dual-adaptive-exposure --do-sample)
+OPTS+=(--adaptive-mode-set "$ADAPTIVE_MODE_SET")
 OPTS+=(--rho-self-init "${RHO_SELF_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}")
 OPTS+=(--rho-self-max "${RHO_SELF_MAX:-0.25}" --rho-on-max "${RHO_ON_MAX:-0.25}")
 OPTS+=(--rho-self-increment "${RHO_SELF_INCREMENT:-0.025}" --rho-on-increment "${RHO_ON_INCREMENT:-0.025}")
@@ -141,5 +151,6 @@ printf 'Command: '
 printf '%q ' "${CMD[@]}"
 printf '\n'
 
+if [[ "${DRY_RUN:-0}" == 1 ]]; then exit 0; fi
 mkdir -p -- "$SAVE_PATH"
 exec "${CMD[@]}"

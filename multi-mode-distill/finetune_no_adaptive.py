@@ -43,7 +43,7 @@ from src.self_distill import (make_reference_model, prepare_self_distill_batches
 
 torch.set_num_threads(4)
 
-OFF_POLICY_RATIO = float(os.environ.get("OFF_POLICY_RATIO", "0.90"))
+OFF_POLICY_RATIO = float(os.environ.get("OFF_POLICY_RATIO", "0.60"))
 SELF_DISTILL_RATIO = float(os.environ.get("SELF_DISTILL_RATIO", "0.20"))
 ON_POLICY_RATIO = float(os.environ.get("ON_POLICY_RATIO", "0.20"))
 
