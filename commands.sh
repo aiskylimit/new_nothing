@@ -27,8 +27,8 @@ export NCCL_DEBUG=WARN
 
 cd ./multi-mode-distill
 # bash ./project_commands.sh
-bash ./project_commands_ablation.sh
-# bash ./context_truncate_ablation.sh
+# bash ./project_commands_ablation.sh
+bash ./context_truncate_ablation.sh
 
 
 # cd ./cypher-extract
