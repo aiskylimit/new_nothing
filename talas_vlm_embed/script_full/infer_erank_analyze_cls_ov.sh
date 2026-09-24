@@ -120,7 +120,7 @@ python ./er_statistic.py \
     --pt_dir "infer/llava_ov-0.5B_${EXP_NAME}"/${INFER_SUBSETS[0]}/query \
     --start_idx 0 \
     --end_idx 49 \
-    --normalize \
+    --normalize_by_min_dim \
     --output_file "analyze/llava_ov-0.5B_${EXP_NAME}.txt"
 
 echo "no normalize"
