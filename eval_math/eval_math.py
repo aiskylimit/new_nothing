@@ -232,11 +232,14 @@ def evaluate_math500(
         dataset = load_dataset("math-ai/amc23", split="test")
         print(f"Loaded amc 23 dataset with {len(dataset)} problems")
     elif dataset_name.lower() == "aime24":
-        dataset = load_dataset("HuggingFaceH4/aime_2024", split="train")
-        print(f"Loaded HuggingFaceH4/aime_2024 dataset with {len(dataset)} problems")
+        dataset = load_dataset("data/aime_2024", split="train")
+        print(f"Loaded data/aime_2024 dataset with {len(dataset)} problems")
     elif dataset_name.lower() == "aime25":
-        dataset = load_dataset("yentinglin/aime_2025", split="train", trust_remote_code=True)
-        print(f"Loaded yentinglin/aime_2025 dataset with {len(dataset)} problems")
+        dataset = load_dataset("data/aime_2025", split="train", trust_remote_code=True)
+        print(f"Loaded data/aime_2025 dataset with {len(dataset)} problems")
+    elif dataset_name.lower() == "aime26":
+        dataset = load_dataset("data/aime26", split="test", trust_remote_code=True)
+        print(f"Loaded data/aime26 dataset with {len(dataset)} problems")
     elif dataset_name.lower() == "hmmt25":
         dataset = load_dataset("MathArena/hmmt_feb_2025", split="train", trust_remote_code=True)
         print(f"Loaded MathArena/hmmt_feb_2025 dataset with {len(dataset)} problems")
@@ -565,7 +568,7 @@ def main():
         "--dataset",
         type=str,
         default="math500",
-        choices=["math500", "amo-bench", "aime24", "aime25", "hmmt25", "minerva", "amc23"],
+        choices=["math500", "amo-bench", "aime24", "aime25", "hmmt25", "minerva", "amc23", "aime26"],
         help="Dataset to use for evaluation (default: math500)",
     )
     parser.add_argument(
