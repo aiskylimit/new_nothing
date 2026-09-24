@@ -25,6 +25,14 @@ export T_MAX_PROMPT_LENGTH="${T_MAX_PROMPT_LENGTH:-$((MAX_PROMPT_LENGTH + CONTEX
 # Reserve the student sequence plus only the extra context budget.
 export T_MAX_LENGTH="${T_MAX_LENGTH:-$((MAX_LENGTH + T_MAX_PROMPT_LENGTH - MAX_PROMPT_LENGTH))}"
 
+# Adaptive exposure parameters used by both pairwise ablations.
+export RHO_SELF_INIT=0.10
+export RHO_ON_INIT=0.05
+export RHO_SELF_MAX=0.25
+export RHO_ON_MAX=0.25
+export RHO_SELF_INCREMENT=0.025
+export RHO_ON_INCREMENT=0.025
+
 if [[ ! -s "$DATA_DIR/train.jsonl" || ( ! -s "$DATA_DIR/valid.jsonl" && ! -s "$DATA_DIR/dev.jsonl" ) ]]; then
     printf 'Processed train and valid/dev JSONL files are required in: %s\n' "$DATA_DIR" >&2
     exit 1
