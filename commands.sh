@@ -1,9 +1,4 @@
-#d
-#models
---hf Qwen/Qwen3-8B /mnt/local/@PROJECT@/eval_math/models/Qwen3-8B
---hf Qwen/Qwen3-1.7B /mnt/local/@PROJECT@/eval_math/models/Qwen3-1.7B
-
-
+#1 +10
 #erank
 #v2
 
