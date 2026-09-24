@@ -22,7 +22,7 @@ python $INFER_SCRIPT \
     --image_dir "eval_images/" \
     --tgt_prefix_mod \
     --encode_output_path "infer/FastVLM-0.5B_ckd_sigreg_cls" \
-    --per_device_eval_batch_size 8 \
+    --per_device_eval_batch_size 1 \
     --load_pretrained_lora True \
     --report_to None
 
