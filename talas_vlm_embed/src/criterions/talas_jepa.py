@@ -195,13 +195,6 @@ class TalasJepa(nn.Module):
             valid = lengths >= min_valid_tokens
             return pr, valid
 
-        # def _rms_norm(x, weight=None, eps=1e-8):
-        #     rms = torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + eps)
-        #     out = x / rms
-        #     return out
-
-        # z0_normed = _rms_norm(z0_padded)
-        # zL_normed = _rms_norm(zL_padded)
         z0_normed = z0_padded
         zL_normed = zL_padded
 
@@ -212,27 +205,7 @@ class TalasJepa(nn.Module):
         if not valid.any():
             return zL_padded.sum() * 0.0
 
-        # print("pr0:", pr0)
-        # print("prL:", prL)
-        # def compute_effective_rank(
-        #     hidden_state: torch.Tensor, # [N, D]
-        #     eps: float = 1e-10,
-        # ) -> torch.Tensor:
-        #     X = hidden_state.float() 
-        #     N = X.size(0)
-        #     s = torch.linalg.svdvals(X) / torch.sqrt(torch.tensor(N))
-        #     eigvals = s * s
-        #     prob = eigvals.clamp(min=eps) / eigvals.sum()
-        #     entropy = -(prob * torch.log(prob)).sum()
-        #     effective_rank = torch.exp(entropy)
-        #     return effective_rank.to(dtype=hidden_state.dtype)
-        # for hs0, hsL in zip(z_list_first, z_list_last):
-        #     e0 = compute_effective_rank(hs0)
-        #     el = compute_effective_rank(hsL)
-        #     print(f"er_hs0: {e0}, er_hs1: {el}, 0-l: {e0-el}")
-
         loss_per_sample = F.relu(pr0 - prL)
-        # print("loss_per_sample:", loss_per_sample)
 
         return loss_per_sample[valid].mean().to(dtype)
     
