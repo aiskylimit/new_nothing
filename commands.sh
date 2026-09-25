@@ -1,4 +1,4 @@
-#1 +60
+#i vlm-distill-eval.txt
 #erank
 #v2
 
