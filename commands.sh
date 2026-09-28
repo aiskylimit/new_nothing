@@ -1,4 +1,4 @@
-#1 +10
+#1 +60
 #opened
 #v1
 
@@ -35,5 +35,5 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-tree processed_data
-# bash ./project_commands.sh
+rm -rf processed_data/rams_b10_perm0
+bash ./project_commands.sh
