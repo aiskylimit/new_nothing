@@ -92,9 +92,11 @@ if [ "${SKIP_SMOKE:-0}" = "1" ]; then
 else
     SMOKE_GPU=${SMOKE_GPU:-0}
     SMOKE_LIMIT=${SMOKE_LIMIT:-64}
-    # A fresh host usually has no Qwen3-0.6B in its HF cache, and the CL-LoRA path defaults
-    # to offline, which would fail with a cache miss instead of downloading.
-    export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0} TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-0}
+    # With models/Qwen3-0.6B from download.txt the runners load it from disk, so stay offline:
+    # transformers 4.57 still calls the hub API on tokenizer load when online, and hangs on a
+    # host without HF access. Without the local copy it has to download, so go online.
+    off=0; [ -f models/Qwen3-0.6B/config.json ] && off=1
+    export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-${off}} TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-${off}}
 
     echo "4a. tokenizer path: rams perm0, all 5 tasks, no GPU"
     bash run.sh rams "0" "${SMOKE_GPU}" "${SMOKE_GPU}" prep

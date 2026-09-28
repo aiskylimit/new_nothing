@@ -83,7 +83,9 @@ fi
 export PATH=${ENV_BIN}:$PATH
 
 BASE_PATH=.
-BASE_MODEL="Qwen/Qwen3-0.6B"
+# local copy from download.txt when present (see run.sh), else the hub name
+[ -f models/Qwen3-0.6B/config.json ] && MODEL_PATH=${MODEL_PATH:-models/Qwen3-0.6B}
+BASE_MODEL=${MODEL_PATH:-Qwen/Qwen3-0.6B}
 GPUS_PER_NODE=${#GPUS[@]}
 
 RUN_ROOT="${BASE_PATH}/results/qwen3/ced/${RUN_NAME}"

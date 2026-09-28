@@ -8,6 +8,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
+# local copy from download.txt when present (see run.sh), else the hub name
+[ -f models/Qwen3-0.6B/config.json ] && MODEL_PATH=${MODEL_PATH:-models/Qwen3-0.6B}
+MODEL_PATH=${MODEL_PATH:-Qwen/Qwen3-0.6B}
 
 METHOD=""; DATA_ROOT="data_ced/ace_b10_perm0"; NUM_TASKS=5; RANK=16; ALPHA=64
 LR=0.0002; EPOCHS=5; BS=2; GA=16; EBS=16; REG=0.5; MIGU=0.7; SEED=42; GPU=0
@@ -92,7 +95,7 @@ ${PY} cl_lora/engine.py \
     --rank "${RANK}" --alpha "${ALPHA}" --lr "${LR}" --epochs "${EPOCHS}" \
     --batch-size "${BS}" --grad-accum "${GA}" --eval-batch-size "${EBS}" \
     --cl-reg "${REG}" --cl-migu-ratio "${MIGU}" --seed "${SEED}" \
-    --limit "${LIMIT}" \
+    --limit "${LIMIT}" --model-path "${MODEL_PATH}" \
     --save "${SAVE}" "${RESUME_ARG[@]}" "${END_TASK_ARG[@]}" \
     >> "${LOG}" 2>&1
 if [ -z "${END_TASK}" ] || [ "${END_TASK}" -eq $((NUM_TASKS - 1)) ]; then
