@@ -1,4 +1,4 @@
-#2 -0-5
+#1 +10
 #opened
 #v1
 
@@ -35,4 +35,5 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-bash ./project_commands.sh
+tree processed_data
+# bash ./project_commands.sh
