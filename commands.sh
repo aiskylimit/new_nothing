@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/_logs/
+#1 +30
 #opened-gpu
 #v2
 
@@ -35,5 +35,6 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-cp logs_* _logs/
+bash ./gather_logs.sh
+ls
 # bash ./project_commands.sh
