@@ -1,10 +1,10 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/_logs/
+#1 +10
 #opened-gpu
 #v2
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/outputs/eval/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/_logs/
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
@@ -34,5 +34,6 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./OpenED
+cd ./OpenED
+cp logs_* _logs/
 # bash ./project_commands.sh
