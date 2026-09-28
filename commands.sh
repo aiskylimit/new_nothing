@@ -1,4 +1,4 @@
-#1 +10
+#2 -0-10
 #opened-gpu
 #v2
 
@@ -34,6 +34,5 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-ls
+# cd ./OpenED
 # bash ./project_commands.sh
