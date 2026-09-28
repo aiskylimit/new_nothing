@@ -155,7 +155,7 @@ tokenize () {  # $1=raw dir  $2=processed dir
 }
 
 train_once () {  # $1=engine $2=init $3=data_dir $4=save $5=lr $6=epochs $7=extra opts
-    local MASTER_PORT=66$(($RANDOM%90+10))
+    local MASTER_PORT=${MASTER_PORT:-66$(($RANDOM%90+10))}   # project_commands.sh pins one per GPU
     local OPTS=""
     OPTS+=" --base-path ${BASE_PATH} --model-path $2 --ckpt-name qwen3-0.6B --model-type qwen --n-gpu ${GPUS_PER_NODE}"
     OPTS+=" --data-dir $3 --num-workers 0 --train-num ${TRAIN_NUM} --dev-num ${DEV_NUM} --ced-smoke-rows ${SMOKE_ROWS}"
