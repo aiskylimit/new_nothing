@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# Bring this repo up on a host and prove it works, then hand over to run.sh.
+# Train + test every RAMS baseline (perm0-4, 7 dist + 8 CL-LoRA methods) on this host:
 #
-#   bash project_commands.sh                    # env + unzip + checks + smoke run
+#   bash project_commands.sh                    # env + checks, then trains until done
 #   SKIP_INSTALL=1 bash project_commands.sh     # deps already installed
-#   SKIP_SMOKE=1   bash project_commands.sh     # setup only, no GPU needed
-#   RUN_SWEEP=1    bash project_commands.sh     # ... and launch the real sweep at the end
 #
-# Everything here is idempotent: re-running skips what is already in place. Training itself
-# lives in run.sh; this file is the path from a fresh clone to a first working run.
+# Everything here is idempotent: re-running skips what is already in place, and the runners
+# skip every method+perm that already has its completion marker, so a re-run after a crash
+# only trains what is missing.
 #
 # Knobs (all optional):
 #   VENV          venv to activate, e.g. /mnt/local/uvenvs/opened  (default: use the current
 #                 environment, whatever `python` already resolves to)
 #   PY / ENV_BIN  interpreter and env bin/ for the runners (default: derived from `python`)
-#   SMOKE_GPU     GPU for the smoke run (default 0)
-#   SMOKE_LIMIT   rows per split in the smoke run (default 64)
-#   SKIP_INSTALL / SKIP_SMOKE / RUN_SWEEP as above
+#   GPU_DIST_ALL / GPU_CLLORA_ALL   GPUs per queue (default 0,1,2,3 / 4,5,6,7, see run.sh)
+#   SKIP_INSTALL  as above
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -88,51 +86,20 @@ done
     exit 1
 }
 
-# ---------------------------------------------------------------- 4. smoke run
-step "4. smoke run"
-if [ "${SKIP_SMOKE:-0}" = "1" ]; then
-    echo "SKIP_SMOKE=1, not training"
-else
-    SMOKE_GPU=${SMOKE_GPU:-0}
-    SMOKE_LIMIT=${SMOKE_LIMIT:-64}
-    # With models/Qwen3-0.6B from download.txt the runners load it from disk, so stay offline:
-    # transformers 4.57 still calls the hub API on tokenizer load when online, and hangs on a
-    # host without HF access. Without the local copy it has to download, so go online.
-    off=0; [ -f models/Qwen3-0.6B/config.json ] && off=1
-    export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-${off}} TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-${off}}
+# ---------------------------------------------------------------- 4. full sweep
+step "4. sweep: rams perm0-4, dist (gpu ${GPU_DIST_ALL:-0,1,2,3}) + CL-LoRA (gpu ${GPU_CLLORA_ALL:-4,5,6,7})"
+# results/ is gitignored, so a fresh host has no completion markers and nothing is skipped.
+# MISSING_PLAN keeps it to RAMS; a bare `bash run.sh` would also retrain MAVEN.
+# FOREGROUND=1: run.sh trains in this process instead of detaching, so this script returns
+# only when every run is done. The two queue logs are streamed here as they fill.
+tail -n 0 -F logs_ced_dist_rams.log logs_ced_cllora_rams.log 2>/dev/null &
+tail_pid=$!
+FOREGROUND=1 MISSING_PLAN="rams:0 1 2 3 4:both" bash run.sh
+kill "${tail_pid}" 2>/dev/null || true
 
-    echo "4a. tokenizer path: rams perm0, all 5 tasks, no GPU"
-    bash run.sh rams "0" "${SMOKE_GPU}" "${SMOKE_GPU}" prep
-
-    echo
-    echo "4b. training path: one CL-LoRA task on gpu${SMOKE_GPU}, ${SMOKE_LIMIT} rows, 1 epoch"
-    rm -rf results/smoke_cllora
-    bash scripts/qwen/ced/run_cllora.sh \
-        --method inclora --data-root data/rams_b10_perm0 \
-        --num-tasks 5 --end-task 0 --epochs 1 --limit "${SMOKE_LIMIT}" \
-        --gpu "${SMOKE_GPU}" --py "${PY}" --save results/smoke_cllora
-    echo "smoke run OK -> results/smoke_cllora (throwaway, delete whenever)"
+step "5. done"
+if grep -h "FAILED" logs_ced_dist_rams.log logs_ced_cllora_rams.log; then
+    echo "some runs failed, see the lines above"
+    exit 1
 fi
-
-# ---------------------------------------------------------------- 5. the real sweep
-step "5. sweep"
-SWEEP_CMD='MISSING_PLAN="rams:0 1 2 3 4:both" bash run.sh'
-if [ "${RUN_SWEEP:-0}" = "1" ]; then
-    echo "launching: ${SWEEP_CMD}"
-    env MISSING_PLAN="rams:0 1 2 3 4:both" bash run.sh
-    echo "tail -f logs_run_all.log"
-else
-    cat <<EOF
-not launched (pass RUN_SWEEP=1 to launch from here). When you are ready:
-
-  ${SWEEP_CMD}
-  tail -f logs_run_all.log
-
-results/ is gitignored, so on a fresh host no completion markers arrive with the repo and
-nothing is skipped: a bare \`bash run.sh\` would retrain MAVEN perm0-1 as well. Either copy
-the old host's results/ over first, or keep MISSING_PLAN narrowed as above. run.sh's header
-has the rest, including GPU_DIST_ALL / GPU_CLLORA_ALL when gpu0+gpu1 are not the free pair.
-
-Collect afterwards:  python tools/ced_collect.py --host-label <label> [--upload]
-EOF
-fi
+echo "sweep finished. Collect: python tools/ced_collect.py --host-label <label> [--upload]"

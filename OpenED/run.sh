@@ -279,6 +279,11 @@ if [ $# -eq 0 ]; then
         done
         echo "[run.sh:all] ALL DATASETS DONE $(date -Iseconds)"
     }
+    if [ "${FOREGROUND:-0}" = "1" ]; then
+        # project_commands.sh: stay attached, so the job that launched it lasts as long as training
+        run_all 2>&1 | tee logs_run_all.log
+        exit 0
+    fi
     setsid nohup bash -c "$(declare -f family_of protocol_of split_methods run_dist_queue run_cllora_queue check_data run_all); run_all" \
         > logs_run_all.log 2>&1 < /dev/null &
     echo "[run.sh] running every missing run, one dataset at a time, pid $! -> logs_run_all.log"
