@@ -63,7 +63,10 @@ class Encoder(object):
 def main():
     print("OK")
     args = get_args()
-        
+    # Load once in the main process first. If this fails inside Pool's initializer instead,
+    # the pool silently respawns the dying workers forever and the script hangs.
+    AutoTokenizer.from_pretrained(args.model_path, padding_side="right")
+
     if 'generated' not in args.processed_data_dir:
         args.processed_data_dir = os.path.join(args.processed_data_dir, args.model_type)
 

@@ -67,8 +67,8 @@ fi
 # ---------------------------------------------------------------- 3. data
 step "3. data"
 missing=0
-for f in data/maven_b10_perm0/streams.json data/maven_b10_perm0/0/train.jsonl \
-         data/rams_b10_perm0/streams.json data/rams_b10_perm0/0/train.jsonl; do
+for f in data/rams_b10_perm0/streams.json data/rams_b10_perm0/0/train.jsonl \
+         processed_data/rams_b10_perm0/0/qwen/train_0.idx; do
     if have "${f}"; then
         printf '  %-44s ok\n' "${f}"
     else
