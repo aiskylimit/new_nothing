@@ -1,5 +1,5 @@
-#2
-#opened
+#1 +10
+#opened-gpu
 #v2
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -34,5 +34,5 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash ./project_commands.sh
+# cd ./OpenED
+# bash ./project_commands.sh
