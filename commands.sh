@@ -1,4 +1,4 @@
-#2
+#1 +20
 #opened
 #v1
 
@@ -8,6 +8,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+kill -9 496 497 498 499 500 501 502 503
 # sleep 2
 nvidia-smi
 
@@ -19,7 +20,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
 # cd ./talas_vlm_embed
 # bash ./project_commands.sh
@@ -34,5 +35,5 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash ./project_commands.sh
+# cd ./OpenED
+# bash ./project_commands.sh
