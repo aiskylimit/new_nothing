@@ -35,5 +35,5 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-tree results
+ls
 # bash ./project_commands.sh
