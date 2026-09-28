@@ -97,6 +97,16 @@ export RESUME=${RESUME:-0}   # both CED queues read this
 # runs land; override with MISSING_PLAN="ds:perms:queue;..." or RUN_ALL_DATASETS="ds1 ds2".
 export MISSING_PLAN=${MISSING_PLAN:-"maven:0 1 2 3 4:both;rams:0 1 2 3 4:both"}
 
+# Base model: the local copy download.txt puts in models/Qwen3-0.6B when it is there, else the
+# hub name. A host without HF access hangs on the hub name, it never errors out. With the local
+# copy also default to offline: transformers 4.57 still calls the hub API on tokenizer load
+# when online, which hangs the same way.
+if [ -f models/Qwen3-0.6B/config.json ]; then
+    MODEL_PATH=${MODEL_PATH:-models/Qwen3-0.6B}
+    HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}; TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
+fi
+export MODEL_PATH=${MODEL_PATH:-Qwen/Qwen3-0.6B}
+
 # GPUs per family, comma-separated. Both modes use these; the single-dataset form can still
 # override them with arguments 3 and 4. The two lists must not overlap.
 # One queue per GPU, always: the memory guards in the runners are snapshots, not reservations.
@@ -226,7 +236,7 @@ check_data () {  # $1=family $2=dataset $3=perms -- tokenizes both families; CED
                 [ -d "${out}/qwen" ] && [ -n "$(ls -A "${out}/qwen" 2>/dev/null)" ] && continue
                 PYTHONPATH=. ${PY} tools/process_data.py \
                     --data-dir "data/${ds}_b10_perm${p}/${t}/" --processed-data-dir "${out}" \
-                    --model-path Qwen/Qwen3-0.6B --data-process-workers 4 \
+                    --model-path "${MODEL_PATH}" --data-process-workers 4 \
                     --max-prompt-length 460 --t-max-prompt-length 640 \
                     --dev-num 1000 --model-type qwen > "/tmp/tok_${ds}_p${p}t${t}.log" 2>&1 || {
                     echo "[run.sh] tokenize failed for ${ds} perm${p} task${t}, see /tmp/tok_${ds}_p${p}t${t}.log"
