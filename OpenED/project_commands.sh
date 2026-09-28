@@ -22,6 +22,9 @@ cd "$(dirname "$0")"
 step () { echo; echo "=== $* ==="; }
 have () { [ -e "$1" ]; }
 
+
+VENV=/mnt/local/uvenvs/opened
+
 # ---------------------------------------------------------------- 1. environment
 step "1. environment"
 if [ -n "${VENV:-}" ]; then

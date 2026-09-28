@@ -1,5 +1,5 @@
-#i opened.txt
-#hierd
+#1 +60
+#opened
 #v2
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -33,3 +33,6 @@ export NCCL_DEBUG=WARN
 
 # cd ./cypher-extract
 # bash ./project_command.sh
+
+cd ./OpenED
+bash ./project_commands.sh
