@@ -13,6 +13,40 @@ DATA_PREFIX=${DATA_PREFIX:-ace_b10_perm}
 # calls this with DIST_METHODS="" so only the shared task0 trains before the split.
 DIST_METHODS=${DIST_METHODS-"kd rkl sfkl srkl csd distillm amid"}
 SHARED="dist_shared_task0_perm${PERM}_${PROTOCOL}_s${SEED}"
+NUM_TASKS=$(${ENV_BIN:-$HOME/miniconda3/envs/mta/bin}/python -c \
+    "import json,sys; print(len(json.load(open(sys.argv[1]))))" "data/${DATA_PREFIX}${PERM}/streams.json")
+
+# Flat logs/, one prefix per run, logs/<ds>_dist_<method>_perm<p>_: steps.log (runner output),
+# task<t>.log (training output), results.log (per-task train/eval log.txt) and merge.log
+# (LoRA merge output), the last two written when the run ends.
+# run_ced_v2.sh writes the training output to results/<run>/task<t>/train.log and is
+# fingerprinted into every run manifest, so it stays as is: task<t>.log is a symlink to that
+# file while the run trains, a copy once it ends.
+LOGS="logs/${DATA_PREFIX%%_*}_dist"
+mkdir -p logs
+link_logs () {  # $1=run name $2=log prefix $3..=tasks
+    local run=$1 pre=$2 t; shift 2
+    for t in "$@"; do
+        ln -sfn "${PWD}/results/qwen3/ced/${run}/task${t}/train.log" "${pre}_task${t}.log"
+    done
+}
+freeze_logs () {  # $1=run name $2=log prefix
+    local run=$1 pre=$2 f
+    for f in "${pre}"_task*.log; do
+        [ -L "${f}" ] || continue
+        if [ -e "${f}" ]; then cp --remove-destination "$(readlink -f "${f}")" "${f}"; else rm -f "${f}"; fi
+    done
+    : > "${pre}_results.log"
+    for f in $(find "results/qwen3/ced/${run}" -name log.txt 2>/dev/null | sort -V); do
+        echo "===== ${f#results/qwen3/ced/${run}/} =====" >> "${pre}_results.log"
+        cat "${f}" >> "${pre}_results.log"
+    done
+    : > "${pre}_merge.log"
+    for f in $(find "results/qwen3/ced/${run}" -name merge.log 2>/dev/null | sort -V); do
+        echo "===== ${f#results/qwen3/ced/${run}/} =====" >> "${pre}_merge.log"
+        cat "${f}" >> "${pre}_merge.log"
+    done
+}
 
 if [ ! -f "results/qwen3/ced/${SHARED}/.complete" ]; then
     [ ! -e "results/qwen3/ced/${SHARED}" ] || {
@@ -20,11 +54,16 @@ if [ ! -f "results/qwen3/ced/${SHARED}/.complete" ]; then
         exit 1
     }
     echo "===== shared task0 ${SHARED} $(date) ====="
+    PRE="${LOGS}_shared_task0_perm${PERM}"
+    link_logs "${SHARED}" "${PRE}" 0
+    rc=0
     bash scripts/qwen/ced/run_ced_v2.sh \
         --run-name "${SHARED}" --mode sft --data-prefix "${DATA_PREFIX}" --perm "${PERM}" \
         --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" \
         --bs 2 --acc 16 --greedy 1 --gpus "${GPU}" --end-task 0 \
-        > "logs_${SHARED}.log" 2>&1
+        > "${PRE}_steps.log" 2>&1 || rc=$?
+    freeze_logs "${SHARED}" "${PRE}"
+    [ "${rc}" -eq 0 ] || exit "${rc}"
 fi
 
 run_dist () {  # $1=method label $2=kd-type ($3...=optional runner flags)
@@ -48,12 +87,16 @@ run_dist () {  # $1=method label $2=kd-type ($3...=optional runner flags)
         RESUME_ARGS+=(--resume)
     fi
     echo "===== ${RUN_NAME} (${KD_TYPE}) $(date) ====="
+    local PRE="${LOGS}_${METHOD}_perm${PERM}" rc=0
+    link_logs "${RUN_NAME}" "${PRE}" $(seq "${START_TASK}" $((NUM_TASKS - 1)))
     bash scripts/qwen/ced/run_ced_v2.sh --run-name "${RUN_NAME}" --mode ce_kd --data-prefix "${DATA_PREFIX}" --perm "${PERM}" \
         --kd-type "${KD_TYPE}" --w-span 0 --kd-ratio 0.9 --skew 0.1 --span-metric cosine --layers "22 25 28" \
         --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" --bs 2 --acc 16 \
         --greedy 1 --gpus "${GPU}" --start-task "${START_TASK}" \
         --task0-source-run "${SHARED}" "${RESUME_ARGS[@]}" "$@" \
-        >> "logs_${RUN_NAME}.log" 2>&1
+        >> "${PRE}_steps.log" 2>&1 || rc=$?
+    freeze_logs "${RUN_NAME}" "${PRE}"
+    [ "${rc}" -eq 0 ] || exit "${rc}"
     [ -f "results/qwen3/ced/${RUN_NAME}/.complete" ] || {
         echo "missing completion marker: ${RUN_NAME}"
         exit 1

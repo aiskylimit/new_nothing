@@ -91,14 +91,17 @@ step "4. sweep: rams perm0-4, dist (gpu ${GPU_DIST_ALL:-0,1,2,3}) + CL-LoRA (gpu
 # results/ is gitignored, so a fresh host has no completion markers and nothing is skipped.
 # MISSING_PLAN keeps it to RAMS; a bare `bash run.sh` would also retrain MAVEN.
 # FOREGROUND=1: run.sh trains in this process instead of detaching, so this script returns
-# only when every run is done. The two queue logs are streamed here as they fill.
-tail -n 0 -F logs_ced_dist_rams.log logs_ced_cllora_rams.log 2>/dev/null &
+# only when every run is done. The terminal only gets the queue progress (one line per run
+# start/finish); each run's full output is in logs/rams_{dist,cllora}_<method>_perm<p>_*.log.
+echo "full logs: logs/rams_dist_<method>_perm<p>_*.log and logs/rams_cllora_<method>_perm<p>_*.log"
+mkdir -p logs
+tail -n 0 -F logs/rams_dist_queue.log logs/rams_cllora_queue.log 2>/dev/null &
 tail_pid=$!
 FOREGROUND=1 MISSING_PLAN="rams:0 1 2 3 4:both" bash run.sh
 kill "${tail_pid}" 2>/dev/null || true
 
 step "5. done"
-if grep -h "FAILED" logs_ced_dist_rams.log logs_ced_cllora_rams.log; then
+if grep -h "FAILED" logs/rams_dist_queue.log logs/rams_cllora_queue.log; then
     echo "some runs failed, see the lines above"
     exit 1
 fi

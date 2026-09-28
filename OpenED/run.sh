@@ -64,8 +64,9 @@
 # its manifest instead of aborting with "partial run exists". Default 0 (a partial run is an
 # error you look at first).
 #
-# Logs: logs_{cre_dist,cre_cllora,ced_dist,ced_cllora}_<ds>.log in the repo root; the
-# no-argument mode additionally logs its own progress to logs_run_all.log.
+# Logs, all flat in logs/ (CED): logs/<ds>_{dist,cllora}_queue.log for each queue, and per run
+# logs/<ds>_{dist,cllora}_<method>_perm<p>_*.log (see dist_queue.sh / run_cllora.sh). CRE queues
+# log to logs/<ds>_cre_{dist,cllora}_queue.log. No-argument mode also writes logs/run_all.log.
 # Safe to re-run: every step below skips work that already completed (each run's own
 # resume/skip-if-complete logic), whichever family the dataset belongs to.
 set -uo pipefail
@@ -135,6 +136,10 @@ family_of () {  # $1=dataset -> echoes cre|ced
     esac
 }
 
+queue_log () {  # $1=family $2=dataset $3=dist|cllora -> that queue's log file
+    if [ "$1" = "cre" ]; then echo "logs/$2_cre_$3_queue.log"; else echo "logs/$2_$3_queue.log"; fi
+}
+
 protocol_of () {  # $1=dataset -> the CED run-name tag (PROTOCOL) for that dataset
     # CED run names are built from method+perm+protocol+seed and carry NO dataset of their own
     # (cllora_olora_perm0_v2_s42, dist_rkl_perm0_v2_s42), so a second CED dataset at the same
@@ -189,7 +194,7 @@ run_dist_queue () {   # $1=family $2=dataset $3=gpus (comma list) $4..=perms
         # dist_queue.sh (CED) has no top-level FAILED marker of its own -- it dies silently
         # under set -e -- so log it here regardless of family, or a crashed perm just looks
         # like the queue quietly moved on.
-        [ "${rc}" -eq 0 ] || echo "[run.sh] FAILED dist queue: family=${family} ds=${ds} perm=${p} (exit ${rc}), see the per-run log above/logs_*_${ds}.log"
+        [ "${rc}" -eq 0 ] || echo "[run.sh] FAILED dist queue: family=${family} ds=${ds} perm=${p} (exit ${rc}), see logs/${ds}_*.log"
     done
 }
 run_cllora_queue () {  # $1=family $2=dataset $3=gpus (comma list) $4=methods $5..=perms
@@ -210,7 +215,7 @@ run_cllora_queue () {  # $1=family $2=dataset $3=gpus (comma list) $4=methods $5
             done
             for pid in "${pids[@]}"; do wait "${pid}" || rc=$?; done
         fi
-        [ "${rc}" -eq 0 ] || echo "[run.sh] FAILED cllora queue: family=${family} ds=${ds} perm=${p} (exit ${rc}), see the per-run log above/logs_*_${ds}.log"
+        [ "${rc}" -eq 0 ] || echo "[run.sh] FAILED cllora queue: family=${family} ds=${ds} perm=${p} (exit ${rc}), see logs/${ds}_*.log"
     done
 }
 
@@ -226,6 +231,7 @@ check_data () {  # $1=family $2=dataset $3=perms -- tokenizes both families; CED
         done
     else
         local PY=${PY:-python3}
+        mkdir -p logs
         for p in "$@"; do
             [ -s "data/${ds}_b10_perm${p}/streams.json" ] || {
                 echo "[run.sh] missing data/${ds}_b10_perm${p}/streams.json -- build it first (tools/build_maven_perms.py --src data/${ds} --out-prefix ${ds}_b10_perm)"
@@ -238,9 +244,9 @@ check_data () {  # $1=family $2=dataset $3=perms -- tokenizes both families; CED
                     --data-dir "data/${ds}_b10_perm${p}/${t}/" --processed-data-dir "${out}" \
                     --model-path "${MODEL_PATH}" --data-process-workers 4 \
                     --max-prompt-length 460 --t-max-prompt-length 640 \
-                    --dev-num 1000 --model-type qwen > "/tmp/tok_${ds}_p${p}t${t}.log" 2>&1 || {
-                    echo "[run.sh] tokenize failed for ${ds} perm${p} task${t}, see /tmp/tok_${ds}_p${p}t${t}.log"
-                    tail -10 "/tmp/tok_${ds}_p${p}t${t}.log"
+                    --dev-num 1000 --model-type qwen > "logs/${ds}_tokenize_perm${p}_task${t}.log" 2>&1 || {
+                    echo "[run.sh] tokenize failed for ${ds} perm${p} task${t}, see logs/${ds}_tokenize_perm${p}_task${t}.log"
+                    tail -10 "logs/${ds}_tokenize_perm${p}_task${t}.log"
                     return 1
                 }
             done
@@ -267,11 +273,11 @@ if [ $# -eq 0 ]; then
             check_data "${family}" "${ds}" ${perms} || { echo "[run.sh:all] === ${ds} data check failed, skipping ==="; continue; }
             dpid=""; cpid=""
             if [ "${queue}" = "dist" ] || [ "${queue}" = "both" ]; then
-                ( run_dist_queue "${family}" "${ds}" "${GPU_DIST_ALL}" ${perms} ) > "logs_${family}_dist_${ds}.log" 2>&1 &
+                ( run_dist_queue "${family}" "${ds}" "${GPU_DIST_ALL}" ${perms} ) > "$(queue_log "${family}" "${ds}" dist)" 2>&1 &
                 dpid=$!
             fi
             if [ "${queue}" = "cllora" ] || [ "${queue}" = "both" ]; then
-                ( run_cllora_queue "${family}" "${ds}" "${GPU_CLLORA_ALL}" "${CLLORA_METHODS}" ${perms} ) > "logs_${family}_cllora_${ds}.log" 2>&1 &
+                ( run_cllora_queue "${family}" "${ds}" "${GPU_CLLORA_ALL}" "${CLLORA_METHODS}" ${perms} ) > "$(queue_log "${family}" "${ds}" cllora)" 2>&1 &
                 cpid=$!
             fi
             [ -n "${dpid}${cpid}" ] && wait ${dpid} ${cpid}
@@ -281,14 +287,16 @@ if [ $# -eq 0 ]; then
     }
     if [ "${FOREGROUND:-0}" = "1" ]; then
         # project_commands.sh: stay attached, so the job that launched it lasts as long as training
-        run_all 2>&1 | tee logs_run_all.log
+        mkdir -p logs
+        run_all 2>&1 | tee logs/run_all.log
         exit 0
     fi
-    setsid nohup bash -c "$(declare -f family_of protocol_of split_methods run_dist_queue run_cllora_queue check_data run_all); run_all" \
-        > logs_run_all.log 2>&1 < /dev/null &
-    echo "[run.sh] running every missing run, one dataset at a time, pid $! -> logs_run_all.log"
+    mkdir -p logs
+    setsid nohup bash -c "$(declare -f family_of protocol_of queue_log split_methods run_dist_queue run_cllora_queue check_data run_all); run_all" \
+        > logs/run_all.log 2>&1 < /dev/null &
+    echo "[run.sh] running every missing run, one dataset at a time, pid $! -> logs/run_all.log"
     echo "[run.sh] plan: ${RUN_ALL_DATASETS:-${MISSING_PLAN}}"
-    echo "[run.sh] tail -f logs_run_all.log"
+    echo "[run.sh] tail -f logs/run_all.log"
     exit 0
 fi
 
@@ -313,24 +321,26 @@ if [ "${QUEUE}" = "prep" ]; then
 fi
 
 if [ "${QUEUE}" = "dist" ] || [ "${QUEUE}" = "both" ]; then
+    mkdir -p logs
     setsid nohup bash -c "$(declare -f protocol_of split_methods run_dist_queue); run_dist_queue \"\$@\"" _ \
         "${FAMILY}" "${DS}" "${GPU_DIST}" ${PERMS} \
-        > "logs_${FAMILY}_dist_${DS}.log" 2>&1 < /dev/null &
+        > "$(queue_log "${FAMILY}" "${DS}" dist)" 2>&1 < /dev/null &
     DIST_PID=$!
-    echo "[run.sh] distillation queue running on gpus ${GPU_DIST}, pid ${DIST_PID} -> logs_${FAMILY}_dist_${DS}.log"
+    echo "[run.sh] distillation queue running on gpus ${GPU_DIST}, pid ${DIST_PID} -> $(queue_log "${FAMILY}" "${DS}" dist)"
 fi
 if [ "${QUEUE}" = "cllora" ] || [ "${QUEUE}" = "both" ]; then
+    mkdir -p logs
     setsid nohup bash -c "$(declare -f protocol_of split_methods run_cllora_queue); run_cllora_queue \"\$@\"" _ \
         "${FAMILY}" "${DS}" "${GPU_CLLORA}" "${CLLORA_METHODS}" ${PERMS} \
-        > "logs_${FAMILY}_cllora_${DS}.log" 2>&1 < /dev/null &
+        > "$(queue_log "${FAMILY}" "${DS}" cllora)" 2>&1 < /dev/null &
     CLLORA_PID=$!
-    echo "[run.sh] CL-LoRA queue running on gpus ${GPU_CLLORA}, pid ${CLLORA_PID} -> logs_${FAMILY}_cllora_${DS}.log"
+    echo "[run.sh] CL-LoRA queue running on gpus ${GPU_CLLORA}, pid ${CLLORA_PID} -> $(queue_log "${FAMILY}" "${DS}" cllora)"
 fi
 TAIL=()
 case "${QUEUE}" in
-    dist|both)   TAIL+=("logs_${FAMILY}_dist_${DS}.log") ;;
+    dist|both)   TAIL+=("$(queue_log "${FAMILY}" "${DS}" dist)") ;;
 esac
 case "${QUEUE}" in
-    cllora|both) TAIL+=("logs_${FAMILY}_cllora_${DS}.log") ;;
+    cllora|both) TAIL+=("$(queue_log "${FAMILY}" "${DS}" cllora)") ;;
 esac
 echo "[run.sh] tail -f ${TAIL[*]}"
