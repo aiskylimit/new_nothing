@@ -60,7 +60,7 @@ if have en_core_web_sm/meta.json; then
     echo "already unpacked: $("${PY}" -c "import json;m=json.load(open('en_core_web_sm/meta.json'));print(m['lang']+'_'+m['name'], m['version'])")"
 elif have en_core_web_sm.zip; then
     # Python's zipfile, not unzip: the image has no unzip binary and no sudo.
-    "${PY}" -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip').extractall('.')"
+    "${PY}" -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
     rm -rf __MACOSX en_core_web_sm.zip          # the zip was packed on a Mac
     echo "unpacked -> ./en_core_web_sm  (spacy.load(\"en_core_web_sm\") works from this directory)"
 else
