@@ -1,4 +1,4 @@
-#2 -0-5
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
 #opened-gpu
 #v1
 
