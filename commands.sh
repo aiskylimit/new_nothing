@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/thiennh-p6-tau3-worker-0_20260928_1600/
+#1 +10
 #opened-gpu
 #v2
 
