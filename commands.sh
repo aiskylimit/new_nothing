@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
+#1 +10
 #opened-gpu
 #v1
 
@@ -34,5 +34,5 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./OpenED
-# bash ./project_commands.sh
+cd ./OpenED
+bash ./project_commands.sh
