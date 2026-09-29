@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/thiennh-p6-tau3-worker-0_20260928_1600/
+#1 +60
 #opened-gpu
 #v2
 
@@ -8,6 +8,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+kill -9 1724438 825153 435934
 # sleep 2
 nvidia-smi
 
@@ -37,4 +38,4 @@ export NCCL_DEBUG=WARN
 cd ./OpenED
 # bash ./gather_logs.sh
 # ls
-# bash ./project_commands.sh
+bash ./project_commands.sh
