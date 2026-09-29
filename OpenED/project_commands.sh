@@ -126,10 +126,13 @@ fi
 GPUS=(0 1 2 3 4 5 6 7)
 DIST_ALL="kd rkl sfkl srkl csd distillm amid"
 CLLORA_ALL="inclora olora tree inflora epi migu gainlora_o gainlora_inf"
+# All 5 perms, KEPT perm0 runs included: pick() skips anything with a .complete marker, so a
+# kept run that really finished costs nothing, and one that never did gets trained here
+# instead of being assumed done. Status 2026-09-29: all CL-LoRA perm1-4 done, task0 perm1
+# done; every dist job and task0 perm2-4 failed on the shared rendezvous (fixed below).
 JOBS=()                                                  # <kind>:<method>:<perm>
-for p in 1 2 3 4; do JOBS+=("task0:shared:${p}"); done   # first, everything dist waits on them
-for m in kd sfkl srkl csd amid; do JOBS+=("dist:${m}:0"); done
-for p in 1 2 3 4; do
+for p in 0 1 2 3 4; do JOBS+=("task0:shared:${p}"); done # first, everything dist waits on them
+for p in 0 1 2 3 4; do
     for m in ${DIST_ALL}; do JOBS+=("dist:${m}:${p}"); done
     for m in ${CLLORA_ALL}; do JOBS+=("cllora:${m}:${p}"); done
 done
@@ -140,6 +143,12 @@ bash run.sh rams "0 1 2 3 4" 0 0 prep                   # tokenize what is missi
 if [ -f models/Qwen3-0.6B/config.json ]; then
     export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
 fi
+# The pod exports PET_RDZV_BACKEND=c10d / PET_RDZV_ENDPOINT=<pod>-worker-0:23456 / PET_RDZV_ID,
+# which torchrun reads as flag defaults. c10d ignores --master_port, so every torchrun joined the
+# same rendezvous: the first one ran, the rest crashed when it exited (RendezvousConnectionError).
+# Dropped here, not in run_ced_v2.sh: that script is fingerprinted into every run manifest, and
+# editing it would break --resume of every partial dist run.
+for v in $(compgen -e | grep '^PET_' || true); do unset "${v}"; done
 POOL_LOG=logs/rams_pool.log
 mkdir -p logs
 echo "progress: ${POOL_LOG}   full logs: logs/rams_{dist,cllora}_<method>_perm<p>_*.log"
@@ -189,12 +198,11 @@ launch () {  # $1=job $2=gpu -> starts it in the background, output appended to 
     esac >> "${POOL_LOG}" 2>&1 &
 }
 
-# task0 state per perm: done | pending | running | failed. perm0's is kept from the old run.
+# task0 state per perm: done | pending | running | failed
 T0=()                                                    # indexed by perm
 for p in 0 1 2 3 4; do
     [ -f "$(run_dir task0 - "${p}")/.complete" ] && T0[${p}]=done || T0[${p}]=pending
 done
-[ "${T0[0]}" = "done" ] || T0[0]=failed
 
 pick () {  # sets JOB to the first startable job and drops it from PENDING; 1 if none
     local i job kind m p
