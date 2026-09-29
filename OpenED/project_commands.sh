@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # Train + test every RAMS baseline (perm0-4, 7 dist + 8 CL-LoRA methods) on this host:
 #
-#   bash project_commands.sh                    # env + checks, then trains until done
+#   bash project_commands.sh                    # env + checks, clean once, then trains until done
 #   SKIP_INSTALL=1 bash project_commands.sh     # deps already installed
 #
-# Everything here is idempotent: re-running skips what is already in place, and the runners
-# skip every method+perm that already has its completion marker, so a re-run after a crash
-# only trains what is missing.
+# Safe to re-run after a crash: the clean in step 4 runs only once (marker file), finished
+# runs are skipped, and a run that died half way resumes from its last finished task.
 #
 # Knobs (all optional):
 #   VENV          venv to activate, e.g. /mnt/local/uvenvs/opened  (default: use the current
 #                 environment, whatever `python` already resolves to)
 #   PY / ENV_BIN  interpreter and env bin/ for the runners (default: derived from `python`)
-#   GPU_DIST_ALL / GPU_CLLORA_ALL   GPUs per queue (default 0,1,2,3 / 4,5,6,7, see run.sh)
 #   SKIP_INSTALL  as above
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -86,23 +84,165 @@ done
     exit 1
 }
 
-# ---------------------------------------------------------------- 4. full sweep
-step "4. sweep: rams perm0-4, dist (gpu ${GPU_DIST_ALL:-0,1,2,3}) + CL-LoRA (gpu ${GPU_CLLORA_ALL:-4,5,6,7})"
-# results/ is gitignored, so a fresh host has no completion markers and nothing is skipped.
-# MISSING_PLAN keeps it to RAMS; a bare `bash run.sh` would also retrain MAVEN.
-# FOREGROUND=1: run.sh trains in this process instead of detaching, so this script returns
-# only when every run is done. The terminal only gets the queue progress (one line per run
-# start/finish); each run's full output is in logs/rams_{dist,cllora}_<method>_perm<p>_*.log.
-echo "full logs: logs/rams_dist_<method>_perm<p>_*.log and logs/rams_cllora_<method>_perm<p>_*.log"
-mkdir -p logs
-tail -n 0 -F logs/rams_dist_queue.log logs/rams_cllora_queue.log 2>/dev/null &
-tail_pid=$!
-FOREGROUND=1 MISSING_PLAN="rams:0 1 2 3 4:both" bash run.sh
-kill "${tail_pid}" 2>/dev/null || true
+# ---------------------------------------------------------------- 4. clean what gets retrained
+# Hard-coded from the 2026-09-28 collect. Edit these lists by hand.
+#
+# KEPT (perm0, finished at batch 2x16 = 32, never deleted, skipped by the pool below):
+#   dist_shared_task0_perm0  dist_rkl_perm0  dist_distillm_perm0
+#   cllora_{inclora,olora,tree,inflora,epi,migu,gainlora_o,gainlora_inf}_perm0
+#
+# RETRAINED at batch 128x1 (deleted here, then trained again so their logs land in logs/):
+#   perm0    dist kd sfkl srkl (died at task1), csd amid (never started)
+#   perm1-4  everything, dist and CL-LoRA, finished or not
+#
+# Runs once: the marker file stops a re-run after a crash from deleting what trained since.
+R=results/qwen3/ced
+CLEANED=${R}/.cleaned_2026-09-28
+step "4. clean"
+if [ -f "${CLEANED}" ]; then
+    echo "already cleaned on $(cat "${CLEANED}"), deleting nothing"
+else
+    if pgrep -f "scripts/qwen/ced/(dist_queue|run_all_cllora|run_ced_v2|run_cllora)\.sh" >/dev/null; then
+        echo "training processes are still running, kill them first:"
+        pgrep -af "scripts/qwen/ced/(dist_queue|run_all_cllora|run_ced_v2|run_cllora)\.sh"
+        exit 1
+    fi
+    shopt -s nullglob
+    for d in "${R}"/dist_{kd,sfkl,srkl,csd,amid}_perm0_rams_v2_s42 "${R}"/*_perm[1-4]_rams_v2_s42; do
+        [ -e "${d}" ] || continue
+        echo "  rm ${d}"
+        rm -rf "${d}"
+    done
+    shopt -u nullglob
+    mkdir -p "${R}"
+    date -Iseconds > "${CLEANED}"
+fi
 
-step "5. done"
-if grep -h "FAILED" logs/rams_dist_queue.log logs/rams_cllora_queue.log; then
-    echo "some runs failed, see the lines above"
+# ---------------------------------------------------------------- 5. train, one run per GPU
+# Every job below is one method on one perm, on one GPU. When a GPU frees up it takes the
+# first job in JOBS that can start: a dist job waits for the shared task0 of its perm.
+# Up to 8 torchruns at once, so each GPU gets its own master port (29500 + gpu) instead of
+# run_ced_v2.sh's random one out of 90, which collides about 1 time in 4 at 8 jobs.
+GPUS=(0 1 2 3 4 5 6 7)
+DIST_ALL="kd rkl sfkl srkl csd distillm amid"
+CLLORA_ALL="inclora olora tree inflora epi migu gainlora_o gainlora_inf"
+JOBS=()                                                  # <kind>:<method>:<perm>
+for p in 1 2 3 4; do JOBS+=("task0:shared:${p}"); done   # first, everything dist waits on them
+for m in kd sfkl srkl csd amid; do JOBS+=("dist:${m}:0"); done
+for p in 1 2 3 4; do
+    for m in ${DIST_ALL}; do JOBS+=("dist:${m}:${p}"); done
+    for m in ${CLLORA_ALL}; do JOBS+=("cllora:${m}:${p}"); done
+done
+
+step "5. train ${#JOBS[@]} jobs on gpus ${GPUS[*]}"
+bash run.sh rams "0 1 2 3 4" 0 0 prep                   # tokenize what is missing, trains nothing
+# Same defaults run.sh gives its queues: local model copy -> offline, or the hub hangs.
+if [ -f models/Qwen3-0.6B/config.json ]; then
+    export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
+fi
+POOL_LOG=logs/rams_pool.log
+mkdir -p logs
+echo "progress: ${POOL_LOG}   full logs: logs/rams_{dist,cllora}_<method>_perm<p>_*.log"
+log () { echo "[pool $(date '+%F %T')] $*" | tee -a "${POOL_LOG}"; }
+
+run_dir () {  # $1=kind $2=method $3=perm -> results dir of that run
+    case $1 in
+        task0)  echo "${R}/dist_shared_task0_perm$3_rams_v2_s42" ;;
+        dist)   echo "${R}/dist_$2_perm$3_rams_v2_s42" ;;
+        cllora) echo "${R}/cllora_$2_perm$3_rams_v2_s42" ;;
+    esac
+}
+
+launch () {  # $1=job $2=gpu -> starts it in the background, output appended to POOL_LOG
+    local kind m p dir resume=0
+    IFS=: read -r kind m p <<< "$1"
+    dir=$(run_dir "${kind}" "${m}" "${p}")
+    case ${kind} in
+        task0)
+            # one task only, so a half-trained one restarts: dist_queue.sh refuses to reuse it
+            rm -rf "${dir}"
+            PERM=${p} GPU=$2 PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS="" \
+                MASTER_PORT=$((29500 + $2)) bash scripts/qwen/ced/dist_queue.sh ;;
+        dist)
+            # RESUME=1 only acts when the run dir already exists (dist_queue.sh checks)
+            PERM=${p} GPU=$2 PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS=${m} \
+                RESUME=1 MASTER_PORT=$((29500 + $2)) bash scripts/qwen/ced/dist_queue.sh ;;
+        cllora)
+            # the engine errors on --resume without a partial run, so only pass it for one
+            [ -e "${dir}" ] && resume=1
+            RESUME=${resume} DATA_ROOT=data/rams_b10_perm${p} PROTOCOL=rams_v2 \
+                bash scripts/qwen/ced/run_all_cllora.sh "$2" "${m}" ;;
+    esac >> "${POOL_LOG}" 2>&1 &
+}
+
+# task0 state per perm: done | pending | running | failed. perm0's is kept from the old run.
+T0=()                                                    # indexed by perm
+for p in 0 1 2 3 4; do
+    [ -f "$(run_dir task0 - "${p}")/.complete" ] && T0[${p}]=done || T0[${p}]=pending
+done
+[ "${T0[0]}" = "done" ] || T0[0]=failed
+
+pick () {  # sets JOB to the first startable job and drops it from PENDING; 1 if none
+    local i job kind m p
+    for i in "${!PENDING[@]}"; do
+        job=${PENDING[i]}
+        IFS=: read -r kind m p <<< "${job}"
+        if [ -f "$(run_dir "${kind}" "${m}" "${p}")/.complete" ]; then
+            log "skip   ${job} (already complete)"
+            unset 'PENDING[i]'; continue
+        fi
+        if [ "${kind}" = "dist" ]; then
+            case ${T0[${p}]} in
+                pending|running) continue ;;
+                failed) log "FAILED ${job} (task0 of perm${p} failed)"; n_fail=$((n_fail + 1))
+                        unset 'PENDING[i]'; continue ;;
+            esac
+        fi
+        JOB=${job}; unset 'PENDING[i]'
+        [ "${kind}" = "task0" ] && T0[${p}]=running
+        return 0
+    done
+    return 1
+}
+
+PENDING=("${JOBS[@]}")
+declare -a SLOT_PID SLOT_JOB
+n_fail=0
+while :; do
+    for i in "${!GPUS[@]}"; do
+        pid=${SLOT_PID[i]:-}
+        if [ -n "${pid}" ]; then
+            kill -0 "${pid}" 2>/dev/null && continue
+            rc=0; wait "${pid}" || rc=$?
+            job=${SLOT_JOB[i]}; IFS=: read -r kind m p <<< "${job}"
+            if [ "${rc}" -eq 0 ] && [ -f "$(run_dir "${kind}" "${m}" "${p}")/.complete" ]; then
+                log "done   ${job} (gpu${GPUS[i]})"
+                [ "${kind}" = "task0" ] && T0[${p}]=done
+            else
+                log "FAILED ${job} (gpu${GPUS[i]}, exit ${rc}), see logs/rams_*${m}*perm${p}_*.log"
+                n_fail=$((n_fail + 1))
+                [ "${kind}" = "task0" ] && T0[${p}]=failed
+            fi
+            SLOT_PID[i]=""
+        fi
+        pick || continue
+        launch "${JOB}" "${GPUS[i]}"
+        SLOT_PID[i]=$!; SLOT_JOB[i]=${JOB}
+        log "start  ${JOB} (gpu${GPUS[i]})"
+    done
+    busy=0
+    for pid in ${SLOT_PID[@]+"${SLOT_PID[@]}"}; do [ -n "${pid}" ] && busy=1; done
+    if [ "${busy}" = "0" ]; then
+        # nothing running and nothing startable: whatever is left can never start
+        for job in ${PENDING[@]+"${PENDING[@]}"}; do log "FAILED ${job} (never startable)"; n_fail=$((n_fail + 1)); done
+        break
+    fi
+    sleep 20
+done
+
+step "6. done"
+if [ "${n_fail}" -gt 0 ]; then
+    echo "${n_fail} jobs failed: grep FAILED ${POOL_LOG}"
     exit 1
 fi
-echo "sweep finished. Collect: python tools/ced_collect.py --host-label <label> [--upload]"
+echo "all jobs finished. Collect the F1 files: bash gather_logs.sh"
