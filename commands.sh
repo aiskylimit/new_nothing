@@ -1,4 +1,4 @@
-#1 +10
+#2
 #opened-gpu
 #v2
 
@@ -8,7 +8,6 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 1432760 1432831 2487658 2487659 2487661 2487664 2487679 2487681 2487682 2487683
 # sleep 2
 nvidia-smi
 
@@ -38,4 +37,4 @@ export NCCL_DEBUG=WARN
 cd ./OpenED
 # bash ./gather_logs.sh
 # ls
-bash ./project_commands.sh
+# bash ./project_commands.sh
