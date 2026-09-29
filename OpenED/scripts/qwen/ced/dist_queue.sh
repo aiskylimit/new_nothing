@@ -1,6 +1,6 @@
 #!/bin/bash
 # Seven distillation baselines with a shared task0 checkpoint and the f12_pl protocol.
-# Batch 128x1 since 2026-09-28. Runs finished before that (RAMS perm0) used 2x16 = 32.
+# Batch 32x1 since 2026-09-29 (128 and 64 OOM). Runs finished before 2026-09-28 (RAMS perm0) used 2x16 = 32.
 set -euo pipefail
 
 cd "$(dirname "$0")/../../.." || exit 1
@@ -61,7 +61,7 @@ if [ ! -f "results/qwen3/ced/${SHARED}/.complete" ]; then
     bash scripts/qwen/ced/run_ced_v2.sh \
         --run-name "${SHARED}" --mode sft --data-prefix "${DATA_PREFIX}" --perm "${PERM}" \
         --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" \
-        --bs 64 --acc 1 --greedy 1 --gpus "${GPU}" --end-task 0 \
+        --bs 32 --acc 1 --greedy 1 --gpus "${GPU}" --end-task 0 \
         > "${PRE}_steps.log" 2>&1 || rc=$?
     freeze_logs "${SHARED}" "${PRE}"
     [ "${rc}" -eq 0 ] || exit "${rc}"
@@ -92,7 +92,7 @@ run_dist () {  # $1=method label $2=kd-type ($3...=optional runner flags)
     link_logs "${RUN_NAME}" "${PRE}" $(seq "${START_TASK}" $((NUM_TASKS - 1)))
     bash scripts/qwen/ced/run_ced_v2.sh --run-name "${RUN_NAME}" --mode ce_kd --data-prefix "${DATA_PREFIX}" --perm "${PERM}" \
         --kd-type "${KD_TYPE}" --w-span 0 --kd-ratio 0.9 --skew 0.1 --span-metric cosine --layers "22 25 28" \
-        --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" --bs 64 --acc 1 \
+        --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" --bs 32 --acc 1 \
         --greedy 1 --gpus "${GPU}" --start-task "${START_TASK}" \
         --task0-source-run "${SHARED}" "${RESUME_ARGS[@]}" "$@" \
         >> "${PRE}_steps.log" 2>&1 || rc=$?

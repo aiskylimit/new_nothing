@@ -88,7 +88,7 @@ done
 #   dist_shared_task0_perm0  dist_rkl_perm0  dist_distillm_perm0
 #   cllora_{inclora,olora,tree,inflora,epi,migu,gainlora_o,gainlora_inf}_perm0
 #
-# RETRAINED at batch 128x1 (deleted here, then trained again so their logs land in logs/):
+# RETRAINED at batch 32x1 (deleted here, then trained again so their logs land in logs/):
 #   perm0    dist kd sfkl srkl (died at task1), csd amid (never started)
 #   perm1-4  everything, dist and CL-LoRA, finished or not
 #
@@ -150,8 +150,8 @@ run_dir () {  # $1=kind $2=method $3=perm -> results dir of that run
     esac
 }
 
-BATCH=64   # the micro batch dist_queue.sh and run_all_cllora.sh train with; keep in sync
-# A partial run from an earlier batch size (the 128 runs that OOM'd) can never resume: its
+BATCH=32   # the micro batch dist_queue.sh and run_all_cllora.sh train with; keep in sync
+# A partial run from an earlier batch size (the 128 and 64 runs that OOM'd) can never resume: its
 # manifest pins micro_batch, so --resume dies on "manifest mismatch". Start those over.
 drop_stale () {  # $1=job $2=run dir
     local f="$2/run_manifest.json" b=""
