@@ -1,7 +1,7 @@
 #! /bin/bash
 # Full 5-task CL-LoRA baseline runs, one method after another on a single GPU.
 # Split methods across GPUs by launching two of these (one per GPU).
-# Batch 128x1 since 2026-09-28. Runs finished before that (RAMS perm0) used 2x16 = 32.
+# Batch 32x1 since 2026-09-29 (128 and 64 OOM). Runs finished before 2026-09-28 (RAMS perm0) used 2x16 = 32.
 #   bash scripts/qwen/ced/run_all_cllora.sh 0 inclora olora tree inflora
 #   bash scripts/qwen/ced/run_all_cllora.sh 1 migu epi gainlora_o gainlora_inf
 set -euo pipefail
@@ -20,7 +20,7 @@ for M in "$@"; do
     bash scripts/qwen/ced/run_cllora.sh \
         --method "${M}" --data-root "${DATA_ROOT}" --num-tasks "${NUM_TASKS}" \
         --rank "${RANK:-16}" --alpha 64 --lr 2e-4 --epochs "${EPOCHS}" \
-        --batch-size 64 --grad-accum 1 --eval-batch-size 16 \
+        --batch-size 32 --grad-accum 1 --eval-batch-size 16 \
         --gpu "${GPU}" --py "${PY}" --protocol "${PROTOCOL:-v2}" \
         "${RESUME_ARGS[@]}"
 done
