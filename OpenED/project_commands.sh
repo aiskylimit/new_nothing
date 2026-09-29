@@ -150,10 +150,23 @@ run_dir () {  # $1=kind $2=method $3=perm -> results dir of that run
     esac
 }
 
+BATCH=64   # the micro batch dist_queue.sh and run_all_cllora.sh train with; keep in sync
+# A partial run from an earlier batch size (the 128 runs that OOM'd) can never resume: its
+# manifest pins micro_batch, so --resume dies on "manifest mismatch". Start those over.
+drop_stale () {  # $1=job $2=run dir
+    local f="$2/run_manifest.json" b=""
+    [ -e "$2" ] && [ ! -f "$2/.complete" ] || return 0
+    [ -f "${f}" ] && b=$("${PY}" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("micro_batch"))' "${f}")
+    [ "${b}" = "${BATCH}" ] && return 0
+    log "reset  $1 (partial run at micro_batch=${b:-?}, now ${BATCH})"
+    rm -rf "$2"
+}
+
 launch () {  # $1=job $2=gpu -> starts it in the background, output appended to POOL_LOG
     local kind m p dir resume=0
     IFS=: read -r kind m p <<< "$1"
     dir=$(run_dir "${kind}" "${m}" "${p}")
+    drop_stale "$1" "${dir}"
     case ${kind} in
         task0)
             # one task only, so a half-trained one restarts: dist_queue.sh refuses to reuse it
@@ -165,8 +178,9 @@ launch () {  # $1=job $2=gpu -> starts it in the background, output appended to 
             PERM=${p} GPU=$2 PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS=${m} \
                 RESUME=1 MASTER_PORT=$((29500 + $2)) bash scripts/qwen/ced/dist_queue.sh ;;
         cllora)
-            # the engine errors on --resume without a partial run, so only pass it for one
-            [ -e "${dir}" ] && resume=1
+            # --resume needs the per-task checkpoint; a run that died inside task0 has none
+            # and cannot restart fresh either (run_cllora.sh refuses to overwrite it)
+            if [ -f "${dir}/checkpoint_latest.pt" ]; then resume=1; else rm -rf "${dir}"; fi
             RESUME=${resume} DATA_ROOT=data/rams_b10_perm${p} PROTOCOL=rams_v2 \
                 bash scripts/qwen/ced/run_all_cllora.sh "$2" "${m}" ;;
     esac >> "${POOL_LOG}" 2>&1 &
