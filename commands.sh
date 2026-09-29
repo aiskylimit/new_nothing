@@ -1,4 +1,4 @@
-#1 +10
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/thiennh-p6-tau3-worker-0_20260928_1600/
 #opened-gpu
 #v2
 
@@ -35,6 +35,6 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-bash ./gather_logs.sh
-ls
+# bash ./gather_logs.sh
+# ls
 # bash ./project_commands.sh
