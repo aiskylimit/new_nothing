@@ -1,29 +1,32 @@
 #!/usr/bin/env bash
-# Train + test every RAMS baseline (perm0-4, 7 dist + 8 CL-LoRA methods) on this host:
+# The ACE ablation matrix for OUR method: 17 configs x 5 permutations, on this host.
 #
-#   bash project_commands.sh                    # env + checks, clean once, then trains until done
+#   bash project_commands.sh              # env + data checks, then trains until done
+#   DRY=1 bash project_commands.sh        # print the plan, train nothing
 #
-# That is all it needs: the defaults below match this host (venv, GPUs 4-7, 2 GPUs per run).
-# Safe to re-run after a crash: the clean in step 4 runs only once (marker file), finished
-# runs are skipped, and a run that died half way resumes from its last finished task.
+# Defaults match this host: venv, GPUs 4-7, one run per GPU, effective batch 2x16 = 32.
+# Safe to re-run after a crash: a run with a .complete marker is skipped, and nothing is deleted.
+#
+# Effective batch stays 32 so every number is comparable with the f12_pl baseline. Per-device 32
+# is not an option: the KD loss materialises batch x seq x vocab in fp32 (32 x 768 x 151936 x 4B
+# = 14.9 GB per tensor) and OOMs a 46 GB card -- the same reason evaluate_loss() caps eval batch.
 #
 # Knobs (all optional):
-#   VENV          venv to activate (default: /mnt/local/uvenvs/opened when no venv is active
-#                 and it exists, else whatever `python` already resolves to)
+#   VENV          venv to activate (default: /mnt/local/uvenvs/opened when none is active)
 #   PY / ENV_BIN  interpreter and env bin/ for the runners (default: derived from `python`)
-#   SKIP_INSTALL  1 = never touch dependencies (default: install only if torch/transformers/peft
-#                 do not import)
-#   POOL_GPUS     pool slots, one job each; a slot is one GPU id or a comma list of ids that
-#                 train one data-parallel run together (default "4,5 6,7": 2 runs, 2 GPUs each)
+#   SKIP_INSTALL  1 = never touch dependencies
+#   POOL_GPUS     one slot per GPU id (default "4 5 6 7")
+#   PERMS         default "0 1 2 3 4"
+#   ONLY          groups to run, default "g1 g2 g3 g4 g5"  (bash owns $GROUPS, hence ONLY)
 set -euo pipefail
 cd "$(dirname "$0")"
 
 step () { echo; echo "=== $* ==="; }
 have () { [ -e "$1" ]; }
+DRY=${DRY:-0}
 
 # ---------------------------------------------------------------- 1. environment
 step "1. environment"
-# the venv every run on this host has used (see the torchrun paths in logs/)
 if [ -z "${VENV:-}" ] && [ -z "${VIRTUAL_ENV:-}" ] && [ -f /mnt/local/uvenvs/opened/bin/activate ]; then
     VENV=/mnt/local/uvenvs/opened
 fi
@@ -38,212 +41,177 @@ PY=${PY:-$(command -v python || command -v python3)}
 [ -x "${PY}" ] || { echo "no python found; set PY or activate an env"; exit 1; }
 ENV_BIN=${ENV_BIN:-$(dirname "${PY}")}
 export PY ENV_BIN
-echo "PY=${PY}"
-echo "ENV_BIN=${ENV_BIN}"
-"${PY}" -V
+echo "PY=${PY}"; echo "ENV_BIN=${ENV_BIN}"; "${PY}" -V
 
 if [ "${SKIP_INSTALL:-0}" = "1" ]; then
     echo "SKIP_INSTALL=1, not touching dependencies"
 elif "${PY}" -c "import torch, transformers, peft" 2>/dev/null; then
     echo "torch/transformers/peft already importable, skipping install"
 else
-    # opened.txt is the uv pin list for hosts that cannot reach GitHub (its en_core_web_sm
-    # line was a GitHub wheel URL and has been moved to download.txt as a zip).
     req=opened.txt; [ -f "${req}" ] || req=requirements.txt
     echo "installing from ${req}"
     "${PY}" -m pip install -r "${req}"
 fi
 
-# ---------------------------------------------------------------- 2. spaCy model
-step "2. spaCy model (en_core_web_sm)"
-if have en_core_web_sm/meta.json; then
-    echo "already unpacked: $("${PY}" -c "import json;m=json.load(open('en_core_web_sm/meta.json'));print(m['lang']+'_'+m['name'], m['version'])")"
-elif have en_core_web_sm.zip; then
-    # Python's zipfile, not unzip: the image has no unzip binary and no sudo.
-    "${PY}" -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip').extractall('.')"
-    rm -rf __MACOSX en_core_web_sm.zip          # the zip was packed on a Mac
-    echo "unpacked -> ./en_core_web_sm  (spacy.load(\"en_core_web_sm\") works from this directory)"
-else
-    echo "no en_core_web_sm.zip here -- download.txt fetches it; skipping (nothing in this repo imports spaCy)"
-fi
-
-# ---------------------------------------------------------------- 3. data
-step "3. data"
-missing=0
-for f in data/rams_b10_perm0/streams.json data/rams_b10_perm0/0/train.jsonl \
-         processed_data/rams_b10_perm0/0/qwen/train_0.idx; do
-    if have "${f}"; then
-        printf '  %-44s ok\n' "${f}"
-    else
-        printf '  %-44s MISSING\n' "${f}"
-        missing=1
-    fi
-done
-for f in data/tacred_perm0/streams.json data/fewrel_perm0/streams.json data/tacred_groups/groups.json; do
-    have "${f}" && printf '  %-44s ok\n' "${f}" || printf '  %-44s absent (CRE, fine if this host only runs CED)\n' "${f}"
-done
-[ "${missing}" = "0" ] || {
-    echo "CED splits are missing -- fetch them with download.txt (they land in these exact"
-    echo "directory names, nothing to rename), then re-run this script."
-    exit 1
-}
-
-# ---------------------------------------------------------------- 4. clean what gets retrained
-# Hard-coded from the 2026-09-28 collect. Edit these lists by hand.
-#
-# KEPT (perm0, finished at batch 2x16 = 32, never deleted, skipped by the pool below):
-#   dist_shared_task0_perm0  dist_rkl_perm0  dist_distillm_perm0
-#   cllora_{inclora,olora,tree,inflora,epi,migu,gainlora_o,gainlora_inf}_perm0
-#
-# RETRAINED at batch 32x1 (deleted here, then trained again so their logs land in logs/):
-#   perm0    dist kd sfkl srkl (died at task1), csd amid (never started)
-#   perm1-4  everything, dist and CL-LoRA, finished or not
-#
-# Runs once: the marker file stops a re-run after a crash from deleting what trained since.
-R=results/qwen3/ced
-CLEANED=${R}/.cleaned_2026-09-28
-step "4. clean"
-if [ -f "${CLEANED}" ]; then
-    echo "already cleaned on $(cat "${CLEANED}"), deleting nothing"
-else
-    if pgrep -f "scripts/qwen/ced/(dist_queue|run_all_cllora|run_ced_v2|run_cllora)\.sh" >/dev/null; then
-        echo "training processes are still running, kill them first:"
-        pgrep -af "scripts/qwen/ced/(dist_queue|run_all_cllora|run_ced_v2|run_cllora)\.sh"
-        exit 1
-    fi
-    shopt -s nullglob
-    for d in "${R}"/dist_{kd,sfkl,srkl,csd,amid}_perm0_rams_v2_s42 "${R}"/*_perm[1-4]_rams_v2_s42; do
-        [ -e "${d}" ] || continue
-        echo "  rm ${d}"
-        rm -rf "${d}"
-    done
-    shopt -u nullglob
-    mkdir -p "${R}"
-    date -Iseconds > "${CLEANED}"
-fi
-
-# ---------------------------------------------------------------- 5. train, one run per slot
-# Every job below is one method on one perm, on one slot (see POOL_GPUS). When a slot frees up
-# it takes the first job in JOBS that can start: a dist job waits for the shared task0 of its
-# perm. Dist runs split eff batch 32 over the slot's GPUs (dist_queue.sh); CL-LoRA is single
-# process and uses the slot's first GPU. Each slot gets its own master port (29500 + its first
-# GPU) instead of run_ced_v2.sh's random one out of 90, which collides about 1 time in 4 at 8 jobs.
-GPUS=(${POOL_GPUS:-4,5 6,7})   # slots, e.g. POOL_GPUS="0 1 2 3" for 4 single-GPU slots
-DIST_ALL="kd rkl sfkl srkl csd distillm amid"
-CLLORA_ALL="inclora olora tree inflora epi migu gainlora_o gainlora_inf"
-# All 5 perms, KEPT perm0 runs included: pick() skips anything with a .complete marker, so a
-# kept run that really finished costs nothing, and one that never did gets trained here
-# instead of being assumed done. Status 2026-09-30: all CL-LoRA, all task0, kd + csd perm0-4,
-# rkl + distillm perm0 done. Left: rkl distillm perm1-4, sfkl srkl amid perm0-4 (23 runs), which
-# OOM'd at micro batch 32 and now train at 16 per GPU (see dist_queue.sh / batch_of below).
-JOBS=()                                                  # <kind>:<method>:<perm>
-for p in 0 1 2 3 4; do JOBS+=("task0:shared:${p}"); done # first, everything dist waits on them
-for p in 0 1 2 3 4; do
-    for m in ${DIST_ALL}; do JOBS+=("dist:${m}:${p}"); done
-    for m in ${CLLORA_ALL}; do JOBS+=("cllora:${m}:${p}"); done
-done
-
-step "5. train ${#JOBS[@]} jobs on gpus ${GPUS[*]}"
-bash run.sh rams "0 1 2 3 4" 0 0 prep                   # tokenize what is missing, trains nothing
-# Same defaults run.sh gives its queues: local model copy -> offline, or the hub hangs.
+# The pod exports PET_RDZV_BACKEND / PET_RDZV_ENDPOINT / PET_RDZV_ID, which torchrun reads as
+# flag defaults. c10d ignores --master_port, so every torchrun would join the same rendezvous:
+# the first runs, the rest die with RendezvousConnectionError when it exits.
+for v in $(compgen -e | grep '^PET_' || true); do unset "${v}"; done
 if [ -f models/Qwen3-0.6B/config.json ]; then
     export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
 fi
-# The pod exports PET_RDZV_BACKEND=c10d / PET_RDZV_ENDPOINT=<pod>-worker-0:23456 / PET_RDZV_ID,
-# which torchrun reads as flag defaults. c10d ignores --master_port, so every torchrun joined the
-# same rendezvous: the first one ran, the rest crashed when it exited (RendezvousConnectionError).
-# Dropped here, not in run_ced_v2.sh: that script is fingerprinted into every run manifest, and
-# editing it would break --resume of every partial dist run.
-for v in $(compgen -e | grep '^PET_' || true); do unset "${v}"; done
-POOL_LOG=logs/rams_pool.log
+
+# ---------------------------------------------------------------- 2. data
+step "2. data"
+PERMS=${PERMS:-"0 1 2 3 4"}
+DS=${DS:-ace}                    # the winning config gets re-run on other datasets with DS=maven etc.
+DATA_PREFIX=${DS}_b10_perm
+for p in ${PERMS}; do
+    have "data/${DATA_PREFIX}${p}/streams.json" && { printf '  %-40s ok\n' "data/${DATA_PREFIX}${p}"; continue; }
+    if [ "${DS}" = "ace" ] && have data/ace/0/train.jsonl; then
+        echo "  building data/${DATA_PREFIX}${p} from data/ace"
+        [ "${DRY}" = "1" ] || OPENED_BASE=$(pwd) "${PY}" tools/build_ced_perms.py \
+            --cap 10 --perms "${p}" --out-prefix "${DATA_PREFIX}" || {
+            echo "  build failed for perm${p}"; exit 1; }
+    else
+        echo "  data/${DATA_PREFIX}${p} MISSING (and for ace, data/ace is not here either)."
+        echo "  Bring over data/ace/{0..4}/{train,dev,test}.jsonl (the ACE task split), or copy"
+        echo "  data/${DATA_PREFIX}{0..4} straight from the host that already has them."
+        exit 1
+    fi
+done
+# base task data is never tokenized by run_ced_v2.sh -- it only tokenizes PL/SD side-data
+for p in ${PERMS}; do
+    for t in 0 1 2 3 4; do
+        out="processed_data/${DATA_PREFIX}${p}/${t}"
+        have "${out}/qwen/train_0.idx" && continue
+        echo "  tokenising perm${p} task${t}"
+        [ "${DRY}" = "1" ] && continue
+        PYTHONPATH=. "${PY}" tools/process_data.py \
+            --data-dir "data/${DATA_PREFIX}${p}/${t}/" --processed-data-dir "${out}" \
+            --model-path "${MODEL_PATH:-Qwen/Qwen3-0.6B}" --data-process-workers 4 \
+            --max-prompt-length 460 --t-max-prompt-length 640 \
+            --dev-num 1000 --model-type qwen > "logs/tok_ace_p${p}t${t}.log" 2>&1 || {
+            echo "  tokenize FAILED perm${p} task${t}, see logs/tok_ace_p${p}t${t}.log"; exit 1; }
+    done
+done
+
+# ---------------------------------------------------------------- 3. the matrix
+# name | sd | runner flags | SD_ARGS
+#   g1  does each component earn its place; g1_full is the method
+#   g2  does the pseudo-label filter earn its place (grounding + lexicon have no published
+#       precedent for LLM-generated spans, so this is where PL's novelty lives)
+#   g3  SD weight: at 1.0 the SD gradient measured ~1.2x the rest of the objective combined
+#   g4  span-loss metric; g1_full is cosine
+#   g5  SD sampling: SDFT's own T=1.0/top_p=1.0 is what every other SD arm uses, and the
+#       earlier notebook measured that exact setting at -8.13 F1, so these are the insurance
+CONFIGS_ALL=(
+  "g1_ce|0|--mode sft --pl 0|"
+  "g1_pl|0|--mode sft --pl 1|"
+  "g1_kd|0|--mode ce_kd --pl 0 --w-span 0|"
+  "g1_span|0|--mode ce_kd --pl 0 --kd-type no --w-span 2.0|"
+  "g1_sd|1|--mode ce_kd --pl 0 --kd-ratio 0 --w-span 0|"
+  "g1_full|1||"
+  "g2_nofilter|0|--mode sft --pl 1 --pl-dedup 0 --pl-conf none --pl-lexicon 0|"
+  "g2_ground|0|--mode sft --pl 1 --pl-conf none --pl-lexicon 0|"
+  "g3_wsd01|1||--w-sd 0.1"
+  "g3_wsd03|1||--w-sd 0.3"
+  "g3_wsd30|1||--w-sd 3.0"
+  "g4_nospan|1|--w-span 0|"
+  "g4_l2|1|--span-metric l2|"
+  "g4_cka|1|--span-metric cka|"
+  "g5_t07|1||--sd-temp 0.7 --sd-top-p 0.9"
+  "g5_warm|1||--sd-warmup 0.5"
+  "g5_rkl|1||--sd-div rkl"
+)
+ONLY=${ONLY:-"g1 g2 g3 g4 g5"}
+SEED=${SEED:-42}
+PROTOCOL=${PROTOCOL:-${DS}_v2}
+VARIANT=${VARIANT:-h12}          # PL with dedup + lexicon + confidence, no H3 calibration epoch
+R=results/qwen3/ced
+
+CONFIGS=()
+for c in "${CONFIGS_ALL[@]}"; do
+    g=${c%%_*}
+    for want in ${ONLY}; do [ "${g}" = "${want}" ] && CONFIGS+=("${c}") && break; done
+done
+[ ${#CONFIGS[@]} -gt 0 ] || { echo "no configs selected by ONLY='${ONLY}'"; exit 1; }
+
+run_dir () {  # $1=config name  $2=sd  $3=perm
+    if [ "$1" = "task0" ]; then echo "${R}/dist_shared_task0_perm$3_${PROTOCOL}_s${SEED}"; return; fi
+    local tag=""; [ "$2" = "1" ] && tag="_sd"
+    echo "${R}/ours_${VARIANT}${tag}_$1_perm$3_${PROTOCOL}_s${SEED}"
+}
+
+JOBS=()
+for p in ${PERMS}; do JOBS+=("task0|0||${p}"); done   # everything else waits on these
+for c in "${CONFIGS[@]}"; do
+    for p in ${PERMS}; do JOBS+=("${c}|${p}"); done
+done
+
+GPUS=(${POOL_GPUS:-4 5 6 7})
+step "3. train ${#JOBS[@]} jobs on gpus ${GPUS[*]}"
 mkdir -p logs
-echo "progress: ${POOL_LOG}   full logs: logs/rams_{dist,cllora}_<method>_perm<p>_*.log"
+POOL_LOG=logs/ace_matrix_pool.log
+echo "progress: ${POOL_LOG}   per-run logs: logs_ours_*.log and ${R}/<run>/task*/train.log"
 log () { echo "[pool $(date '+%F %T')] $*" | tee -a "${POOL_LOG}"; }
 
-run_dir () {  # $1=kind $2=method $3=perm -> results dir of that run
-    case $1 in
-        task0)  echo "${R}/dist_shared_task0_perm$3_rams_v2_s42" ;;
-        dist)   echo "${R}/dist_$2_perm$3_rams_v2_s42" ;;
-        cllora) echo "${R}/cllora_$2_perm$3_rams_v2_s42" ;;
-    esac
-}
-
-batch_of () {  # $1=job $2=slot -> "<micro batch>x<grad accum>" it trains with; keep in sync
-    local n max=32 mb           # with micro_acc in dist_queue.sh and with run_all_cllora.sh
-    case $1 in
-        cllora:*) echo 32x1; return ;;
-        dist:rkl:*|dist:sfkl:*|dist:srkl:*|dist:distillm:*|dist:amid:*) max=16 ;;
-    esac
-    n=$(tr ',' '\n' <<< "$2" | wc -l)
-    mb=$((32 / n)); [ "${mb}" -le "${max}" ] || mb=${max}
-    echo "${mb}x$((32 / (mb * n)))"
-}
-# A partial run from another batch layout (the 128/64 runs, the 32 ones of the five methods
-# above that OOM'd, or one started on a slot with another GPU count) can never resume: its
-# manifest pins micro_batch and grad accum, so --resume dies on "manifest mismatch". Start
-# those over.
-drop_stale () {  # $1=job $2=run dir $3=slot
-    local f="$2/run_manifest.json" b="" want
-    want=$(batch_of "$1" "$3")
-    [ -e "$2" ] && [ ! -f "$2/.complete" ] || return 0
-    [ -f "${f}" ] && b=$("${PY}" -c 'import json,sys; m=json.load(open(sys.argv[1])); print("%sx%s" % (m.get("micro_batch"), m.get("gradient_accumulation")))' "${f}")
-    [ "${b}" = "${want}" ] && return 0
-    log "reset  $1 (partial run at batch ${b:-?}, now ${want})"
-    rm -rf "$2"
-}
-
-launch () {  # $1=job $2=slot -> starts it in the background, output appended to POOL_LOG
-    local kind m p dir resume=0 gpus=${2//,/ } first=${2%%,*}
-    IFS=: read -r kind m p <<< "$1"
-    dir=$(run_dir "${kind}" "${m}" "${p}")
-    drop_stale "$1" "${dir}" "$2"
-    case ${kind} in
-        task0)
-            # one task only, so a half-trained one restarts: dist_queue.sh refuses to reuse it
-            rm -rf "${dir}"
-            PERM=${p} GPU=${gpus} PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS="" \
-                MASTER_PORT=$((29500 + first)) bash scripts/qwen/ced/dist_queue.sh ;;
-        dist)
-            # RESUME=1 only acts when the run dir already exists (dist_queue.sh checks)
-            PERM=${p} GPU=${gpus} PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS=${m} \
-                RESUME=1 MASTER_PORT=$((29500 + first)) bash scripts/qwen/ced/dist_queue.sh ;;
-        cllora)
-            # --resume needs the per-task checkpoint; a run that died inside task0 has none
-            # and cannot restart fresh either (run_cllora.sh refuses to overwrite it)
-            if [ -f "${dir}/checkpoint_latest.pt" ]; then resume=1; else rm -rf "${dir}"; fi
-            RESUME=${resume} DATA_ROOT=data/rams_b10_perm${p} PROTOCOL=rams_v2 \
-                bash scripts/qwen/ced/run_all_cllora.sh "${first}" "${m}" ;;
-    esac >> "${POOL_LOG}" 2>&1 &
+launch () {  # $1=job $2=gpu -> starts it in the background
+    local name sd flags sd_args perm
+    IFS='|' read -r name sd flags sd_args perm <<< "$1"
+    if [ "${name}" = "task0" ]; then
+        # one task only, so a half-trained one is restarted rather than resumed
+        rm -rf "$(run_dir task0 0 "${perm}")"
+        MASTER_PORT=$((29500 + $2)) bash scripts/qwen/ced/run_ced_v2.sh \
+            --run-name "$(basename "$(run_dir task0 0 "${perm}")")" --mode sft \
+            --data-prefix "${DATA_PREFIX}" --perm "${perm}" \
+            --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" \
+            --bs 2 --acc 16 --greedy 1 --gpus "$2" --end-task 0
+    else
+        PERM="${perm}" GPU="$2" DATA_PREFIX="${DATA_PREFIX}" SEED="${SEED}" PROTOCOL="${PROTOCOL}" \
+        OURS_VARIANT="${VARIANT}" OURS_SD="${sd}" SD_ARGS="${sd_args}" RUN_SUFFIX="_${name}" \
+        RESUME=0 MASTER_PORT=$((29500 + $2)) \
+            bash scripts/qwen/ced/ours_queue.sh ${flags}
+    fi >> "${POOL_LOG}" 2>&1 &
 }
 
 # task0 state per perm: done | pending | running | failed
-T0=()                                                    # indexed by perm
-for p in 0 1 2 3 4; do
-    [ -f "$(run_dir task0 - "${p}")/.complete" ] && T0[${p}]=done || T0[${p}]=pending
+declare -A T0
+for p in ${PERMS}; do
+    [ -f "$(run_dir task0 0 "${p}")/.complete" ] && T0[${p}]=done || T0[${p}]=pending
 done
 
 pick () {  # sets JOB to the first startable job and drops it from PENDING; 1 if none
-    local i job kind m p
+    local i job name sd flags sd_args perm
     for i in "${!PENDING[@]}"; do
         job=${PENDING[i]}
-        IFS=: read -r kind m p <<< "${job}"
-        if [ -f "$(run_dir "${kind}" "${m}" "${p}")/.complete" ]; then
-            log "skip   ${job} (already complete)"
+        IFS='|' read -r name sd flags sd_args perm <<< "${job}"
+        if [ -f "$(run_dir "${name}" "${sd}" "${perm}")/.complete" ]; then
+            log "skip   ${name}/perm${perm} (already complete)"
             unset 'PENDING[i]'; continue
         fi
-        if [ "${kind}" = "dist" ]; then
-            case ${T0[${p}]} in
+        if [ "${name}" != "task0" ]; then
+            case ${T0[${perm}]} in
                 pending|running) continue ;;
-                failed) log "FAILED ${job} (task0 of perm${p} failed)"; n_fail=$((n_fail + 1))
-                        unset 'PENDING[i]'; continue ;;
+                failed) log "FAILED ${name}/perm${perm} (task0 of perm${perm} failed)"
+                        n_fail=$((n_fail + 1)); unset 'PENDING[i]'; continue ;;
             esac
         fi
         JOB=${job}; unset 'PENDING[i]'
-        [ "${kind}" = "task0" ] && T0[${p}]=running
+        [ "${name}" = "task0" ] && T0[${perm}]=running
         return 0
     done
     return 1
 }
+
+if [ "${DRY}" = "1" ]; then
+    for job in "${JOBS[@]}"; do
+        IFS='|' read -r name sd flags sd_args perm <<< "${job}"
+        printf '  %-14s perm%s  sd=%s  %s %s\n' "${name}" "${perm}" "${sd}" "${flags}" "${sd_args}"
+    done
+    echo "DRY=1, nothing launched (${#CONFIGS[@]} configs x $(echo ${PERMS} | wc -w) perms + task0)"
+    exit 0
+fi
 
 PENDING=("${JOBS[@]}")
 declare -a SLOT_PID SLOT_JOB
@@ -254,33 +222,33 @@ while :; do
         if [ -n "${pid}" ]; then
             kill -0 "${pid}" 2>/dev/null && continue
             rc=0; wait "${pid}" || rc=$?
-            job=${SLOT_JOB[i]}; IFS=: read -r kind m p <<< "${job}"
-            if [ "${rc}" -eq 0 ] && [ -f "$(run_dir "${kind}" "${m}" "${p}")/.complete" ]; then
-                log "done   ${job} (gpu${GPUS[i]})"
-                [ "${kind}" = "task0" ] && T0[${p}]=done
+            job=${SLOT_JOB[i]}; IFS='|' read -r name sd flags sd_args perm <<< "${job}"
+            if [ "${rc}" -eq 0 ] && [ -f "$(run_dir "${name}" "${sd}" "${perm}")/.complete" ]; then
+                log "done   ${name}/perm${perm} (gpu${GPUS[i]})"
+                [ "${name}" = "task0" ] && T0[${perm}]=done
             else
-                log "FAILED ${job} (gpu${GPUS[i]}, exit ${rc}), see logs/rams_*${m}*perm${p}_*.log"
+                log "FAILED ${name}/perm${perm} (gpu${GPUS[i]}, exit ${rc}), see ${POOL_LOG}"
                 n_fail=$((n_fail + 1))
-                [ "${kind}" = "task0" ] && T0[${p}]=failed
+                [ "${name}" = "task0" ] && T0[${perm}]=failed
             fi
             SLOT_PID[i]=""
         fi
         pick || continue
         launch "${JOB}" "${GPUS[i]}"
         SLOT_PID[i]=$!; SLOT_JOB[i]=${JOB}
-        log "start  ${JOB} (gpu${GPUS[i]})"
+        IFS='|' read -r name sd flags sd_args perm <<< "${JOB}"
+        log "start  ${name}/perm${perm} (gpu${GPUS[i]})"
     done
     busy=0
     for pid in ${SLOT_PID[@]+"${SLOT_PID[@]}"}; do [ -n "${pid}" ] && busy=1; done
     if [ "${busy}" = "0" ]; then
-        # nothing running and nothing startable: whatever is left can never start
         for job in ${PENDING[@]+"${PENDING[@]}"}; do log "FAILED ${job} (never startable)"; n_fail=$((n_fail + 1)); done
         break
     fi
     sleep 20
 done
 
-step "6. done"
+step "4. done"
 if [ "${n_fail}" -gt 0 ]; then
     echo "${n_fail} jobs failed: grep FAILED ${POOL_LOG}"
     exit 1
