@@ -19,7 +19,8 @@ from collections import defaultdict
 
 from datasets import load_dataset
 
-BASE = "/home/hungpv/projects/OpenED"
+# repo root: the cwd this is run from, so the script works on any host. OPENED_BASE overrides.
+BASE = os.environ.get("OPENED_BASE", os.getcwd())
 SRC = "datht/ace-short-generated-dataset"
 EXISTING = f"{BASE}/data/ace"
 
