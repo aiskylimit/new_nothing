@@ -1,4 +1,4 @@
-#2 -0-10
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs.tar.gz +a
 #pga
 #v1
 
