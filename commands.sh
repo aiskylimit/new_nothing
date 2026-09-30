@@ -1,4 +1,7 @@
-#2 -0-3
+#d
+#models
+--hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/@PROJECT@/talas_vlm_embed/models/Qwen/Qwen2-VL-2B-Instruct
+
 #pga
 #v1
 
