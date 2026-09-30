@@ -1,13 +1,16 @@
 #!/bin/bash
 # Seven distillation baselines with a shared task0 checkpoint and the f12_pl protocol.
-# Batch 32x1 since 2026-09-29 (128 and 64 OOM). Runs finished before 2026-09-28 (RAMS perm0) used 2x16 = 32.
+# Eff batch 32 everywhere. Since 2026-09-29 micro batch 32 per GPU (128 and 64 OOM), capped at 16
+# for rkl/sfkl/srkl/distillm/amid since 2026-09-30 (32 OOM in the loss); GPU="a b" splits it
+# across GPUs. Runs finished before 2026-09-28 (RAMS perm0) used 2x16 = 32.
 set -euo pipefail
 
 cd "$(dirname "$0")/../../.." || exit 1
 PERM=${PERM:-0}
 SEED=${SEED:-42}
 PROTOCOL=${PROTOCOL:-v2}
-GPU=${GPU:-0}
+GPU=${GPU:-0}   # one id, or several space-separated for one data-parallel run
+NGPU=$(wc -w <<< "${GPU}")
 RESUME=${RESUME:-0}
 DATA_PREFIX=${DATA_PREFIX:-ace_b10_perm}
 # Which of the seven methods to train (default all). run.sh splits them across GPUs, and first
@@ -25,6 +28,11 @@ NUM_TASKS=$(${ENV_BIN:-$HOME/miniconda3/envs/mta/bin}/python -c \
 # file while the run trains, a copy once it ends.
 LOGS="logs/${DATA_PREFIX%%_*}_dist"
 mkdir -p logs
+micro_acc () {  # $1=max micro batch per GPU -> "micro acc" giving eff batch 32 over NGPU GPUs
+    local mb=$((32 / NGPU))
+    [ "${mb}" -le "$1" ] || mb=$1
+    echo "${mb} $((32 / (mb * NGPU)))"
+}
 link_logs () {  # $1=run name $2=log prefix $3..=tasks
     local run=$1 pre=$2 t; shift 2
     for t in "$@"; do
@@ -58,10 +66,11 @@ if [ ! -f "results/qwen3/ced/${SHARED}/.complete" ]; then
     PRE="${LOGS}_shared_task0_perm${PERM}"
     link_logs "${SHARED}" "${PRE}" 0
     rc=0
+    read -r BS ACC <<< "$(micro_acc 32)"
     bash scripts/qwen/ced/run_ced_v2.sh \
         --run-name "${SHARED}" --mode sft --data-prefix "${DATA_PREFIX}" --perm "${PERM}" \
         --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" \
-        --bs 32 --acc 1 --greedy 1 --gpus "${GPU}" --end-task 0 \
+        --bs "${BS}" --acc "${ACC}" --greedy 1 --gpus "${GPU}" --end-task 0 \
         > "${PRE}_steps.log" 2>&1 || rc=$?
     freeze_logs "${SHARED}" "${PRE}"
     [ "${rc}" -eq 0 ] || exit "${rc}"
@@ -72,6 +81,11 @@ run_dist () {  # $1=method label $2=kd-type ($3...=optional runner flags)
     [[ " ${DIST_METHODS} " == *" ${METHOD} "* ]] || return 0
     local RUN_NAME="dist_${METHOD}_perm${PERM}_${PROTOCOL}_s${SEED}"
     local RUN_ROOT="results/qwen3/ced/${RUN_NAME}"
+    # RKL/SKL/AMiD losses hold ~10 vocab-sized fp32 tensors, 13.9 GiB each at micro batch 32:
+    # OOM on a 178 GiB GPU (RAMS 2026-09-29), so they cap at 16 per GPU.
+    local BS ACC MAX_MB=32
+    case ${METHOD} in rkl|sfkl|srkl|distillm|amid) MAX_MB=16 ;; esac
+    read -r BS ACC <<< "$(micro_acc "${MAX_MB}")"
     if [ -f "${RUN_ROOT}/.complete" ]; then
         echo "SKIP complete ${RUN_NAME}"
         return
@@ -92,7 +106,7 @@ run_dist () {  # $1=method label $2=kd-type ($3...=optional runner flags)
     link_logs "${RUN_NAME}" "${PRE}" $(seq "${START_TASK}" $((NUM_TASKS - 1)))
     bash scripts/qwen/ced/run_ced_v2.sh --run-name "${RUN_NAME}" --mode ce_kd --data-prefix "${DATA_PREFIX}" --perm "${PERM}" \
         --kd-type "${KD_TYPE}" --w-span 0 --kd-ratio 0.9 --skew 0.1 --span-metric cosine --layers "22 25 28" \
-        --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" --bs 32 --acc 1 \
+        --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" --bs "${BS}" --acc "${ACC}" \
         --greedy 1 --gpus "${GPU}" --start-task "${START_TASK}" \
         --task0-source-run "${SHARED}" "${RESUME_ARGS[@]}" "$@" \
         >> "${PRE}_steps.log" 2>&1 || rc=$?
