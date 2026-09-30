@@ -35,6 +35,7 @@ from .em_sigreg_kd_loss import EMSigRegKDLoss
 from .span_attn_sigreg import SpanSigregCriterionWeighted
 from .talas_pr import TalasPR
 from .talas_jepa_abl import TalasJepaAbl
+from .pga import PGA
 
 criterion_list = {
     "contrastive": ContrastiveLoss,
@@ -74,7 +75,8 @@ criterion_list = {
     "em_sigreg_kd": EMSigRegKDLoss,
     "span_attn_sigreg_kd": SpanSigregCriterionWeighted,
     "talas_pr": TalasPR,
-    "talas_abl": TalasJepaAbl
+    "talas_abl": TalasJepaAbl,
+    "pga": PGA,
 }
 
 def build_criterion(args):
