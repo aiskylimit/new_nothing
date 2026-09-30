@@ -2,16 +2,19 @@
 # Train + test every RAMS baseline (perm0-4, 7 dist + 8 CL-LoRA methods) on this host:
 #
 #   bash project_commands.sh                    # env + checks, clean once, then trains until done
-#   SKIP_INSTALL=1 bash project_commands.sh     # deps already installed
 #
+# That is all it needs: the defaults below match this host (venv, GPUs 4-7, 2 GPUs per run).
 # Safe to re-run after a crash: the clean in step 4 runs only once (marker file), finished
 # runs are skipped, and a run that died half way resumes from its last finished task.
 #
 # Knobs (all optional):
-#   VENV          venv to activate, e.g. /mnt/local/uvenvs/opened  (default: use the current
-#                 environment, whatever `python` already resolves to)
+#   VENV          venv to activate (default: /mnt/local/uvenvs/opened when no venv is active
+#                 and it exists, else whatever `python` already resolves to)
 #   PY / ENV_BIN  interpreter and env bin/ for the runners (default: derived from `python`)
-#   SKIP_INSTALL  as above
+#   SKIP_INSTALL  1 = never touch dependencies (default: install only if torch/transformers/peft
+#                 do not import)
+#   POOL_GPUS     pool slots, one job each; a slot is one GPU id or a comma list of ids that
+#                 train one data-parallel run together (default "4,5 6,7": 2 runs, 2 GPUs each)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -23,9 +26,13 @@ VENV=/mnt/local/uvenvs/opened
 
 # ---------------------------------------------------------------- 1. environment
 step "1. environment"
+# the venv every run on this host has used (see the torchrun paths in logs/)
+if [ -z "${VENV:-}" ] && [ -z "${VIRTUAL_ENV:-}" ] && [ -f /mnt/local/uvenvs/opened/bin/activate ]; then
+    VENV=/mnt/local/uvenvs/opened
+fi
 if [ -n "${VENV:-}" ]; then
     # shellcheck disable=SC1091
-    source "${VENV}/bin/activate"
+    set +u; source "${VENV}/bin/activate"; set -u   # activate scripts read unset vars
     echo "activated ${VENV}"
 else
     echo "no VENV given, using the current environment"
@@ -118,18 +125,20 @@ else
     date -Iseconds > "${CLEANED}"
 fi
 
-# ---------------------------------------------------------------- 5. train, one run per GPU
-# Every job below is one method on one perm, on one GPU. When a GPU frees up it takes the
-# first job in JOBS that can start: a dist job waits for the shared task0 of its perm.
-# Up to 8 torchruns at once, so each GPU gets its own master port (29500 + gpu) instead of
-# run_ced_v2.sh's random one out of 90, which collides about 1 time in 4 at 8 jobs.
-GPUS=(0 1 2 3 4 5 6 7)
+# ---------------------------------------------------------------- 5. train, one run per slot
+# Every job below is one method on one perm, on one slot (see POOL_GPUS). When a slot frees up
+# it takes the first job in JOBS that can start: a dist job waits for the shared task0 of its
+# perm. Dist runs split eff batch 32 over the slot's GPUs (dist_queue.sh); CL-LoRA is single
+# process and uses the slot's first GPU. Each slot gets its own master port (29500 + its first
+# GPU) instead of run_ced_v2.sh's random one out of 90, which collides about 1 time in 4 at 8 jobs.
+GPUS=(${POOL_GPUS:-4,5 6,7})   # slots, e.g. POOL_GPUS="0 1 2 3" for 4 single-GPU slots
 DIST_ALL="kd rkl sfkl srkl csd distillm amid"
 CLLORA_ALL="inclora olora tree inflora epi migu gainlora_o gainlora_inf"
 # All 5 perms, KEPT perm0 runs included: pick() skips anything with a .complete marker, so a
 # kept run that really finished costs nothing, and one that never did gets trained here
-# instead of being assumed done. Status 2026-09-29: all CL-LoRA perm1-4 done, task0 perm1
-# done; every dist job and task0 perm2-4 failed on the shared rendezvous (fixed below).
+# instead of being assumed done. Status 2026-09-30: all CL-LoRA, all task0, kd + csd perm0-4,
+# rkl + distillm perm0 done. Left: rkl distillm perm1-4, sfkl srkl amid perm0-4 (23 runs), which
+# OOM'd at micro batch 32 and now train at 16 per GPU (see dist_queue.sh / batch_of below).
 JOBS=()                                                  # <kind>:<method>:<perm>
 for p in 0 1 2 3 4; do JOBS+=("task0:shared:${p}"); done # first, everything dist waits on them
 for p in 0 1 2 3 4; do
@@ -162,39 +171,51 @@ run_dir () {  # $1=kind $2=method $3=perm -> results dir of that run
     esac
 }
 
-BATCH=32   # the micro batch dist_queue.sh and run_all_cllora.sh train with; keep in sync
-# A partial run from an earlier batch size (the 128 and 64 runs that OOM'd) can never resume: its
-# manifest pins micro_batch, so --resume dies on "manifest mismatch". Start those over.
-drop_stale () {  # $1=job $2=run dir
-    local f="$2/run_manifest.json" b=""
+batch_of () {  # $1=job $2=slot -> "<micro batch>x<grad accum>" it trains with; keep in sync
+    local n max=32 mb           # with micro_acc in dist_queue.sh and with run_all_cllora.sh
+    case $1 in
+        cllora:*) echo 32x1; return ;;
+        dist:rkl:*|dist:sfkl:*|dist:srkl:*|dist:distillm:*|dist:amid:*) max=16 ;;
+    esac
+    n=$(tr ',' '\n' <<< "$2" | wc -l)
+    mb=$((32 / n)); [ "${mb}" -le "${max}" ] || mb=${max}
+    echo "${mb}x$((32 / (mb * n)))"
+}
+# A partial run from another batch layout (the 128/64 runs, the 32 ones of the five methods
+# above that OOM'd, or one started on a slot with another GPU count) can never resume: its
+# manifest pins micro_batch and grad accum, so --resume dies on "manifest mismatch". Start
+# those over.
+drop_stale () {  # $1=job $2=run dir $3=slot
+    local f="$2/run_manifest.json" b="" want
+    want=$(batch_of "$1" "$3")
     [ -e "$2" ] && [ ! -f "$2/.complete" ] || return 0
-    [ -f "${f}" ] && b=$("${PY}" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("micro_batch"))' "${f}")
-    [ "${b}" = "${BATCH}" ] && return 0
-    log "reset  $1 (partial run at micro_batch=${b:-?}, now ${BATCH})"
+    [ -f "${f}" ] && b=$("${PY}" -c 'import json,sys; m=json.load(open(sys.argv[1])); print("%sx%s" % (m.get("micro_batch"), m.get("gradient_accumulation")))' "${f}")
+    [ "${b}" = "${want}" ] && return 0
+    log "reset  $1 (partial run at batch ${b:-?}, now ${want})"
     rm -rf "$2"
 }
 
-launch () {  # $1=job $2=gpu -> starts it in the background, output appended to POOL_LOG
-    local kind m p dir resume=0
+launch () {  # $1=job $2=slot -> starts it in the background, output appended to POOL_LOG
+    local kind m p dir resume=0 gpus=${2//,/ } first=${2%%,*}
     IFS=: read -r kind m p <<< "$1"
     dir=$(run_dir "${kind}" "${m}" "${p}")
-    drop_stale "$1" "${dir}"
+    drop_stale "$1" "${dir}" "$2"
     case ${kind} in
         task0)
             # one task only, so a half-trained one restarts: dist_queue.sh refuses to reuse it
             rm -rf "${dir}"
-            PERM=${p} GPU=$2 PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS="" \
-                MASTER_PORT=$((29500 + $2)) bash scripts/qwen/ced/dist_queue.sh ;;
+            PERM=${p} GPU=${gpus} PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS="" \
+                MASTER_PORT=$((29500 + first)) bash scripts/qwen/ced/dist_queue.sh ;;
         dist)
             # RESUME=1 only acts when the run dir already exists (dist_queue.sh checks)
-            PERM=${p} GPU=$2 PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS=${m} \
-                RESUME=1 MASTER_PORT=$((29500 + $2)) bash scripts/qwen/ced/dist_queue.sh ;;
+            PERM=${p} GPU=${gpus} PROTOCOL=rams_v2 DATA_PREFIX=rams_b10_perm DIST_METHODS=${m} \
+                RESUME=1 MASTER_PORT=$((29500 + first)) bash scripts/qwen/ced/dist_queue.sh ;;
         cllora)
             # --resume needs the per-task checkpoint; a run that died inside task0 has none
             # and cannot restart fresh either (run_cllora.sh refuses to overwrite it)
             if [ -f "${dir}/checkpoint_latest.pt" ]; then resume=1; else rm -rf "${dir}"; fi
             RESUME=${resume} DATA_ROOT=data/rams_b10_perm${p} PROTOCOL=rams_v2 \
-                bash scripts/qwen/ced/run_all_cllora.sh "$2" "${m}" ;;
+                bash scripts/qwen/ced/run_all_cllora.sh "${first}" "${m}" ;;
     esac >> "${POOL_LOG}" 2>&1 &
 }
 
