@@ -34,5 +34,5 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-tar -czf logs.tar.gz .logs/
+tar -czf logs.tar.gz ./logs/
 # bash ./project_commands.sh
