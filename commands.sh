@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
-#opened-gpu
+#1 +60
+#pga
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -21,9 +21,8 @@ export NCCL_DEBUG=WARN
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
-# cd ./talas_vlm_embed
-# bash ./project_commands.sh
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
+cd ./talas_vlm_embed
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
@@ -34,5 +33,5 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash ./project_commands.sh
+# cd ./OpenED
+# bash ./project_commands.sh
