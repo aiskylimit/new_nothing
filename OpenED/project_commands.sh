@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# The ACE ablation matrix for OUR method: 17 configs x 5 permutations, on this host.
+# The ACE ablation matrix for OUR method, x 5 permutations, on this host.
+# Round 2 (groups a, d, o; x = optional) is what runs by default. Round 1 (g1-g5, 17 configs)
+# stays in CONFIGS_ALL, commented out: uncomment it and add its groups to ONLY to re-run it.
 #
 #   bash project_commands.sh              # env + data checks, then trains until done
 #   DRY=1 bash project_commands.sh        # print the plan, train nothing
+#   ONLY="a x" bash project_commands.sh   # only some groups
 #
 # Defaults match this host: venv, GPUs 4-7, one run per GPU, effective batch 2x16 = 32.
 # Safe to re-run after a crash: a run with a .complete marker is skipped, and nothing is deleted.
@@ -17,7 +20,7 @@
 #   SKIP_INSTALL  1 = never touch dependencies
 #   POOL_GPUS     one slot per GPU id (default "4 5 6 7")
 #   PERMS         default "0 1 2 3 4"
-#   ONLY          groups to run, default "g1 g2 g3 g4 g5"  (bash owns $GROUPS, hence ONLY)
+#   ONLY          groups to run, default "a d o"  (bash owns $GROUPS, hence ONLY)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -74,25 +77,105 @@ step "2. data"
 PERMS=${PERMS:-"0 1 2 3 4"}
 DS=${DS:-ace}                    # the winning config gets re-run on other datasets with DS=maven etc.
 DATA_PREFIX=${DS}_b10_perm
-for p in ${PERMS}; do
-    have "data/${DATA_PREFIX}${p}/streams.json" && { printf '  %-40s ok\n' "data/${DATA_PREFIX}${p}"; continue; }
-    if [ "${DS}" = "ace" ] && have data/ace/0/train.jsonl; then
-        # perm0 of cl-ace IS data/ace; the other four are re-split from the source corpus,
-        # which is a private HF dataset, so this step needs HF_TOKEN and network.
-        echo "  building data/${DATA_PREFIX}${p} from data/ace"
-        [ "${DRY}" = "1" ] || OPENED_BASE=$(pwd) HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
-            "${PY}" tools/build_ced_perms.py \
-            --cap 10 --perms "${p}" --out-prefix "${DATA_PREFIX}" || {
-            echo "  build failed for perm${p} (needs HF_TOKEN for datht/ace-short-generated-dataset)"
-            exit 1; }
-    else
-        echo "  data/${DATA_PREFIX}${p} MISSING (and for ace, data/ace is not here either)."
-        echo "  Bring over data/ace/{0..4}/{train,dev,test}.jsonl (the ACE task split), or copy"
-        echo "  data/${DATA_PREFIX}{0..4} straight from the host that already has them."
-        exit 1
-    fi
+
+# The matrix is defined here, ahead of section 3, because some configs read their own data
+# (--data-prefix in their flags) and this step has to build it.
+# name | sd | runner flags | SD_ARGS
+CONFIGS_ALL=(
+  # ---- round 2 (01/10)
+  #   a  the method minus SD; and KD/SD drawn at random per update instead of summed
+  #      (professor note 7b, --ced-sd-mix in ced_finetune.py; span loss and CE stay on)
+  #   d  no rehearsal (note 3): memory 0. KD scope pl, else the method has almost no KD rows
+  #   o  oracle: CE on D_t with old-type events kept (no label stripping). Compare with g1_ce
+  #      for what stripping costs, and with g1_pl for how much of it PL recovers
+  #   x  optional, only when GPUs are free: SD teacher = current model (mu 0), PL without lexicon
+  "a_nosd|0||"
+  "a_rand|1||--extra --ced-sd-mix=random"
+  "d_ce|0|--mode sft --pl 0 --data-prefix ${DS}_b0_perm|"
+  "d_full|1|--data-prefix ${DS}_b0_perm --kd-scope pl|"
+  "o_ce|0|--mode sft --pl 0 --data-prefix ${DS}_oracle_b10_perm|"
+  "x_mu0|1||--sd-mu 0"
+  "x_nolex|0|--mode sft --pl 1 --pl-lexicon 0|"
+
+  # ---- round 1 (started 01/10). Commented out, not deleted, so it can be re-run after a crash:
+  # a run with a .complete marker is skipped, so only the unfinished ones train again.
+  #   g1  does each component earn its place; g1_full is the method
+  #   g2  does the pseudo-label filter earn its place (grounding + lexicon have no published
+  #       precedent for LLM-generated spans, so this is where PL's novelty lives)
+  #   g3  SD weight: at 1.0 the SD gradient measured ~1.2x the rest of the objective combined
+  #   g4  span-loss metric; g1_full is cosine
+  #   g5  SD sampling: SDFT's own T=1.0/top_p=1.0 is what every other SD arm uses, and the
+  #       earlier notebook measured that exact setting at -8.13 F1, so these are the insurance
+  # "g1_ce|0|--mode sft --pl 0|"
+  # "g1_pl|0|--mode sft --pl 1|"
+  # "g1_kd|0|--mode ce_kd --pl 0 --w-span 0|"
+  # "g1_span|0|--mode ce_kd --pl 0 --kd-type no --w-span 2.0|"
+  # "g1_sd|1|--mode ce_kd --pl 0 --kd-ratio 0 --w-span 0|"
+  # "g1_full|1||"
+  # "g2_nofilter|0|--mode sft --pl 1 --pl-dedup 0 --pl-conf none --pl-lexicon 0|"
+  # "g2_ground|0|--mode sft --pl 1 --pl-conf none --pl-lexicon 0|"
+  # "g3_wsd01|1||--w-sd 0.1"
+  # "g3_wsd03|1||--w-sd 0.3"
+  # "g3_wsd30|1||--w-sd 3.0"
+  # "g4_nospan|1|--w-span 0|"
+  # "g4_l2|1|--span-metric l2|"
+  # "g4_cka|1|--span-metric cka|"
+  # "g5_t07|1||--sd-temp 0.7 --sd-top-p 0.9"
+  # "g5_warm|1||--sd-warmup 0.5"
+  # "g5_rkl|1||--sd-div rkl"
+)
+ONLY=${ONLY:-"a d o"}
+
+CONFIGS=()
+for c in "${CONFIGS_ALL[@]}"; do
+    g=${c%%_*}
+    for want in ${ONLY}; do [ "${g}" = "${want}" ] && CONFIGS+=("${c}") && break; done
 done
-# base task data is never tokenized by run_ced_v2.sh -- it only tokenizes PL/SD side-data
+[ ${#CONFIGS[@]} -gt 0 ] || { echo "no configs selected by ONLY='${ONLY}'"; exit 1; }
+
+# the base data, plus every --data-prefix a selected config asks for
+DATA_PREFIXES=("${DATA_PREFIX}")
+for c in "${CONFIGS[@]}"; do
+    IFS='|' read -r _ _ flags _ <<< "${c}"
+    read -ra words <<< "${flags}"
+    for i in "${!words[@]}"; do
+        [ "${words[i]}" = "--data-prefix" ] || continue
+        [[ " ${DATA_PREFIXES[*]} " == *" ${words[i+1]} "* ]] || DATA_PREFIXES+=("${words[i+1]}")
+    done
+done
+build_flags () {  # data prefix -> tools/build_ced_perms.py flags
+    case $1 in
+        *_oracle_b10_perm) echo "--cap 10 --oracle" ;;
+        *_b0_perm)         echo "--cap 0" ;;
+        *_b10_perm)        echo "--cap 10" ;;
+        *) return 1 ;;
+    esac
+}
+
+for prefix in "${DATA_PREFIXES[@]}"; do
+    bflags=$(build_flags "${prefix}") || { echo "  no build rule for data prefix ${prefix}"; exit 1; }
+    for p in ${PERMS}; do
+        have "data/${prefix}${p}/streams.json" && { printf '  %-40s ok\n' "data/${prefix}${p}"; continue; }
+        if [ "${DS}" = "ace" ] && have data/ace/0/train.jsonl; then
+            # perm0 of cl-ace IS data/ace; the other four are re-split from the source corpus,
+            # which is a private HF dataset, so this step needs HF_TOKEN and network.
+            echo "  building data/${prefix}${p} from data/ace (${bflags})"
+            [ "${DRY}" = "1" ] || OPENED_BASE=$(pwd) HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
+                "${PY}" tools/build_ced_perms.py \
+                ${bflags} --perms "${p}" --out-prefix "${prefix}" || {
+                echo "  build failed for ${prefix}${p} (needs HF_TOKEN for datht/ace-short-generated-dataset)"
+                exit 1; }
+        else
+            echo "  data/${prefix}${p} MISSING (and for ace, data/ace is not here either)."
+            echo "  Bring over data/ace/{0..4}/{train,dev,test}.jsonl (the ACE task split), or copy"
+            echo "  data/${prefix}{0..4} straight from the host that already has them."
+            exit 1
+        fi
+    done
+done
+# base task data is never tokenized by run_ced_v2.sh -- it only tokenizes PL/SD side-data.
+# Only ${DATA_PREFIX} needs it: every config starts from the shared task0 run, whose task0 data
+# is the same in every prefix, and ours_queue's --replay-boost re-tokenizes tasks 1+.
 for p in ${PERMS}; do
     for t in 0 1 2 3 4; do
         out="processed_data/${DATA_PREFIX}${p}/${t}"
@@ -109,45 +192,11 @@ for p in ${PERMS}; do
 done
 
 # ---------------------------------------------------------------- 3. the matrix
-# name | sd | runner flags | SD_ARGS
-#   g1  does each component earn its place; g1_full is the method
-#   g2  does the pseudo-label filter earn its place (grounding + lexicon have no published
-#       precedent for LLM-generated spans, so this is where PL's novelty lives)
-#   g3  SD weight: at 1.0 the SD gradient measured ~1.2x the rest of the objective combined
-#   g4  span-loss metric; g1_full is cosine
-#   g5  SD sampling: SDFT's own T=1.0/top_p=1.0 is what every other SD arm uses, and the
-#       earlier notebook measured that exact setting at -8.13 F1, so these are the insurance
-CONFIGS_ALL=(
-  "g1_ce|0|--mode sft --pl 0|"
-  "g1_pl|0|--mode sft --pl 1|"
-  "g1_kd|0|--mode ce_kd --pl 0 --w-span 0|"
-  "g1_span|0|--mode ce_kd --pl 0 --kd-type no --w-span 2.0|"
-  "g1_sd|1|--mode ce_kd --pl 0 --kd-ratio 0 --w-span 0|"
-  "g1_full|1||"
-  "g2_nofilter|0|--mode sft --pl 1 --pl-dedup 0 --pl-conf none --pl-lexicon 0|"
-  "g2_ground|0|--mode sft --pl 1 --pl-conf none --pl-lexicon 0|"
-  "g3_wsd01|1||--w-sd 0.1"
-  "g3_wsd03|1||--w-sd 0.3"
-  "g3_wsd30|1||--w-sd 3.0"
-  "g4_nospan|1|--w-span 0|"
-  "g4_l2|1|--span-metric l2|"
-  "g4_cka|1|--span-metric cka|"
-  "g5_t07|1||--sd-temp 0.7 --sd-top-p 0.9"
-  "g5_warm|1||--sd-warmup 0.5"
-  "g5_rkl|1||--sd-div rkl"
-)
-ONLY=${ONLY:-"g1 g2 g3 g4 g5"}
+# (CONFIGS_ALL / ONLY / CONFIGS are defined in section 2)
 SEED=${SEED:-42}
 PROTOCOL=${PROTOCOL:-${DS}_v2}
 VARIANT=${VARIANT:-h12}          # PL with dedup + lexicon + confidence, no H3 calibration epoch
 R=results/qwen3/ced
-
-CONFIGS=()
-for c in "${CONFIGS_ALL[@]}"; do
-    g=${c%%_*}
-    for want in ${ONLY}; do [ "${g}" = "${want}" ] && CONFIGS+=("${c}") && break; done
-done
-[ ${#CONFIGS[@]} -gt 0 ] || { echo "no configs selected by ONLY='${ONLY}'"; exit 1; }
 
 run_dir () {  # $1=config name  $2=sd  $3=perm
     if [ "$1" = "task0" ]; then echo "${R}/dist_shared_task0_perm$3_${PROTOCOL}_s${SEED}"; return; fi

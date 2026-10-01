@@ -282,6 +282,9 @@ def add_ced_args(parser: argparse.ArgumentParser):
                        help="sampling temperature of the on-policy response")
     group.add_argument("--ced-sd-div", type=str, default="fkl", choices=["fkl", "rkl"],
                        help="fkl = KL(teacher||student) (SDFT code default), rkl = KL(student||teacher)")
+    group.add_argument("--ced-sd-mix", type=str, default="sum", choices=["sum", "random"],
+                       help="sum = token KD and SD on every step; random = each optimizer step keeps "
+                            "one of the two KL terms (p = 0.5). Span loss and CE are unchanged.")
     group.add_argument("--ced-sd-probe", type=int, default=64,
                        help="rows used to check, before training, that the teacher copies the reference (0 = off)")
     # Ablation knobs. The defaults reproduce SDFT; none of these is part of the method.
