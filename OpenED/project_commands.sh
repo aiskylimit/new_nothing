@@ -149,11 +149,53 @@ build_flags () {  # data prefix -> tools/build_ced_perms.py flags
     esac
 }
 
+# Raw ACE task splits are kept in the sibling open-ed checkout on this workspace.
+# Override ACE_SOURCE_DIR when running elsewhere; it must contain 0..4/{train,dev,test}.jsonl.
+ACE_SOURCE_DIR=${ACE_SOURCE_DIR:-../../open-ed/data/ace}
+ace_task_splits_present () {
+    local root=$1 p split
+    for p in 0 1 2 3 4; do
+        for split in train dev test; do
+            [ -f "${root}/${p}/${split}.jsonl" ] || return 1
+        done
+    done
+    return 0
+}
+
+# Copy only missing raw split files. Keep the source checkout intact and avoid overwriting
+# any data already present in this OpenED tree.
+ACE_RAW_READY=0
+NEED_ACE_BUILD=0
+for prefix in "${DATA_PREFIXES[@]}"; do
+    for p in ${PERMS}; do
+        have "data/${prefix}${p}/streams.json" || NEED_ACE_BUILD=1
+    done
+done
+if [ "${DS}" = "ace" ] && [ "${NEED_ACE_BUILD}" = "1" ]; then
+    if ace_task_splits_present data/ace; then
+        ACE_RAW_READY=1
+    elif ace_task_splits_present "${ACE_SOURCE_DIR}"; then
+        if [ "${DRY}" = "1" ]; then
+            echo "  DRY=1: would copy raw ACE task splits from ${ACE_SOURCE_DIR} to data/ace"
+        else
+            echo "  copying raw ACE task splits from ${ACE_SOURCE_DIR} to data/ace"
+            mkdir -p data/ace
+            for p in 0 1 2 3 4; do
+                mkdir -p "data/ace/${p}"
+                for split in train dev test; do
+                    cp -an "${ACE_SOURCE_DIR}/${p}/${split}.jsonl" "data/ace/${p}/"
+                done
+            done
+        fi
+        ACE_RAW_READY=1
+    fi
+fi
+
 for prefix in "${DATA_PREFIXES[@]}"; do
     bflags=$(build_flags "${prefix}") || { echo "  no build rule for data prefix ${prefix}"; exit 1; }
     for p in ${PERMS}; do
         have "data/${prefix}${p}/streams.json" && { printf '  %-40s ok\n' "data/${prefix}${p}"; continue; }
-        if [ "${DS}" = "ace" ] && have data/ace/0/train.jsonl; then
+        if [ "${DS}" = "ace" ] && [ "${ACE_RAW_READY}" = "1" ]; then
             # perm0 of cl-ace IS data/ace; the other four are re-split from the source corpus,
             # which is a private HF dataset, so this step needs HF_TOKEN and network.
             echo "  building data/${prefix}${p} from data/ace (${bflags})"
@@ -164,8 +206,8 @@ for prefix in "${DATA_PREFIXES[@]}"; do
                 exit 1; }
         else
             echo "  data/${prefix}${p} MISSING (and for ace, data/ace is not here either)."
-            echo "  Bring over data/ace/{0..4}/{train,dev,test}.jsonl (the ACE task split), or copy"
-            echo "  data/${prefix}{0..4} straight from the host that already has them."
+            echo "  Set ACE_SOURCE_DIR to a folder with {0..4}/{train,dev,test}.jsonl, or copy"
+            echo "  data/${prefix}{0..4} from a host that already has the generated splits."
             exit 1
         fi
     done
