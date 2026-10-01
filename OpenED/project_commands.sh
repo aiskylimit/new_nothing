@@ -153,7 +153,7 @@ run_dir () {  # $1=config name  $2=sd  $3=perm
 }
 
 JOBS=()
-for p in ${PERMS}; do JOBS+=("task0|0||${p}"); done   # everything else waits on these
+for p in ${PERMS}; do JOBS+=("task0|0|||${p}"); done  # everything else waits on these; 5 fields like the rest
 for c in "${CONFIGS[@]}"; do
     for p in ${PERMS}; do JOBS+=("${c}|${p}"); done
 done
@@ -168,6 +168,9 @@ log () { echo "[pool $(date '+%F %T')] $*" | tee -a "${POOL_LOG}"; }
 launch () {  # $1=job $2=gpu -> starts it in the background
     local name sd flags sd_args perm
     IFS='|' read -r name sd flags sd_args perm <<< "$1"
+    # DRY still goes through pick/run_dir/T0 with real job strings: the field-count bug that
+    # broke T0[${perm}] only showed up once the scheduler ran, so it has to run here too.
+    if [ "${DRY}" = "1" ]; then ( : ) & return; fi
     if [ "${name}" = "task0" ]; then
         # one task only, so a half-trained one is restarted rather than resumed
         rm -rf "$(run_dir task0 0 "${perm}")"
@@ -218,8 +221,7 @@ if [ "${DRY}" = "1" ]; then
         IFS='|' read -r name sd flags sd_args perm <<< "${job}"
         printf '  %-14s perm%s  sd=%s  %s %s\n' "${name}" "${perm}" "${sd}" "${flags}" "${sd_args}"
     done
-    echo "DRY=1, nothing launched (${#CONFIGS[@]} configs x $(echo ${PERMS} | wc -w) perms + task0)"
-    exit 0
+    echo "DRY=1: no training, but the scheduler below still runs against stub jobs."
 fi
 
 PENDING=("${JOBS[@]}")
@@ -232,7 +234,7 @@ while :; do
             kill -0 "${pid}" 2>/dev/null && continue
             rc=0; wait "${pid}" || rc=$?
             job=${SLOT_JOB[i]}; IFS='|' read -r name sd flags sd_args perm <<< "${job}"
-            if [ "${rc}" -eq 0 ] && [ -f "$(run_dir "${name}" "${sd}" "${perm}")/.complete" ]; then
+            if [ "${rc}" -eq 0 ] && { [ "${DRY}" = "1" ] || [ -f "$(run_dir "${name}" "${sd}" "${perm}")/.complete" ]; }; then
                 log "done   ${name}/perm${perm} (gpu${GPUS[i]})"
                 [ "${name}" = "task0" ] && T0[${perm}]=done
             else
