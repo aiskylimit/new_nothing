@@ -65,7 +65,7 @@ EVAL_SUBSETS=(
     "Country211"
 )
 
-
+rm -rf ./MMEB-eval_outputs/FastVLM-0.5B_pga_cls
 
 python eval_mmeb_2.py \
   --model_name "training/FastVLM-0.5B_pga_cls/checkpoint-epoch-0" \
@@ -82,7 +82,6 @@ python eval_mmeb_2.py \
   --dataset_split test \
   --per_device_eval_batch_size 4 \
   --image_dir eval_images/ \
-  --image_resolution "low" \
   --tgt_prefix_mod \
   --load_pretrained_lora True \
   --report_to none
