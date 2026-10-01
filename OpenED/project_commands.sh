@@ -71,6 +71,16 @@ fi
 
 # ---------------------------------------------------------------- 2. data
 step "2. data"
+# One archive instead of ~900 loose files: 34 MB against 450 MB, and one download instead of
+# 915. It unpacks to data/ and processed_data/, which is where everything below looks.
+# Python's tarfile, not the tar binary: the image is minimal (see the en_core_web_sm note).
+if have ace_all.tar.gz; then
+    echo "  unpacking ace_all.tar.gz"
+    if [ "${DRY}" != "1" ]; then
+        "${PY}" -c "import tarfile; tarfile.open('ace_all.tar.gz').extractall('.', filter='data')"
+        rm -f ace_all.tar.gz
+    fi
+fi
 PERMS=${PERMS:-"0 1 2 3 4"}
 DS=${DS:-ace}                    # the winning config gets re-run on other datasets with DS=maven etc.
 DATA_PREFIX=${DS}_b10_perm
