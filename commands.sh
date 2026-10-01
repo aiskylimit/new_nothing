@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
+#1 +10
 #pga
 #v1
 
@@ -21,7 +21,10 @@ export NCCL_DEBUG=WARN
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
-# cd ./talas_vlm_embed
+cd ./talas_vlm_embed
+cat training/FastVLM-0.5B_pga_cls/adapter_config.json
+echo "--------------vqa"
+cat training/FastVLM-0.5B_pga_vqa/adapter_config.json
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
@@ -33,6 +36,6 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
+# cd ./OpenED
 # tar -czf logs.tar.gz ./logs/
-bash ./project_commands.sh
+# bash ./project_commands.sh
