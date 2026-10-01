@@ -22,9 +22,9 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
 cd ./talas_vlm_embed
-cat training/FastVLM-0.5B_pga_cls/adapter_config.json
+cat training/FastVLM-0.5B_pga_cls/checkpoint-epoch-0/adapter_config.json
 echo "--------------vqa"
-cat training/FastVLM-0.5B_pga_vqa/adapter_config.json
+cat training/FastVLM-0.5B_pga_vqa/checkpoint-epoch-0/adapter_config.json
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
