@@ -29,7 +29,7 @@ torchrun --standalone \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
-    --output_dir "training/FastVLM-0.5B_pga_vqa" \
+    --output_dir "training/llava_ov-0.5B_pga_vqa" \
     --per_device_train_batch_size 16 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
@@ -44,7 +44,7 @@ torchrun --standalone \
     --teacher_normalize True \
     --lr_scheduler_type "cosine" \
     --warmup_ratio 0.03 \
-    --kd_weight 1 \
+    --kd_weight 0.1 \
     --kd_loss_type "pga" \
     --image_resolution "tiny" \
     --projector_lr 5e-4 \
@@ -57,16 +57,16 @@ EVAL_SUBSETS=(
 )
 
 
-
+rm -rf ./MMEB-eval_outputs/llava_ov-0.5B_pga_vqa
 
 python eval_mmeb_2.py \
-  --model_name "training/FastVLM-0.5B_pga_vqa/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs/FastVLM-0.5B_pga_vqa" \
+  --model_name "training/llava_ov-0.5B_pga_vqa/checkpoint-epoch-0" \
+  --encode_output_path "./MMEB-eval_outputs/llava_ov-0.5B_pga_vqa" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \
   --pooling eos \
-  --model_backbone llava_qwen2_old \
+  --model_backbone llava_onevision_old \
   --normalize True \
   --bf16 \
   --dataset_name vlm2vec_eval/MMEB-eval \

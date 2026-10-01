@@ -57,7 +57,7 @@ EVAL_SUBSETS=(
 )
 
 
-
+rm -rf ./MMEB-eval_outputs/FastVLM-0.5B_pga_vqa
 
 python eval_mmeb_2.py \
   --model_name "training/FastVLM-0.5B_pga_vqa/checkpoint-epoch-0" \
@@ -74,7 +74,6 @@ python eval_mmeb_2.py \
   --dataset_split test \
   --per_device_eval_batch_size 4 \
   --image_dir eval_images/ \
-  --image_resolution "low" \
   --tgt_prefix_mod \
   --load_pretrained_lora True \
   --report_to none
