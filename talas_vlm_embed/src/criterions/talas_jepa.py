@@ -142,7 +142,6 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
-
     def sketched_participation_ratio_erank(self, z_list_first: list[torch.Tensor], 
                                            z_list_last: list[torch.Tensor],
                                            num_slices: int = 256, 
