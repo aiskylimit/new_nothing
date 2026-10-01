@@ -1,7 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/ace_all.tar.gz /mnt/local/@PROJECT@/OpenED/ace_all.tar.gz
-
+#i opened.txt
 #opened
 #v1
 
