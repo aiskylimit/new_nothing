@@ -845,6 +845,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
     # per log window: how many micro-steps actually distilled, and what happened to the samples
     SD_STAT_KEYS = ("steps", "active", "rows", "truncated", "unparsed", "kept")
     sd_win = dict.fromkeys(SD_STAT_KEYS, 0)
+    assert args.ced_sd or args.ced_sd_mix == "sum", "--ced-sd-mix random needs --ced-sd"
     if args.ced_sd:
         assert not args.student_gen, "--ced-sd and --student-gen both replace generation; use one"
         assert dataset["train"].t_lm_ctx is not None, \
@@ -939,12 +940,20 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                     )
                 model.train()
 
+            # --ced-sd-mix random: one KL term per update, token KD against the old-task model
+            # or SD against the EMA teacher. Seeded by global_step so all micro-steps of an
+            # update, and all ranks, draw the same side.
+            use_token_kd, use_sd = True, True
+            if args.ced_sd_mix == "random":
+                use_sd = random.Random(args.seed * 1000003 + global_step).random() < 0.5
+                use_token_kd = not use_sd
+
             # SD sampling + EMA-teacher scoring come before the grad-tracking forwards
             sd_batch = None
             if args.ced_sd:
                 sd_win["steps"] += 1
                 # warmup is an ablation knob (default 0); EMA keeps tracking the student during it
-                if global_step > args.ced_sd_warmup * args.total_iters:
+                if use_sd and global_step > args.ced_sd_warmup * args.total_iters:
                     sd_batch, st = sd_prepare(args, tokenizer, model, sd_ema, gen_data, no_model_batch, device)
                     for k in ("rows", "truncated", "unparsed", "kept"):
                         sd_win[k] += st[k]
@@ -1014,7 +1023,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                         keep |= old_token_mask[:, :kd_label.size(1)].to(keep.device) & pl_rows.unsqueeze(1)
                     kd_label[~keep] = -100
                     kd_no_model_batch["label"] = kd_label
-                    if (kd_label != -100).any():
+                    if use_token_kd and (kd_label != -100).any():
                         distil_loss = get_distil_loss(args, teacher_logits, kd_no_model_batch, logits)
 
                     if args.w_span_loss != 0:

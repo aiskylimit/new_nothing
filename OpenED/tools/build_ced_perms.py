@@ -8,6 +8,8 @@ format matches exactly.
 Usage (on server, ced env):
     python tools/build_ced_perms.py                          # data/ace_perm{p}/{t}/*.jsonl, cap 5
     python tools/build_ced_perms.py --cap 10 --perms 0 --out-prefix ace_b10_perm
+    python tools/build_ced_perms.py --cap 0 --out-prefix ace_b0_perm                   # no rehearsal
+    python tools/build_ced_perms.py --cap 10 --oracle --out-prefix ace_oracle_b10_perm # no label stripping
 """
 import argparse
 import json
@@ -31,6 +33,9 @@ cli.add_argument("--cap", type=int, default=5, help="exemplar buffer cap per eve
 cli.add_argument("--perms", type=int, nargs="+", default=[0, 1, 2, 3, 4])
 cli.add_argument("--out-prefix", type=str, default="ace_perm")
 cli.add_argument("--seed", type=int, default=42)
+cli.add_argument("--oracle", action="store_true",
+                 help="train rows keep the events of earlier tasks' types too (no label stripping); "
+                      "same sentences, buffer and dev/test as without the flag")
 CLI = cli.parse_args()
 
 OUT = f"{BASE}/data/{CLI.out_prefix}{{p}}"
@@ -88,9 +93,13 @@ def extract_templates():
 
 # ---------- 3. notebook logic, verbatim (type names instead of label ids) ----------
 def process_ace_data(raw_data, buffer, system_prompt, user_template,
-                     is_test=False, tasks=(), eval_tasks=()):
+                     is_test=False, tasks=(), eval_tasks=(), old_types=()):
+    # old_types (--oracle, train only): earlier tasks' types, kept in the response of a
+    # sentence the current types already select. They never select a sentence themselves,
+    # so with old_types empty this is the notebook logic unchanged.
     tasks = set(tasks)
     eval_tasks = set(eval_tasks)
+    old_types = set(old_types)
     data = []
     none_data = []
 
@@ -98,6 +107,7 @@ def process_ace_data(raw_data, buffer, system_prompt, user_template,
         sent_id_to_sentence = {i: c["sentence"] for i, c in enumerate(sample["content"])}
         sent_id_set = set(sent_id_to_sentence.keys())
         sent_to_existing_events = {}
+        selected = set()  # sentences with an event of a non-old type
         temp = {}  # marks handled below via b_sent_id_map
         b_sent_id_map = {}
 
@@ -106,12 +116,13 @@ def process_ace_data(raw_data, buffer, system_prompt, user_template,
                 continue
             event_type = event.get("type")
             description = event.get("description", "")
+            is_old = event_type in old_types
 
-            if event_type not in tasks:
+            if event_type not in tasks and not is_old:
                 if not (is_test and event_type in eval_tasks):
                     continue
 
-            if event_type not in process_ace_data.temp_buffer:
+            if not is_old and event_type not in process_ace_data.temp_buffer:
                 process_ace_data.temp_buffer[event_type] = []
 
             for mention in event.get("mention", []):
@@ -121,11 +132,16 @@ def process_ace_data(raw_data, buffer, system_prompt, user_template,
                 args = [[a["text"], a["role"]] for a in mention.get("arguments", [])]
                 event_info = [mention.get("trigger_word"), event_type, args, description]
                 sent_to_existing_events[sent_id].append(event_info)
+                if is_old:
+                    continue
+                selected.add(sent_id)
 
                 if len(process_ace_data.temp_buffer[event_type]) < CLI.cap:
                     b_sent_id_map[f"{idx}_{sent_id}"] = event_type
 
         for sent_id, evs in sent_to_existing_events.items():
+            if sent_id not in selected:
+                continue  # old-type events only: stays a none sentence, labelled below
             sent_txt = sent_id_to_sentence[sent_id]
             sent_id_set.remove(sent_id)
             response = json.dumps({"events": evs})
@@ -140,7 +156,7 @@ def process_ace_data(raw_data, buffer, system_prompt, user_template,
             sent_txt = sent_id_to_sentence[sent_id]
             none_data.append({"system_prompt": system_prompt,
                               "user_prompt": user_template.format(input=sent_txt),
-                              "response": json.dumps({"events": []})})
+                              "response": json.dumps({"events": sent_to_existing_events.get(sent_id, [])})})
 
     if not is_test:
         data.extend(random.sample(list(none_data), min(len(none_data), len(data) // 10)))
@@ -150,11 +166,12 @@ def process_ace_data(raw_data, buffer, system_prompt, user_template,
     return data
 
 
-def save_task(ds, out_dir, tasks, buffer, eval_tasks, system_prompt, user_template):
+def save_task(ds, out_dir, tasks, buffer, eval_tasks, system_prompt, user_template, old_types=()):
     os.makedirs(out_dir, exist_ok=True)
     stats = {}
     process_ace_data.temp_buffer = {}
-    train = process_ace_data(ds["train"], buffer, system_prompt, user_template, tasks=tasks)
+    train = process_ace_data(ds["train"], buffer, system_prompt, user_template, tasks=tasks,
+                             old_types=old_types)
     process_ace_data.temp_buffer = {}
     dev = process_ace_data(ds["validation"], [], system_prompt, user_template,
                            is_test=True, tasks=tasks, eval_tasks=eval_tasks)
@@ -191,10 +208,11 @@ def main():
         with open(OUT.format(p=p) + "/streams.json", "w") as f:
             json.dump(perm_streams, f)
         for t, tasks in enumerate(perm_streams):
+            old_types = list(eval_tasks) if CLI.oracle else []
             eval_tasks.extend(tasks)
             out_dir = OUT.format(p=p) + f"/{t}"
             stats = save_task(ds, out_dir, tasks, buffer, list(eval_tasks),
-                              system_prompt, user_template)
+                              system_prompt, user_template, old_types)
             print(f"task {t}: streams[{order[t]}] ({len(tasks)} types) "
                   f"train={stats['train']} dev={stats['dev']} test={stats['test']} "
                   f"buffer_after={len(buffer)}")
