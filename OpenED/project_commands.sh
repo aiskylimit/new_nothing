@@ -60,6 +60,11 @@ fi
 # flag defaults. c10d ignores --master_port, so every torchrun would join the same rendezvous:
 # the first runs, the rest die with RendezvousConnectionError when it exits.
 for v in $(compgen -e | grep '^PET_' || true); do unset "${v}"; done
+# building ace_b10_perm{1..4} reads datht/ace-short-generated-dataset, which is private
+if [ -f .env ] && [ -z "${HF_TOKEN:-}" ]; then
+    set -a; . ./.env; set +a
+    echo "read HF_TOKEN from .env"
+fi
 if [ -f models/Qwen3-0.6B/config.json ]; then
     export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-1}
 fi
@@ -72,10 +77,14 @@ DATA_PREFIX=${DS}_b10_perm
 for p in ${PERMS}; do
     have "data/${DATA_PREFIX}${p}/streams.json" && { printf '  %-40s ok\n' "data/${DATA_PREFIX}${p}"; continue; }
     if [ "${DS}" = "ace" ] && have data/ace/0/train.jsonl; then
+        # perm0 of cl-ace IS data/ace; the other four are re-split from the source corpus,
+        # which is a private HF dataset, so this step needs HF_TOKEN and network.
         echo "  building data/${DATA_PREFIX}${p} from data/ace"
-        [ "${DRY}" = "1" ] || OPENED_BASE=$(pwd) "${PY}" tools/build_ced_perms.py \
+        [ "${DRY}" = "1" ] || OPENED_BASE=$(pwd) HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
+            "${PY}" tools/build_ced_perms.py \
             --cap 10 --perms "${p}" --out-prefix "${DATA_PREFIX}" || {
-            echo "  build failed for perm${p}"; exit 1; }
+            echo "  build failed for perm${p} (needs HF_TOKEN for datht/ace-short-generated-dataset)"
+            exit 1; }
     else
         echo "  data/${DATA_PREFIX}${p} MISSING (and for ace, data/ace is not here either)."
         echo "  Bring over data/ace/{0..4}/{train,dev,test}.jsonl (the ACE task split), or copy"
