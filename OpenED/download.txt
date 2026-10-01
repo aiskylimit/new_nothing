@@ -309,9 +309,6 @@
 --url https://huggingface.co/datasets/datht/processed-cl-rams/resolve/main/rams_b10_perm4/4/qwen/valid.jsonl /mnt/local/@PROJECT@/OpenED/processed_data/rams_b10_perm4/4/qwen
 --url https://huggingface.co/datasets/datht/processed-cl-rams/resolve/main/rams_b10_perm4/4/qwen/valid_0.bin /mnt/local/@PROJECT@/OpenED/processed_data/rams_b10_perm4/4/qwen
 --url https://huggingface.co/datasets/datht/processed-cl-rams/resolve/main/rams_b10_perm4/4/qwen/valid_0.idx /mnt/local/@PROJECT@/OpenED/processed_data/rams_b10_perm4/4/qwen
-# ACE: already tokenised for Qwen3-0.6B, so nothing is built or processed on the host.
-# data/ holds the task split the pseudo-label and self-distillation stages read;
-# processed_data/ holds the .bin/.idx the trainer memory-maps.
 --url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/data/ace_b10_perm0/streams.json /mnt/local/@PROJECT@/OpenED/data/ace_b10_perm0
 --url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/data/ace_b10_perm0/0/train.jsonl /mnt/local/@PROJECT@/OpenED/data/ace_b10_perm0/0
 --url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/data/ace_b10_perm0/0/dev.jsonl /mnt/local/@PROJECT@/OpenED/data/ace_b10_perm0/0
