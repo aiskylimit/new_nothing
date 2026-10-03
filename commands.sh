@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
+#i opened.txt
 #opsd
 #v1
 
