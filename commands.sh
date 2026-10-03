@@ -1,4 +1,4 @@
-#1 +30
+#1 +10
 #opened
 #v1
 
@@ -30,7 +30,13 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-bash ./project_commands.sh
+rm -rf ace_all.tar.gz
+rm -rf maven_all.tar.gz
+rm -rf rams_all.tar.gz
+rm -rf geneva_all.tar.gz
+rm -rf tacred_all.tar.gz
+rm -rf fewrel_all.tar.gz
+# bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
