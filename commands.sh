@@ -1,4 +1,4 @@
-#i opened.txt
+#1 +10
 #opened
 #v1
 
