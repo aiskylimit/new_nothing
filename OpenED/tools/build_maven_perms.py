@@ -1,20 +1,25 @@
-"""Build MAVEN CED task splits for the 5 stream permutations.
+"""Build CED task splits for the 5 stream permutations of a generated-format corpus
+(MAVEN, RAMS, GENEVA).
 
-MAVEN counterpart of build_ced_perms.py. Two differences drive a separate script:
-  * MAVEN ships as a single generated-format split (data/maven/{train,dev,test}.jsonl,
-    records are {system_prompt, user_prompt, response}) instead of the raw ACE schema,
-    so tasks are carved by filtering each record's event list rather than re-parsing raw.
-  * MAVEN has 168 event types and no published task assignment here, so the streams are
-    built by a frequency-balanced greedy split (deterministic given --seed) and written to
-    streams.json. Swap in a published split by passing --streams-file.
+Counterpart of build_ced_perms.py (ACE). These corpora ship as a single generated-format
+split (data/<ds>/{train,dev,test}.jsonl, records are {system_prompt, user_prompt, response})
+instead of the raw ACE schema, so tasks are carved by filtering each record's event list.
+
+Streams follow KT (Yu et al., 2021):
+  * MAVEN uses KT's published partition: pass --streams-file tools/streams/maven_kt.json
+    (KT's data/MAVEN/streams.json with label ids mapped to our type names).
+  * RAMS and GENEVA have no published split, so KT's procedure (prepare_streams.py in the KT
+    repo) is applied: shuffle the types, then put each one in the stream with the fewest
+    training instances so far. Same seed as KT.
 
 Output matches what the CED runners expect:
     data/<out-prefix><p>/streams.json
     data/<out-prefix><p>/<t>/{train,dev,test}.jsonl
 
 Usage:
-    python tools/build_maven_perms.py --cap 10 --out-prefix maven_b10_perm
-    python tools/build_maven_perms.py --perms 0 --dry-run
+    python tools/build_maven_perms.py --src data/maven --streams-file tools/streams/maven_kt.json
+    python tools/build_maven_perms.py --src data/rams --out-prefix rams_b10_perm
+    python tools/build_maven_perms.py --src data/geneva --out-prefix geneva_b10_perm --dry-run
 """
 import argparse
 import json
@@ -22,8 +27,11 @@ import os
 import random
 from collections import Counter
 
-# same stream orders used for ACE (SharpSeq), applied to the MAVEN streams
+import numpy as np
+
+# KT's five task orders (run_train.py in the KT repo), also used by EMP and SharpSeq
 PERM = [[0, 1, 2, 3, 4], [4, 3, 2, 1, 0], [0, 3, 1, 4, 2], [1, 2, 0, 3, 4], [3, 4, 0, 1, 2]]
+KT_STREAM_SEED = 2227341903  # prepare_streams.py in the KT repo
 
 
 def load_jsonl(path):
@@ -49,27 +57,28 @@ def keep(row, types):
     return [e for e in events_of(row) if len(e) >= 2 and e[1] in types]
 
 
-def build_streams(train_rows, n_streams, seed):
-    """Greedy longest-processing-time split so every stream carries a similar volume.
-
-    Balancing matters more here than for ACE: MAVEN frequencies span 3 to 2678 examples,
-    so a naive alphabetical or random split would make some tasks an order of magnitude
-    larger than others and confound the continual-learning comparison.
-    """
+def type_freq(train_rows):
+    """Training mentions per event type, the instance count KT balances on."""
     freq = Counter()
     for row in train_rows:
         for e in events_of(row):
             if len(e) >= 2:
                 freq[e[1]] += 1
-    rnd = random.Random(seed)
-    # sort by count desc, ties broken deterministically-but-arbitrarily via the seed
-    order = sorted(freq, key=lambda t: (-freq[t], rnd.random()))
+    return freq
+
+
+def build_streams(freq, n_streams, seed):
+    """KT's prepare_streams.py: shuffle the types, then put each in the stream with the
+    fewest training instances so far (first such stream on ties)."""
+    np.random.seed(seed)
+    labels = [t for t, _ in freq.most_common()]
+    shuffled = [labels[i] for i in np.random.permutation(len(labels))]
     buckets, loads = [[] for _ in range(n_streams)], [0] * n_streams
-    for t in order:
+    for t in shuffled:
         i = loads.index(min(loads))
         buckets[i].append(t)
         loads[i] += freq[t]
-    return [sorted(b) for b in buckets], freq, loads
+    return [sorted(b) for b in buckets]
 
 
 def build_task(train_rows, dev_rows, test_rows, task_types, seen_types, buffer, cap, rnd):
@@ -118,8 +127,9 @@ def main():
     ap.add_argument("--cap", type=int, default=10, help="exemplars kept per event type")
     ap.add_argument("--n-streams", type=int, default=5)
     ap.add_argument("--perms", type=int, nargs="+", default=[0, 1, 2, 3, 4])
-    ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--streams-file", help="reuse an existing streams.json instead of rebuilding")
+    ap.add_argument("--seed", type=int, default=42, help="negative sampling")
+    ap.add_argument("--stream-seed", type=int, default=KT_STREAM_SEED)
+    ap.add_argument("--streams-file", help="use a published partition instead of building one")
     ap.add_argument("--dry-run", action="store_true", help="print the split, write nothing")
     args = ap.parse_args()
 
@@ -128,11 +138,14 @@ def main():
     test_rows = load_jsonl(f"{args.src}/test.jsonl")
     print(f"loaded train={len(train_rows)} dev={len(dev_rows)} test={len(test_rows)}")
 
+    freq = type_freq(train_rows)
     if args.streams_file:
         streams = json.load(open(args.streams_file))
-        freq, loads = Counter(), [0] * len(streams)
+        missing = set(freq) - {t for s in streams for t in s}
+        assert not missing, f"{len(missing)} training types are in no stream: {sorted(missing)[:5]}"
     else:
-        streams, freq, loads = build_streams(train_rows, args.n_streams, args.seed)
+        streams = build_streams(freq, args.n_streams, args.stream_seed)
+    loads = [sum(freq[t] for t in s) for s in streams]
     print(f"streams: sizes={[len(s) for s in streams]} train-events={loads}")
     for i, s in enumerate(streams):
         print(f"  stream {i} ({len(s)} types, {loads[i]} events): {s[:6]}{' ...' if len(s) > 6 else ''}")

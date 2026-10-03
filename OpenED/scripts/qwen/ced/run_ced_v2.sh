@@ -14,6 +14,7 @@
 #   --sd 0|1             on-policy self-distillation, EMA teacher reads gold+PL answer [0]
 #   --w-sd W [1.0]   --sd-mu M [0.99]   --sd-temp T [1.0]   --sd-div fkl|rkl [fkl]
 #   ablation only, defaults = SDFT: --sd-top-p P [1.0]  --sd-skip-unparsed 0|1 [0]  --sd-warmup F [0]
+#   --sd-omask 0|1 [0]   omission-mask: keep grounded old records missing from y~ out of the SD loss
 
 set -euo pipefail
 
@@ -31,6 +32,7 @@ SELECT_BEST=0   # 1 = merge best-dev-F1 epoch per task instead of last epoch
 KDNEW=0         # LwF: KD weight on new-task rows' non-new-type tokens (0 = off)
 SD=0; W_SD=1.0; SD_MU=0.99; SD_TEMP=1.0; SD_DIV=fkl   # on-policy self-distillation (SDFT)
 SD_TOP_P=1.0; SD_SKIP_UNPARSED=0; SD_WARMUP=0       # SD ablation knobs, SDFT defaults
+SD_OMASK=0
 GPUS_ARG="0 1"  # which GPUs to use (space-separated); e.g. "0" for single-GPU
 EXTRA_ARGS=""   # raw extra flags appended to the ced_finetune step (e.g. DistiLLM off-policy)
 TASK0_SOURCE_RUN=""
@@ -84,6 +86,7 @@ while [[ $# -gt 0 ]]; do
         --sd-top-p) SD_TOP_P=$2; shift 2;;
         --sd-skip-unparsed) SD_SKIP_UNPARSED=$2; shift 2;;
         --sd-warmup) SD_WARMUP=$2; shift 2;;
+        --sd-omask) SD_OMASK=$2; shift 2;;
         --gpus) GPUS_ARG=$2; shift 2;;
         --extra) EXTRA_ARGS=$2; shift 2;;
         --task0-source-run) TASK0_SOURCE_RUN=$2; shift 2;;
@@ -136,7 +139,7 @@ fi
 mkdir -p ${RUN_ROOT}
 MANIFEST="${RUN_ROOT}/run_manifest.json"
 MANIFEST_METHOD=${KD_TYPE}; [ "${MODE}" = "sft" ] && MANIFEST_METHOD=sft
-MANIFEST_CONFIG="mode=${MODE};kd_ratio=${KD_RATIO};w_span=${W_SPAN};kd_type=${KD_TYPE};skew=${SKEW};span_metric=${SPAN_METRIC};layers=${LAYERS};pl=${PL};pl_dedup=${PL_DEDUP};pl_conf=${PL_CONF}/${PL_CONF_PCT}/${PL_CONF_THRESH};pl_lexicon=${PL_LEXICON};boost=${BOOST};kd_scope=${KD_SCOPE};balance=${BAL}/${BAL_PT}/${BAL_LR}/${BAL_DIST};select_best=${SELECT_BEST};kd_new=${KDNEW};sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP};lr=${LR}/${LR_LATER};train_num=${TRAIN_NUM};dev_num=${DEV_NUM};smoke_rows=${SMOKE_ROWS};eval_bs=${EVAL_BS};extra=${EXTRA_ARGS}"
+MANIFEST_CONFIG="mode=${MODE};kd_ratio=${KD_RATIO};w_span=${W_SPAN};kd_type=${KD_TYPE};skew=${SKEW};span_metric=${SPAN_METRIC};layers=${LAYERS};pl=${PL};pl_dedup=${PL_DEDUP};pl_conf=${PL_CONF}/${PL_CONF_PCT}/${PL_CONF_THRESH};pl_lexicon=${PL_LEXICON};boost=${BOOST};kd_scope=${KD_SCOPE};balance=${BAL}/${BAL_PT}/${BAL_LR}/${BAL_DIST};select_best=${SELECT_BEST};kd_new=${KDNEW};sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP}/omask=${SD_OMASK};lr=${LR}/${LR_LATER};train_num=${TRAIN_NUM};dev_num=${DEV_NUM};smoke_rows=${SMOKE_ROWS};eval_bs=${EVAL_BS};extra=${EXTRA_ARGS}"
 MANIFEST_ARGS=(
     init --output "${MANIFEST}" --run "${RUN_NAME}" --method "${MANIFEST_METHOD}"
     --permutation "${PERM}" --seed "${SEED}" --data-root "${BASE_PATH}/data/${DATA_PREFIX}${PERM}"
@@ -145,6 +148,7 @@ MANIFEST_ARGS=(
     --runtime-file "${BASE_PATH}/arguments.py"
     --runtime-file "${BASE_PATH}/finetune.py"
     --runtime-file "${BASE_PATH}/ced_finetune.py"
+    --runtime-file "${BASE_PATH}/ced_omask.py"
     --runtime-file "${BASE_PATH}/data_utils/lm_datasets.py"
     --runtime-file "${BASE_PATH}/distillm/buffer.py"
     --runtime-file "${BASE_PATH}/distillm/losses.py"
@@ -168,7 +172,7 @@ if [ "${RESUME}" = "1" ]; then
         rm -rf "${RUN_ROOT}/task${STALE_TASK}"
     done
 fi
-echo "run=${RUN_NAME} mode=${MODE} perm=${PERM} data=${DATA_PREFIX} pl=${PL} boost=${BOOST} kd_scope=${KD_SCOPE} bal=${BAL}/${BAL_PT}/${BAL_LR} kd_ratio=${KD_RATIO} w_span=${W_SPAN} ${KD_TYPE}/${SKEW}/${SPAN_METRIC} layers='${LAYERS}' bs=${BS}x${ACC} lr=${LR}/${LR_LATER} ep=${EPOCHS} seed=${SEED} lora=${RANK}/${ALPHA} greedy=${GREEDY} sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP} task0_source=${TASK0_SOURCE_RUN:-none}" \
+echo "run=${RUN_NAME} mode=${MODE} perm=${PERM} data=${DATA_PREFIX} pl=${PL} boost=${BOOST} kd_scope=${KD_SCOPE} bal=${BAL}/${BAL_PT}/${BAL_LR} kd_ratio=${KD_RATIO} w_span=${W_SPAN} ${KD_TYPE}/${SKEW}/${SPAN_METRIC} layers='${LAYERS}' bs=${BS}x${ACC} lr=${LR}/${LR_LATER} ep=${EPOCHS} seed=${SEED} lora=${RANK}/${ALPHA} greedy=${GREEDY} sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP}/omask=${SD_OMASK} task0_source=${TASK0_SOURCE_RUN:-none}" \
     | tee ${RUN_ROOT}/run_config.txt
 
 tokenize () {  # $1=raw dir  $2=processed dir  [$3=teacher prompt cap, default 640]
@@ -296,6 +300,9 @@ do
             EXTRA+=" --ced-sd-top-p ${SD_TOP_P} --ced-sd-warmup ${SD_WARMUP}"
             if [ "${SD_SKIP_UNPARSED}" = "1" ]; then
                 EXTRA+=" --ced-sd-skip-unparsed"
+            fi
+            if [ "${SD_OMASK}" = "1" ]; then
+                EXTRA+=" --ced-sd-omission-mask"
             fi
         fi
         EXTRA+=" ${EXTRA_ARGS}"

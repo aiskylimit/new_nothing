@@ -193,3 +193,5 @@ collected_logs/
 # ./processed_data/
 *.tar.gz
 eval_outputs/
+/logs
+/logs2
