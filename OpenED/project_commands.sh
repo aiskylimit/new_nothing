@@ -340,6 +340,7 @@ while :; do
             job=${SLOT_JOB[i]}; IFS='|' read -r name sd flags sd_args perm <<< "${job}"
             if [ "${rc}" -eq 0 ] && { [ "${DRY}" = "1" ] || [ -f "$(run_dir "${name}" "${sd}" "${perm}")/.complete" ]; }; then
                 log "done   ${name}/perm${perm} (gpu${GPUS[i]})"
+                bash gather_logs.sh
                 [ "${name}" = "task0" ] && T0[${perm}]=done
             else
                 log "FAILED ${name}/perm${perm} (gpu${GPUS[i]}, exit ${rc}), see ${POOL_LOG}"
