@@ -1,5 +1,5 @@
-#1 +60
-#opened
+#i opsd.txt
+#opsd
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -8,7 +8,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 499 500 501 502 503 504 505 506
+# kill -9 499 500 501 502 503 504 505 506
 # sleep 2
 nvidia-smi
 
@@ -31,5 +31,5 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash ./project_commands.sh
+# cd ./OpenED
+# bash ./project_commands.sh
