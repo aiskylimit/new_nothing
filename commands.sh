@@ -1,6 +1,6 @@
 #1 +65
-#opsd
-#v2
+#tropic
+#v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
@@ -33,5 +33,5 @@ export NCCL_DEBUG=WARN
 # cd ./OpenED
 # bash ./project_commands.sh
 
-cd ./opsd
+cd ./offline_olmo7b_b200
 bash ./project_commands.sh
