@@ -1,4 +1,12 @@
-#i tropic.txt
+#d
+#datasets
+--hf siyanzhao/Openthoughts_math_30k_opsd /mnt/local/@PROJECT@/tropic_baselines/data/train
+--hf yentinglin/aime_2025 /mnt/local/@PROJECT@/tropic_baselines/data/eval/aime25
+--hf MathArena/aime_2026 /mnt/local/@PROJECT@/tropic_baselines/data/eval/aime26
+--hf MathArena/hmmt_feb_2025 /mnt/local/@PROJECT@/tropic_baselines/data/eval/hmmt25
+#models
+--hf allenai/Olmo-3-7B-Think /mnt/local/@PROJECT@/tropic_baselines/models/Olmo-3-7B-Think
+
 #tropic
 #v1
 
