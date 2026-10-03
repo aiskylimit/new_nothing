@@ -1,4 +1,9 @@
-#i opened.txt
+#d
+#datasets
+--url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/ace_all.tar.gz /mnt/local/@PROJECT@/OpenED/ace_all.tar.gz
+#models
+--hf Qwen/Qwen3-0.6B /mnt/local/@PROJECT@/OpenED/models/Qwen3-0.6B
+
 #opsd
 #v1
 
