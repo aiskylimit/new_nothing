@@ -1,4 +1,4 @@
-#1 +10
+#2
 #OpenED
 #v1
 
@@ -30,5 +30,5 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash ./project_commands.sh
+# cd ./OpenED
+# bash ./project_commands.sh
