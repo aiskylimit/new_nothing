@@ -6,13 +6,14 @@ export PYTHONPATH=.
 source /mnt/local/uvenvs/tropic/bin/activate
 
 # ============================================================
-# 1. Paths - MUST match how download.txt's @PROJECT@ was actually resolved.
-#    Fill in PROJECT_NAME before running. Dataset paths reuse the SAME
-#    locations as offline_rlsd_sdpo_b200/offline_tropic_g_b200's own
-#    download.txt (already downloaded there if those ran first under the
-#    same @PROJECT@) - only the OLMo model itself is new.
+# 1. Paths - MUST match how download.txt's @PROJECT@ was actually resolved
+#    for THIS repo/branch (aiskylimit/new_nothing, tropic-vLLM) - NOT the
+#    same value used in the sibling aiskylimit/new_nothingnew_2 repo this
+#    package was ported from (that repo's own @PROJECT@ resolves to a
+#    DIFFERENT local path, so reusing its PROJECT_NAME here would point at a
+#    download that never happened under this repo's /mnt/local/ tree).
 # ============================================================
-PROJECT_NAME="aiskylimit_new_nothingnew_2"
+PROJECT_NAME="aiskylimit_new_nothing"
 BASE_DIR="/mnt/local/${PROJECT_NAME}/tropic_baselines"
 MODEL_OLMO="${BASE_DIR}/models/Olmo-3-7B-Think"
 export TROPIC_TRAIN_DATA_PATH="${BASE_DIR}/data/train"
