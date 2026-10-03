@@ -80,8 +80,8 @@ step "2. data"
 if have ace_all.tar.gz; then
     echo "  unpacking ace_all.tar.gz"
     if [ "${DRY}" != "1" ]; then
-        "${PY}" -c "import tarfile; tarfile.open('ace_all.tar.gz/ace_all.tar.gz').extractall('.', filter='data')"
-        # rm -f ace_all.tar.gz
+        # "${PY}" -c "import tarfile; tarfile.open('ace_all.tar.gz/ace_all.tar.gz').extractall('.', filter='data')"
+        rm -rf ace_all.tar.gz
     fi
 fi
 PERMS=${PERMS:-"0 1 2 3 4"}
