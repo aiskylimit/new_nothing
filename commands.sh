@@ -1,9 +1,8 @@
-#1 +65
+#2 -0-10
 #opsd
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
 #2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
 
 # nvidia-smi
@@ -33,8 +32,8 @@ export NCCL_DEBUG=WARN
 # cd ./OpenED
 # bash ./project_commands.sh
 
-cd ./opsd
-bash ./project_commands.sh
+# cd ./opsd
+# bash ./project_commands.sh
 
 # cd ./offline_olmo7b_b200
 # bash ./project_commands.sh
