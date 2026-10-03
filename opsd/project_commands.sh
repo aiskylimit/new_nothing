@@ -5,7 +5,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source /mnt/local/uvenvs/opsd/bin/activate
 
 # Must match the destinations in download.txt.
-PROJECT_NAME="aiskylimit_new_nothingnew_2"
+PROJECT_NAME="aiskylimit_new_nothing"
 BASE_DIR="/mnt/local/${PROJECT_NAME}/OPSD"
 export MODEL_ROOT="${BASE_DIR}/models"
 export RAW_DATA_ROOT="${BASE_DIR}/data/raw"
