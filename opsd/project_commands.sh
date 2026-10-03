@@ -22,11 +22,11 @@ export VLLM_GPU_MEMORY_UTILIZATION=0.6
 export GPU_MEMORY_UTILIZATION=0.9
 export MAIN_PROCESS_PORT=auto
 
-# Already prepared before the completed OPSD and base evaluations.
-# python "${PROJECT_ROOT}/data/prepare_data.py" \
-#     --raw_root "${RAW_DATA_ROOT}" \
-#     --output_root "${PREPARED_DATA_ROOT}" \
-#     --overwrite
+# Prepare downloaded datasets for training and evaluation.
+python "${PROJECT_ROOT}/data/prepare_data.py" \
+    --raw_root "${RAW_DATA_ROOT}" \
+    --output_root "${PREPARED_DATA_ROOT}" \
+    --overwrite
 
 # Evaluate each base model once, independently of method training and checkpoint evaluation.
 # bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd 4b
