@@ -1,5 +1,5 @@
-#2 -1
-#opsd
+#1 +50
+#gpu-check
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
