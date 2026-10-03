@@ -1,9 +1,6 @@
-#d
-#models
---hf allenai/Olmo-3-7B-Think /mnt/local/@PROJECT@/OPSD/models/Olmo-3-7B-Think
-
-#opsd
-#v2
+#1 +65
+#tropic
+#v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
@@ -39,5 +36,5 @@ export NCCL_DEBUG=WARN
 # cd ./opsd
 # bash ./project_commands.sh
 
-# cd ./offline_olmo7b_b200
-# bash ./project_commands.sh
+cd ./offline_olmo7b_b200
+bash ./project_commands.sh
