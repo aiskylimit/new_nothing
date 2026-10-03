@@ -1,4 +1,7 @@
-#1 +65
+#d
+#models
+--hf allenai/Olmo-3-7B-Think /mnt/local/@PROJECT@/OPSD/models/Olmo-3-7B-Think
+
 #opsd
 #v2
 
@@ -33,7 +36,8 @@ export NCCL_DEBUG=WARN
 # cd ./OpenED
 # bash ./project_commands.sh
 
-cd ./opsd
-bash ./project_commands.sh
+# cd ./opsd
+# bash ./project_commands.sh
+
 # cd ./offline_olmo7b_b200
 # bash ./project_commands.sh
