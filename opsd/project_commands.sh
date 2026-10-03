@@ -42,17 +42,17 @@ export MAIN_PROCESS_PORT=auto
 # bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b base  # completed
 bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b base
 
-bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo 4b
-bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b grpo
+# bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo 4b
+# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b grpo
 
-bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo 8b
-bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b grpo
+# bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo 8b
+# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b grpo
 
-bash "${PROJECT_ROOT}/scripts/run_training.sh" sft 4b
-bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b sft
+# bash "${PROJECT_ROOT}/scripts/run_training.sh" sft 4b
+# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b sft
 
-bash "${PROJECT_ROOT}/scripts/run_training.sh" sft 8b
-bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b sft
+# bash "${PROJECT_ROOT}/scripts/run_training.sh" sft 8b
+# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b sft
 
 bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo olmo7b
 bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b grpo
