@@ -29,8 +29,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./OpenED
-# bash ./project_commands.sh
+cd ./OpenED
+bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
