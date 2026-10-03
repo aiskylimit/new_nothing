@@ -1,12 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/ace_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-maven/resolve/main/maven_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-rams/resolve/main/rams_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-geneva/resolve/main/geneva_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-tacred/resolve/main/tacred_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-fewrel/resolve/main/fewrel_all.tar.gz /mnt/local/@PROJECT@/OpenED
-
+#1 +10
 #opened
 #v1
 
@@ -15,9 +7,10 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+kill -9 7350 7351 7352 7353
 # sleep 2
 nvidia-smi
-
+ls OpenED
 
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -26,7 +19,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
 
 # cd ./talas_vlm_embed
 # bash ./project_commands.sh
@@ -37,13 +30,7 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-rm -rf ace_all.tar.gz
-rm -rf maven_all.tar.gz
-rm -rf rams_all.tar.gz
-rm -rf geneva_all.tar.gz
-rm -rf tacred_all.tar.gz
-rm -rf fewrel_all.tar.gz
+# cd ./OpenED
 # bash ./project_commands.sh
 
 # cd ./opsd
