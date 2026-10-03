@@ -47,6 +47,7 @@ from rouge_metric import compute_metrics
 
 from peft import PeftModel
 from ed_eval import ed_evaluate
+import ced_omask
 
 torch.set_num_threads(4)
 
@@ -407,8 +408,8 @@ def sd_prepare(args, tokenizer, model, ema, gen_data, no_model_batch, device):
     # real prompt tokens come from the attention mask: pad == eos == <|im_end|>,
     # which also appears inside the chat prompt, so filtering by pad id is wrong
     t_prompt_ids = no_model_batch["t_prompt_ids"]
-    stats = {"rows": seqs.size(0), "truncated": 0, "unparsed": 0, "kept": 0}
-    prompts, responses, t_prompts = [], [], []
+    stats = {"rows": seqs.size(0), "truncated": 0, "unparsed": 0, "kept": 0, "masked_rec": 0, "masked_tok": 0}
+    prompts, responses, t_prompts, kept_rows = [], [], [], []
     for i in range(seqs.size(0)):
         r = seqs[i, P:]
         stop = (r == SD_EOS_IDS[0]) | (r == SD_EOS_IDS[1])
@@ -424,6 +425,7 @@ def sd_prepare(args, tokenizer, model, ema, gen_data, no_model_batch, device):
         prompts.append(gen_data["input_ids"][i][gen_data["attention_mask"][i].bool()])
         responses.append(r)
         t_prompts.append(t_prompt_ids[i].to(device))
+        kept_rows.append(i)
     stats["kept"] = len(responses)
     if not responses:
         model.train()
@@ -440,9 +442,40 @@ def sd_prepare(args, tokenizer, model, ema, gen_data, no_model_batch, device):
     valid = label != -100
     assert torch.equal(t_ids.gather(1, t_pos + 1)[valid], label[valid])
     assert torch.equal(s_ids.gather(1, s_pos + 1)[valid], label[valid])
+    if args.ced_sd_omission_mask:
+        sd_omission_mask(args, tokenizer, prompts, responses, label, kept_rows, no_model_batch["label"], stats)
+        if not (label != -100).any():
+            return None, stats
     return {"ids": s_ids, "mask": s_mask, "pos": s_pos, "label": label, "t_logits": t_logits,
             "t_entropy": sd_teacher_entropy(t_logits, label),
             "resp_len": sum(len(r) for r in responses) / len(responses)}, stats
+
+
+_OLD_TYPES = {}
+
+
+def sd_omission_mask(args, tokenizer, prompts, responses, label, kept_rows, ref_label, stats):
+    """Drop from the SD loss (label -> -100) the tokens of sampled old-type records that are
+    grounded in the sentence but absent from the reference y~. See ced_omask.py."""
+    key = (args.ced_streams_file, args.ced_task_id)
+    if key not in _OLD_TYPES:
+        with open(args.ced_streams_file) as f:
+            streams = json.load(f)
+        _OLD_TYPES[key] = {t for s in streams[:args.ced_task_id] for t in s}
+    old_types = _OLD_TYPES[key]
+    for k, (p, r, row) in enumerate(zip(prompts, responses, kept_rows)):
+        ids = r.tolist()
+        ref = ref_label[row]
+        reference = tokenizer.decode(ref[ref != -100].tolist(), skip_special_tokens=True)
+        sentence = ced_omask.input_sentence(tokenizer.decode(p.tolist(), skip_special_tokens=True))
+        spans = ced_omask.masked_spans(tokenizer.decode(ids, skip_special_tokens=True), reference,
+                                       sentence, old_types)
+        if not spans:
+            continue
+        drop = torch.tensor(ced_omask.token_mask(tokenizer, ids, spans), device=label.device)
+        label[k, :len(ids)][drop] = -100
+        stats["masked_rec"] += len(spans)
+        stats["masked_tok"] += int(drop.sum())
 
 
 def sd_loss_fn(args, model, sd):
@@ -843,7 +876,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
     sd_ema = None
     total_sd_loss, total_sd_len, total_sd_ent = 0.0, 0.0, 0.0
     # per log window: how many micro-steps actually distilled, and what happened to the samples
-    SD_STAT_KEYS = ("steps", "active", "rows", "truncated", "unparsed", "kept")
+    SD_STAT_KEYS = ("steps", "active", "rows", "truncated", "unparsed", "kept", "masked_rec", "masked_tok")
     sd_win = dict.fromkeys(SD_STAT_KEYS, 0)
     assert args.ced_sd or args.ced_sd_mix == "sum", "--ced-sd-mix random needs --ced-sd"
     if args.ced_sd:
@@ -955,7 +988,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                 # warmup is an ablation knob (default 0); EMA keeps tracking the student during it
                 if use_sd and global_step > args.ced_sd_warmup * args.total_iters:
                     sd_batch, st = sd_prepare(args, tokenizer, model, sd_ema, gen_data, no_model_batch, device)
-                    for k in ("rows", "truncated", "unparsed", "kept"):
+                    for k in ("rows", "truncated", "unparsed", "kept", "masked_rec", "masked_tok"):
                         sd_win[k] += st[k]
                     sd_win["active"] += int(sd_batch is not None)
 
@@ -1154,10 +1187,11 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                     kl = total_sd_loss / act - (ent if args.ced_sd_div == "fkl" else 0.0)
                     sd_str = ("sd | global iter: {:6d} | sd_loss: {:.4f} | kl: {:.4f} | teacher_H: {:.4f} | "
                               "resp_len: {:.1f} | active: {}/{} steps | kept: {:.3f} | truncated: {:.3f} | "
-                              "unparsed: {:.3f}").format(
+                              "unparsed: {:.3f} | omask: {} records / {} tokens").format(
                         global_step, total_sd_loss / act, kl, ent, total_sd_len / act,
                         sd_win["active"], sd_win["steps"], sd_win["kept"] / rows,
-                        sd_win["truncated"] / rows, sd_win["unparsed"] / rows)
+                        sd_win["truncated"] / rows, sd_win["unparsed"] / rows,
+                        sd_win["masked_rec"], sd_win["masked_tok"])
                     print_rank(sd_str)
                     save_rank(sd_str, os.path.join(args.save, "log.txt"))
                     total_sd_loss, total_sd_len, total_sd_ent = 0.0, 0.0, 0.0

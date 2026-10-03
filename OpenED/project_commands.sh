@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# The ACE ablation matrix for OUR method, x 5 permutations, on this host.
-# Round 2 (groups a, d, o; x = optional) is what runs by default. Round 1 (g1-g5, 17 configs)
-# stays in CONFIGS_ALL, commented out: uncomment it and add its groups to ONLY to re-run it.
+# OUR method and its ablations, x 5 permutations, on this host.
+# Round 3 (03/10) is what runs by default: on ACE the main-table run plus the ablations the
+# paper tables need; on any other dataset only the main-table run. Rounds 1 and 2 stay in
+# CONFIGS_ALL, commented out: uncomment a line and add its group to ONLY to re-run it.
 #
-#   bash project_commands.sh              # env + data checks, then trains until done
-#   DRY=1 bash project_commands.sh        # print the plan, train nothing
-#   ONLY="a x" bash project_commands.sh   # only some groups
+#   bash project_commands.sh                            # ACE: g1_full, omission-mask arm, ablations
+#   DS=maven bash project_commands.sh                   # main table on MAVEN (also rams, geneva)
+#   DS=fewrel bash project_commands.sh                  # main table on FewRel (also tacred)
+#   DRY=1 bash project_commands.sh                      # print the plan, train nothing
+#   ONLY="c" bash project_commands.sh                   # only some groups
 #
 # Defaults match this host: venv, GPUs 4-7, one run per GPU, effective batch 2x16 = 32.
 # Safe to re-run after a crash: a run with a .complete marker is skipped, and nothing is deleted.
@@ -20,7 +23,10 @@
 #   SKIP_INSTALL  1 = never touch dependencies
 #   POOL_GPUS     one slot per GPU id (default "4 5 6 7")
 #   PERMS         default "0 1 2 3 4"
-#   ONLY          groups to run, default "a d o"  (bash owns $GROUPS, hence ONLY)
+#   DS            dataset, default ace: ace maven rams geneva (CED), tacred fewrel (CRE)
+#   DATA_PREFIX   default <ds>_b10_perm (CED) or <ds>_perm (CRE), the names under data/
+#   ONLY          groups to run, default "g1 m a c d l" on ACE and "g1" elsewhere
+#                 (bash owns $GROUPS, hence ONLY)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -74,38 +80,61 @@ fi
 
 # ---------------------------------------------------------------- 2. data
 step "2. data"
-# One archive instead of ~900 loose files: 34 MB against 450 MB, and one download instead of
-# 915. It unpacks to data/ and processed_data/, which is where everything below looks.
+# Unzip what download.txt fetched: one archive per corpus (<ds>_all.tar.gz from
+# datht/processed-cl-<ds>, ds = ace maven rams geneva tacred fewrel) instead of hundreds of
+# loose files. Each unpacks to data/ and processed_data/, which is where everything below
+# looks, and is deleted once unpacked.
 # Python's tarfile, not the tar binary: the image is minimal (see the en_core_web_sm note).
-if have ace_all.tar.gz; then
-    echo "  unpacking ace_all.tar.gz"
+for tgz in *_all.tar.gz; do
+    have "${tgz}" || continue
+    echo "  unpacking ${tgz}"
     if [ "${DRY}" != "1" ]; then
-        "${PY}" -c "import tarfile; tarfile.open('ace_all.tar.gz/ace_all.tar.gz').extractall('.', filter='data')"
-        rm -rf ace_all.tar.gz
+        "${PY}" -c "import sys, tarfile; tarfile.open(sys.argv[1]).extractall('.', filter='data')" "${tgz}"
+        rm -f "${tgz}"
     fi
-fi
+done
 PERMS=${PERMS:-"0 1 2 3 4"}
-DS=${DS:-ace}                    # the winning config gets re-run on other datasets with DS=maven etc.
-DATA_PREFIX=${DS}_b10_perm
+DS=${DS:-ace}
+case ${DS} in
+    tacred|fewrel) DATA_PREFIX=${DATA_PREFIX:-${DS}_perm} ;;      # CRE splits ship in data/, built already
+    *)             DATA_PREFIX=${DATA_PREFIX:-${DS}_b10_perm} ;;
+esac
 
 # The matrix is defined here, ahead of section 3, because some configs read their own data
 # (--data-prefix in their flags) and this step has to build it.
-# name | sd | runner flags | SD_ARGS
+# name | sd | runner flags | SD_ARGS       (sd = cl: a CL-LoRA baseline, run by run_cllora.sh)
 CONFIGS_ALL=(
-  # ---- round 2 (01/10)
-  #   a  the method minus SD; and KD/SD drawn at random per update instead of summed
-  #      (professor note 7b, --ced-sd-mix in ced_finetune.py; span loss and CE stay on)
-  #   d  no rehearsal (note 3): memory 0. KD scope pl, else the method has almost no KD rows
-  #   o  oracle: CE on D_t with old-type events kept (no label stripping). Compare with g1_ce
-  #      for what stripping costs, and with g1_pl for how much of it PL recovers
-  #   x  optional, only when GPUs are free: SD teacher = current model (mu 0), PL without lexicon
+  # ---- round 3 (03/10): the runs the paper tables need
+  #   g1  g1_full is the method: the "Ours" row of every main table, and the full-method row
+  #       of the ablations. Same name as round 1, so an ACE run that already finished is reused
+  #   a   components table: the method minus SD
+  #   c   components table: the method minus PL (the SD teacher then reads y_t), and minus
+  #       token KD (span KD, CE and SD stay)
+  #   m   the method with the omission-mask on (--sd-omask 1); g1_full is the same run with it off
+  #   d   rehearsal-free table, Ours row: the method with memory 0 (g1_full is Ours with memory 10).
+  #       KD scope pl, else it has almost no KD rows
+  #   l   rehearsal-free table: TreeLoRA / IncLoRA / O-LoRA with memory 0. Their numbers in the
+  #       main table trained on <ds>_b10_perm, i.e. with the 10-per-type buffer in train.jsonl
+  "g1_full|1||"
   "a_nosd|0||"
-  "a_rand|1||--extra --ced-sd-mix=random"
-  "d_ce|0|--mode sft --pl 0 --data-prefix ${DS}_b0_perm|"
+  "c_nopl|1|--pl 0|"
+  "c_notkd|1|--kd-type no|"
+  "m_omask|1||--sd-omask 1"
   "d_full|1|--data-prefix ${DS}_b0_perm --kd-scope pl|"
-  "o_ce|0|--mode sft --pl 0 --data-prefix ${DS}_oracle_b10_perm|"
-  "x_mu0|1||--sd-mu 0"
-  "x_nolex|0|--mode sft --pl 1 --pl-lexicon 0|"
+  "l_tree|cl|--data-prefix ${DS}_b0_perm|"
+  "l_inclora|cl|--data-prefix ${DS}_b0_perm|"
+  "l_olora|cl|--data-prefix ${DS}_b0_perm|"
+
+  # ---- round 2 (01/10). Not used by any paper table any more; kept so it can be re-run.
+  #   a_rand  KD/SD drawn at random per update (professor note 7b; --ced-sd-mix)
+  #   d_ce    CE with memory 0 (the rehearsal table now compares with CL-LoRA instead)
+  #   o_ce    oracle: CE on D_t with old-type events kept (no label stripping)
+  #   x_*     SD teacher = current model (mu 0), PL without lexicon
+  # "a_rand|1||--extra --ced-sd-mix=random"
+  # "d_ce|0|--mode sft --pl 0 --data-prefix ${DS}_b0_perm|"
+  # "o_ce|0|--mode sft --pl 0 --data-prefix ${DS}_oracle_b10_perm|"
+  # "x_mu0|1||--sd-mu 0"
+  # "x_nolex|0|--mode sft --pl 1 --pl-lexicon 0|"
 
   # ---- round 1 (started 01/10). Commented out, not deleted, so it can be re-run after a crash:
   # a run with a .complete marker is skipped, so only the unfinished ones train again.
@@ -121,7 +150,7 @@ CONFIGS_ALL=(
   # "g1_kd|0|--mode ce_kd --pl 0 --w-span 0|"
   # "g1_span|0|--mode ce_kd --pl 0 --kd-type no --w-span 2.0|"
   # "g1_sd|1|--mode ce_kd --pl 0 --kd-ratio 0 --w-span 0|"
-  # "g1_full|1||"
+  #  g1_full: active in round 3 above
   # "g2_nofilter|0|--mode sft --pl 1 --pl-dedup 0 --pl-conf none --pl-lexicon 0|"
   # "g2_ground|0|--mode sft --pl 1 --pl-conf none --pl-lexicon 0|"
   # "g3_wsd01|1||--w-sd 0.1"
@@ -134,7 +163,7 @@ CONFIGS_ALL=(
   # "g5_warm|1||--sd-warmup 0.5"
   # "g5_rkl|1||--sd-div rkl"
 )
-ONLY=${ONLY:-"a d o"}
+if [ "${DS}" = "ace" ]; then ONLY=${ONLY:-"g1 m a c d l"}; else ONLY=${ONLY:-"g1"}; fi
 
 CONFIGS=()
 for c in "${CONFIGS_ALL[@]}"; do
@@ -205,10 +234,10 @@ if [ "${DS}" = "ace" ] && [ "${NEED_ACE_BUILD}" = "1" ]; then
 fi
 
 for prefix in "${DATA_PREFIXES[@]}"; do
-    bflags=$(build_flags "${prefix}") || { echo "  no build rule for data prefix ${prefix}"; exit 1; }
     for p in ${PERMS}; do
         have "data/${prefix}${p}/streams.json" && { printf '  %-40s ok\n' "data/${prefix}${p}"; continue; }
-        if [ "${DS}" = "ace" ] && [ "${ACE_RAW_READY}" = "1" ]; then
+        bflags=$(build_flags "${prefix}") || bflags=""
+        if [ "${DS}" = "ace" ] && [ "${ACE_RAW_READY}" = "1" ] && [ -n "${bflags}" ]; then
             # perm0 of cl-ace IS data/ace; the other four are re-split from the source corpus,
             # which is a private HF dataset, so this step needs HF_TOKEN and network.
             echo "  building data/${prefix}${p} from data/ace (${bflags})"
@@ -218,7 +247,7 @@ for prefix in "${DATA_PREFIXES[@]}"; do
                 echo "  build failed for ${prefix}${p} (needs HF_TOKEN for datht/ace-short-generated-dataset)"
                 exit 1; }
         else
-            echo "  data/${prefix}${p} MISSING (and for ace, data/ace is not here either)."
+            echo "  data/${prefix}${p} MISSING, and only ACE splits can be built here."
             echo "  Set ACE_SOURCE_DIR to a folder with {0..4}/{train,dev,test}.jsonl, or copy"
             echo "  data/${prefix}{0..4} from a host that already has the generated splits."
             exit 1
@@ -229,7 +258,10 @@ done
 # Only ${DATA_PREFIX} needs it: every config starts from the shared task0 run, whose task0 data
 # is the same in every prefix, and ours_queue's --replay-boost re-tokenizes tasks 1+.
 for p in ${PERMS}; do
-    for t in 0 1 2 3 4; do
+    n_tasks=5  # TACRED / FewRel have 10; streams.json says how many
+    have "data/${DATA_PREFIX}${p}/streams.json" && n_tasks=$("${PY}" -c \
+        "import json,sys; print(len(json.load(open(sys.argv[1]))))" "data/${DATA_PREFIX}${p}/streams.json")
+    for t in $(seq 0 $((n_tasks - 1))); do
         out="processed_data/${DATA_PREFIX}${p}/${t}"
         have "${out}/qwen/train_0.idx" && continue
         echo "  tokenising perm${p} task${t}"
@@ -238,8 +270,8 @@ for p in ${PERMS}; do
             --data-dir "data/${DATA_PREFIX}${p}/${t}/" --processed-data-dir "${out}" \
             --model-path "${MODEL_PATH:-Qwen/Qwen3-0.6B}" --data-process-workers 4 \
             --max-prompt-length 460 --t-max-prompt-length 640 \
-            --dev-num 1000 --model-type qwen > "logs/tok_ace_p${p}t${t}.log" 2>&1 || {
-            echo "  tokenize FAILED perm${p} task${t}, see logs/tok_ace_p${p}t${t}.log"; exit 1; }
+            --dev-num 1000 --model-type qwen > "logs/tok_${DS}_p${p}t${t}.log" 2>&1 || {
+            echo "  tokenize FAILED perm${p} task${t}, see logs/tok_${DS}_p${p}t${t}.log"; exit 1; }
     done
 done
 
@@ -252,6 +284,8 @@ R=results/qwen3/ced
 
 run_dir () {  # $1=config name  $2=sd  $3=perm
     if [ "$1" = "task0" ]; then echo "${R}/dist_shared_task0_perm$3_${PROTOCOL}_s${SEED}"; return; fi
+    # memory-0 CL-LoRA: its own protocol tag, so it never collides with the buffer-10 runs
+    if [ "$2" = "cl" ]; then echo "${R}/cllora_${1#l_}_perm$3_${DS}_b0_v2_s${SEED}"; return; fi
     local tag=""; [ "$2" = "1" ] && tag="_sd"
     echo "${R}/ours_${VARIANT}${tag}_$1_perm$3_${PROTOCOL}_s${SEED}"
 }
@@ -265,7 +299,7 @@ done
 GPUS=(${POOL_GPUS:-4 5 6 7})
 step "3. train ${#JOBS[@]} jobs on gpus ${GPUS[*]}"
 mkdir -p logs
-POOL_LOG=logs/ace_matrix_pool.log
+POOL_LOG=logs/${DS}_matrix_pool.log
 echo "progress: ${POOL_LOG}   per-run logs: logs_ours_*.log and ${R}/<run>/task*/train.log"
 log () { echo "[pool $(date '+%F %T')] $*" | tee -a "${POOL_LOG}"; }
 
@@ -283,6 +317,9 @@ launch () {  # $1=job $2=gpu -> starts it in the background
             --data-prefix "${DATA_PREFIX}" --perm "${perm}" \
             --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" \
             --bs 2 --acc 16 --greedy 1 --gpus "$2" --end-task 0
+    elif [ "${sd}" = "cl" ]; then
+        bash scripts/qwen/ced/run_cllora.sh --method "${name#l_}" --data-root "data/${DS}_b0_perm${perm}" \
+            --protocol "${DS}_b0_v2" --seed "${SEED}" --gpu "$2" --py "${PY}"
     else
         PERM="${perm}" GPU="$2" DATA_PREFIX="${DATA_PREFIX}" SEED="${SEED}" PROTOCOL="${PROTOCOL}" \
         OURS_VARIANT="${VARIANT}" OURS_SD="${sd}" SD_ARGS="${sd_args}" RUN_SUFFIX="_${name}" \
@@ -306,7 +343,7 @@ pick () {  # sets JOB to the first startable job and drops it from PENDING; 1 if
             log "skip   ${name}/perm${perm} (already complete)"
             unset 'PENDING[i]'; continue
         fi
-        if [ "${name}" != "task0" ]; then
+        if [ "${name}" != "task0" ] && [ "${sd}" != "cl" ]; then  # CL-LoRA trains its own task0
             case ${T0[${perm}]} in
                 pending|running) continue ;;
                 failed) log "FAILED ${name}/perm${perm} (task0 of perm${perm} failed)"
@@ -363,9 +400,18 @@ while :; do
     sleep 20
 done
 
-step "4. done"
+step "4. collect F1 files"
+# Before the failure exit below, so the runs that did finish are collected either way.
+# The label carries the dataset and time: gather_logs.sh refuses to reuse a folder.
+if [ "${DRY}" = "1" ]; then
+    echo "DRY=1: would run gather_logs.sh ${DS}_$(date +%Y%m%d_%H%M)"
+else
+    bash gather_logs.sh "${DS}_$(date +%Y%m%d_%H%M)" || echo "gather_logs.sh failed, run it by hand"
+fi
+
+step "5. done"
 if [ "${n_fail}" -gt 0 ]; then
     echo "${n_fail} jobs failed: grep FAILED ${POOL_LOG}"
     exit 1
 fi
-echo "all jobs finished. Collect the F1 files: bash gather_logs.sh"
+echo "all jobs finished, F1 files are under collected_logs/"

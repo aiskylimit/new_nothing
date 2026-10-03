@@ -282,6 +282,9 @@ def add_ced_args(parser: argparse.ArgumentParser):
                        help="sampling temperature of the on-policy response")
     group.add_argument("--ced-sd-div", type=str, default="fkl", choices=["fkl", "rkl"],
                        help="fkl = KL(teacher||student) (SDFT code default), rkl = KL(student||teacher)")
+    group.add_argument("--ced-sd-omission-mask", action="store_true",
+                       help="drop from the SD loss the tokens of sampled old-type records that are "
+                            "grounded in the sentence but absent from the reference y~ (ced_omask.py)")
     group.add_argument("--ced-sd-mix", type=str, default="sum", choices=["sum", "random"],
                        help="sum = token KD and SD on every step; random = each optimizer step keeps "
                             "one of the two KL terms (p = 0.5). Span loss and CE are unchanged.")
