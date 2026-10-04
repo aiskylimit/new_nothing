@@ -8,7 +8,7 @@
 #   DS=maven bash project_commands.sh                   # main table on MAVEN (also rams, geneva)
 #   DS=fewrel bash project_commands.sh                  # main table on FewRel (also tacred)
 #   DRY=1 bash project_commands.sh                      # print the plan, train nothing
-#   ONLY="c" bash project_commands.sh                   # only some groups
+#   ONLY="c" bash project_commands.sh                   # only some groups (or full config names)
 #
 # Defaults match this host: venv, GPUs 4-7, one run per GPU, effective batch 2x16 = 32.
 # Safe to re-run after a crash: a run with a .complete marker is skipped, and nothing is deleted.
@@ -25,7 +25,8 @@
 #   PERMS         default "0 1 2 3 4"
 #   DS            dataset, default ace: ace maven rams geneva (CED), tacred fewrel (CRE)
 #   DATA_PREFIX   default <ds>_b10_perm (CED) or <ds>_perm (CRE), the names under data/
-#   ONLY          groups to run, default "g1 m a c d l" on ACE and "g1" elsewhere
+#   ONLY          groups or config names to run, default "g1 g2 g3 g4 m a c d l" on ACE and
+#                 "g1_full" elsewhere
 #                 (bash owns $GROUPS, hence ONLY)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -124,6 +125,19 @@ CONFIGS_ALL=(
   "l_tree|cl|--data-prefix ${DS}_b0_perm|"
   "l_inclora|cl|--data-prefix ${DS}_b0_perm|"
   "l_olora|cl|--data-prefix ${DS}_b0_perm|"
+  # round 1 configs the tables still read, active again (a finished run is skipped, not redone):
+  #   pseudo-labeling table: g1_ce, g2_nofilter, g2_ground, g1_pl (CE + PL with each filter level)
+  #   components (- span KD) and token-vs-span table: g4_nospan
+  #   sensitivity table: g3_* (SD weight) and g4_cka (span metric)
+  "g1_ce|0|--mode sft --pl 0|"
+  "g1_pl|0|--mode sft --pl 1|"
+  "g2_nofilter|0|--mode sft --pl 1 --pl-dedup 0 --pl-conf none --pl-lexicon 0|"
+  "g2_ground|0|--mode sft --pl 1 --pl-conf none --pl-lexicon 0|"
+  "g3_wsd01|1||--w-sd 0.1"
+  "g3_wsd03|1||--w-sd 0.3"
+  "g3_wsd30|1||--w-sd 3.0"
+  "g4_nospan|1|--w-span 0|"
+  "g4_cka|1|--span-metric cka|"
 
   # ---- round 2 (01/10). Not used by any paper table any more; kept so it can be re-run.
   #   a_rand  KD/SD drawn at random per update (professor note 7b; --ced-sd-mix)
@@ -145,35 +159,39 @@ CONFIGS_ALL=(
   #   g4  span-loss metric; g1_full is cosine
   #   g5  SD sampling: SDFT's own T=1.0/top_p=1.0 is what every other SD arm uses, and the
   #       earlier notebook measured that exact setting at -8.13 F1, so these are the insurance
-  # "g1_ce|0|--mode sft --pl 0|"
-  # "g1_pl|0|--mode sft --pl 1|"
+  #  g1_ce: active in round 3 above
+  #  g1_pl: active in round 3 above
   # "g1_kd|0|--mode ce_kd --pl 0 --w-span 0|"
   # "g1_span|0|--mode ce_kd --pl 0 --kd-type no --w-span 2.0|"
   # "g1_sd|1|--mode ce_kd --pl 0 --kd-ratio 0 --w-span 0|"
   #  g1_full: active in round 3 above
-  # "g2_nofilter|0|--mode sft --pl 1 --pl-dedup 0 --pl-conf none --pl-lexicon 0|"
-  # "g2_ground|0|--mode sft --pl 1 --pl-conf none --pl-lexicon 0|"
-  # "g3_wsd01|1||--w-sd 0.1"
-  # "g3_wsd03|1||--w-sd 0.3"
-  # "g3_wsd30|1||--w-sd 3.0"
-  # "g4_nospan|1|--w-span 0|"
+  #  g2_nofilter: active in round 3 above
+  #  g2_ground: active in round 3 above
+  #  g3_wsd01: active in round 3 above
+  #  g3_wsd03: active in round 3 above
+  #  g3_wsd30: active in round 3 above
+  #  g4_nospan: active in round 3 above
   # "g4_l2|1|--span-metric l2|"
-  # "g4_cka|1|--span-metric cka|"
+  #  g4_cka: active in round 3 above
   # "g5_t07|1||--sd-temp 0.7 --sd-top-p 0.9"
   # "g5_warm|1||--sd-warmup 0.5"
   # "g5_rkl|1||--sd-div rkl"
 )
-if [ "${DS}" = "ace" ]; then ONLY=${ONLY:-"g1 m a c d l"}; else ONLY=${ONLY:-"g1"}; fi
+if [ "${DS}" = "ace" ]; then ONLY=${ONLY:-"g1 g2 g3 g4 m a c d l"}; else ONLY=${ONLY:-"g1_full"}; fi
 
 CONFIGS=()
 for c in "${CONFIGS_ALL[@]}"; do
-    g=${c%%_*}
-    for want in ${ONLY}; do [ "${g}" = "${want}" ] && CONFIGS+=("${c}") && break; done
+    g=${c%%_*}; name=${c%%|*}
+    for want in ${ONLY}; do
+        { [ "${g}" = "${want}" ] || [ "${name}" = "${want}" ]; } && CONFIGS+=("${c}") && break
+    done
 done
 [ ${#CONFIGS[@]} -gt 0 ] || { echo "no configs selected by ONLY='${ONLY}'"; exit 1; }
 
-# the base data, plus every --data-prefix a selected config asks for
+# the base data, plus every --data-prefix a selected config asks for, plus on ACE the
+# full-annotation split that step 4 scores pseudo-labels against (built, never trained on)
 DATA_PREFIXES=("${DATA_PREFIX}")
+[ "${DS}" = "ace" ] && DATA_PREFIXES+=("ace_oracle_b10_perm")
 for c in "${CONFIGS[@]}"; do
     IFS='|' read -r _ _ flags _ <<< "${c}"
     read -ra words <<< "${flags}"
@@ -407,6 +425,20 @@ if [ "${DRY}" = "1" ]; then
     echo "DRY=1: would run gather_logs.sh ${DS}_$(date +%Y%m%d_%H%M)"
 else
     bash gather_logs.sh "${DS}_$(date +%Y%m%d_%H%M)" || echo "gather_logs.sh failed, run it by hand"
+fi
+
+# Pseudo-label precision/recall against the full annotation (pseudo-labeling table). CPU only.
+if [ "${DS}" = "ace" ] && [ "${DRY}" != "1" ]; then
+    pl_runs=()
+    for c in g2_nofilter g2_ground g1_pl; do
+        for p in ${PERMS}; do
+            d=$(run_dir "${c}" 0 "${p}")
+            [ -f "${d}/run_manifest.json" ] && pl_runs+=("${d}")
+        done
+    done
+    if [ ${#pl_runs[@]} -gt 0 ]; then
+        "${PY}" tools/ced_pl_quality.py "${pl_runs[@]}" > "logs/${DS}_pl_quality.txt" 2>&1             && echo "PL precision/recall: logs/${DS}_pl_quality.txt"             || echo "ced_pl_quality.py failed, see logs/${DS}_pl_quality.txt"
+    fi
 fi
 
 step "5. done"
