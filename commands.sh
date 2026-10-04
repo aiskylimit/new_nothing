@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/
+#2 -0-10
 #opsd 
 #v1
 
