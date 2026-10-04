@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/
-#opsd-t
+#1 +30
+#opened
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -32,6 +32,7 @@ export NCCL_DEBUG=WARN
 cd ./OpenED
 bash gather_logs.sh
 # bash ./project_commands.sh
+bash ./project_commands_2.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
