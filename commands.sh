@@ -1,5 +1,5 @@
 #1 +10
-#opened
+#opened-log
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -29,7 +29,7 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./OpenED
+cd ./OpenED
 bash gather_logs.sh
 # # bash ./project_commands.sh
 # bash ./project_commands_2.sh
