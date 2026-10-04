@@ -1,4 +1,4 @@
-#2 -0-10
+#1 +10
 #opened
 #v1
 
@@ -30,7 +30,7 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 # cd ./OpenED
-# bash gather_logs.sh
+bash gather_logs.sh
 # # bash ./project_commands.sh
 # bash ./project_commands_2.sh
 
