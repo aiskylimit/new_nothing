@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
+#1 +10
 #opsd 
 #v2
 
@@ -28,7 +28,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./OpenED
+cd ./OpenED
+bash gather_logs.sh
 # bash ./project_commands.sh
 
 # cd ./opsd
