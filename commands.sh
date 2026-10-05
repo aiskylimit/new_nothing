@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
+#2 -0-10 +a
 #rlsd-spdo
 #v1
 
@@ -29,8 +29,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_logs.sh
+# cd ./OpenED
+# bash gather_logs.sh
 # bash ./project_commands_3.sh
 
 # cd ./opsd
