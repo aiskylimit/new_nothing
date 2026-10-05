@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/thiennh-p6-tw7m-worker-0_20261005_1500/
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
 #log
 #v1
 
