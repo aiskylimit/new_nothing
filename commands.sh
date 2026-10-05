@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
 #opened-log
 #v1
 
