@@ -1,4 +1,4 @@
-#1 +75
+#2 +a
 #rlsd-spdo
 #v1
 
@@ -36,5 +36,5 @@ export NCCL_DEBUG=WARN
 # cd ./opsd
 # bash ./project_commands.sh
 
-cd ./offline_olmo7b_b200
-bash ./project_commands.sh
+# cd ./offline_olmo7b_b200
+# bash ./project_commands.sh
