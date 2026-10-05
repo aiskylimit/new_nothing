@@ -1,0 +1,12 @@
+# P-ALIGN LoRA (configs/qwen3_8b_palign_sft.yaml): r16 / alpha 16 / dropout 0.05 / all linear,
+# bf16 base weights, no DeepSpeed. The adapter is merged into the base weights before saving and
+# the merged model is evaluated, as P-ALIGN does (qwen3_8b_palign_export.yaml, then test.py).
+defaults: [../common/train/lora-r16.yaml]
+stages:
+  train:
+    args:
+      deepspeed-config: null
+      lora-merge: true
+  eval:
+    args:
+      gpu-memory-utilization: 0.5

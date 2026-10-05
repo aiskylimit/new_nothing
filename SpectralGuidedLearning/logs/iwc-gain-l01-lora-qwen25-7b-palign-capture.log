@@ -1,0 +1,42 @@
+$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.signals.capture --model-name Qwen/Qwen2.5-7B-Instruct --data-path data/qwen25-7b-palign/train-segmented.jsonl --output-dir data/qwen25-7b-palign/spectral --strengths-path data/qwen25-7b-palign/spectral-strengths.parquet --energy-cutoff 0.95 --chunk-size 1024 --verify
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]
+Fetching 4 files:  25%|██▌       | 1/4 [00:56<02:48, 56.04s/it]
+Fetching 4 files:  50%|█████     | 2/4 [00:56<00:47, 23.60s/it]
+Fetching 4 files:  75%|███████▌  | 3/4 [00:57<00:13, 13.06s/it]
+Fetching 4 files: 100%|██████████| 4/4 [00:58<00:00,  8.32s/it]
+Fetching 4 files: 100%|██████████| 4/4 [00:58<00:00, 14.62s/it]
+
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 339/339 [00:00<00:00, 6972.17it/s]
+analytic vs autograd max|diff| = 2.980e-08
+analytic vs autograd max|diff| = 2.980e-08
+analytic vs autograd max|diff| = 2.980e-08
+50 computed (+0 resumed, 50/966 seen), 1.50s/sample
+100 computed (+0 resumed, 100/966 seen), 1.64s/sample
+150 computed (+0 resumed, 150/966 seen), 1.74s/sample
+200 computed (+0 resumed, 200/966 seen), 1.72s/sample
+250 computed (+0 resumed, 250/966 seen), 1.68s/sample
+300 computed (+0 resumed, 300/966 seen), 1.68s/sample
+350 computed (+0 resumed, 350/966 seen), 1.69s/sample
+400 computed (+0 resumed, 400/966 seen), 1.64s/sample
+450 computed (+0 resumed, 450/966 seen), 1.66s/sample
+500 computed (+0 resumed, 500/966 seen), 1.66s/sample
+550 computed (+0 resumed, 550/966 seen), 1.65s/sample
+600 computed (+0 resumed, 600/966 seen), 1.63s/sample
+650 computed (+0 resumed, 650/966 seen), 1.64s/sample
+700 computed (+0 resumed, 700/966 seen), 1.62s/sample
+750 computed (+0 resumed, 750/966 seen), 1.62s/sample
+800 computed (+0 resumed, 800/966 seen), 1.62s/sample
+850 computed (+0 resumed, 850/966 seen), 1.63s/sample
+900 computed (+0 resumed, 900/966 seen), 1.63s/sample
+950 computed (+0 resumed, 950/966 seen), 1.63s/sample
+wrote 966 rows -> data/qwen25-7b-palign/spectral-strengths.parquet (+ per-sample npz in data/qwen25-7b-palign/spectral)
+runtime: 1569s total, 1.62s/computed-sample
+gradient: mean=264ms/sample median=233ms total=255s
+SVD: mean=1356ms/sample median=1205ms max=2871ms total=1310s  (84% of gradient+SVD)
+k* : mean=215.5 median=209 max=542
+k*/T mean ratio = 0.0845  (low-rank premise holds if << 1)
+step strength: mean=0.1213 p10=0.0277 median=0.0936 p90=0.2510 max=0.9792
+strength spread (p90/p10) = 9.1x  (flat => selection drops little)

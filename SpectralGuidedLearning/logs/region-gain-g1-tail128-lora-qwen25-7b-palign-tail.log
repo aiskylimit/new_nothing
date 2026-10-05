@@ -1,0 +1,2 @@
+$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.transforms.tail_boost --data-path data/qwen25-7b-palign/train-region-gain-g1.jsonl --output data/qwen25-7b-palign/train-region-gain-g1-tail128.jsonl --tail-tokens 128 --boost 3.0
+966 records -> data/qwen25-7b-palign/train-region-gain-g1-tail128.jsonl; tail loss share mean 0.1722, max weight 6.721, mean mass ratio 1.000000

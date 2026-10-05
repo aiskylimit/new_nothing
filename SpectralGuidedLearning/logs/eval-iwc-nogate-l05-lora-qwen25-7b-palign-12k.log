@@ -1,0 +1,20 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[math500] generating for 500 problems x 3
+WARNING 10-01 06:45:43 [vllm.py:1194] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+WARNING 10-01 06:45:43 [vllm.py:1247] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=2063283) Loading safetensors checkpoint shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+(EngineCore pid=2063283) Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:00<00:01,  1.52it/s]
+(EngineCore pid=2063283) Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:01<00:01,  1.49it/s]
+(EngineCore pid=2063283) Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:02<00:00,  1.29it/s]
+(EngineCore pid=2063283) Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:03<00:00,  1.23it/s]
+(EngineCore pid=2063283) Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:03<00:00,  1.29it/s]
+(EngineCore pid=2063283) 
+(EngineCore pid=2063283) WARNING 10-01 06:45:59 [utils.py:279] Using default LoRA kernel configs
+(EngineCore pid=2063283) 2026-10-01 06:46:02,236 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2063283) 2026-10-01 06:46:03,565 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2063283) 2026-10-01 06:46:03,579 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/b439dd9c187119ee318e8f3adcaf5af2b251f516f0795fad31d2b9ba7c9e8f5f/autotune_configs.json (0 new, 0 from previous config)
+WARNING 10-01 06:46:10 [input_processor.py:166] vLLM has deprecated support for supporting different tokenizers for different LoRAs. By default, vLLM uses base model's tokenizer. If you are using a LoRA with its own tokenizer, consider specifying `--tokenizer [lora_path]` to use the LoRA tokenizer.
+(EngineCore pid=2063283) WARNING 10-01 06:46:13 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_shrink_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2063283) WARNING 10-01 06:46:13 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_expand_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2063283) WARNING 10-01 06:46:13 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2063283) WARNING 10-01 06:46:13 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.

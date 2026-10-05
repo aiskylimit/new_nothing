@@ -1,0 +1,2 @@
+defaults: [../tracks/qwen3-8b-palign.yaml, ../methods/iwc-entropy.yaml]
+name: iwc-nogate-l05-lora

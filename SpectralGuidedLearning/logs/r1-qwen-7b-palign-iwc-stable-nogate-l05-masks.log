@@ -1,0 +1,2 @@
+iwc-stable: 966 records -> data/r1-qwen-7b-palign-build-iwc-stable-nogate-l05/train-iwc-stable.jsonl; mean weighted/selected mass=1.000000
+diagnostics -> data/r1-qwen-7b-palign-build-iwc-stable-nogate-l05/iwc-selection-stats.json

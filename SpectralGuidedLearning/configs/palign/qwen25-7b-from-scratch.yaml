@@ -1,0 +1,53 @@
+# The whole P-ALIGN data pipeline, then training: s1K-1.1 DeepSeek-R1 traces -> prefix truncation
+# judged by the student -> student continuation -> answer filter -> P-ALIGN SFT (Qwen2.5-7B-Instruct,
+# LoRA) -> eval. Output data goes to data/palign-build/<student>/, never over the released file.
+defaults:
+  - ../common/base.yaml
+  - ../common/models/qwen25-7b.yaml
+  - ../common/data/palign-966.yaml
+  - _llamafactory-format.yaml
+  - _lora.yaml
+  - ../common/eval/palign-protocol.yaml
+  - _palign.yaml
+run_suffix: -rebuilt
+track: palign-${model.key}-rebuilt
+stop_suffix: "\n"
+build_dir: data/palign-build/${model.key}
+dataset: ${build_dir}/palign_sft.json
+pipeline: [traces, truncate, align, build, prepare, vanilla, train, eval]
+stages:
+  traces:
+    module: sgl.data.s1k
+    creates: ${build_dir}/traces.jsonl
+    args:
+      dataset: simplescaling/s1K-1.1
+      trace-field: deepseek_thinking_trajectory
+      segment-mode: none
+      output: ${build_dir}/traces.jsonl
+  truncate:
+    module: sgl.palign.truncate
+    creates: ${build_dir}/truncated.jsonl
+    args:
+      model: ${model.name}
+      input: ${build_dir}/traces.jsonl
+      output: ${build_dir}/truncated.jsonl
+      backend: vllm
+      max-new-tokens: 256
+  align:
+    module: sgl.palign.align
+    creates: ${build_dir}/aligned.jsonl
+    args:
+      model: ${model.name}
+      input: ${build_dir}/truncated.jsonl
+      output: ${build_dir}/aligned.jsonl
+      max-tokens: 32768
+      temperature: 0.6
+      top-p: 0.9
+      repetition-penalty: 1.05
+  build:
+    module: sgl.palign.build
+    creates: ${dataset}
+    args:
+      aligned: ${build_dir}/aligned.jsonl
+      truncated: ${build_dir}/truncated.jsonl
+      output: ${dataset}

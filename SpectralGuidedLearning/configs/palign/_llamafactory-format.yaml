@@ -1,0 +1,11 @@
+# Token ids exactly as P-ALIGN's LLaMA-Factory training builds them (tests/test_palign_training_format.py):
+# its alpaca converter joins `instruction` and `input` with "\n" (P-ALIGN's evaluation does not), and
+# its qwen / qwen3 templates also supervise the "\n" after <|im_end|> (models set stop_suffix).
+# The SGL arms train without the newline, so P-ALIGN runs keep their own data dir.
+track: palign-${model.key}
+stop_suffix: ""
+stages:
+  prepare:
+    args:
+      instruction-separator: "\n"
+      stop-suffix: ${stop_suffix}

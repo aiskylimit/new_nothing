@@ -1,0 +1,23 @@
+# P-ALIGN's released training set: 966 s1K-1.1 problems whose DeepSeek-R1 trace was cut to a
+# minimal sufficient prefix and completed by a student (see methods/palign.yaml to rebuild it).
+# Thinking OFF at train and eval: the prompt ends with an empty "<think>\n\n</think>\n\n".
+dataset: references/P-ALIGN/data/palign_sft_qwen2.5-7b.json.gz
+stages:
+  prepare:
+    module: sgl.data.prepare
+    creates: ${data_dir}/train-segmented.jsonl
+    args:
+      dataset-name: ${dataset}
+      tokenizer: ${model.name}
+      max-tokens: 32768
+      chat-template: true
+      enable-thinking: false
+      palign-prompt: true
+      output-path: ${data_dir}/train-segmented.jsonl
+  vanilla:
+    # all-ones mask over every response token = plain SFT supervision
+    module: sgl.selection.build_masks
+    creates: ${data_dir}/train-vanilla.jsonl
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      vanilla-only: true

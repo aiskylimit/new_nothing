@@ -1,16 +1,8 @@
-#d
-#datasets
---hf-dataset simplescaling/s1K-1.1 /mnt/local/_data/@PROJECT@/s1K-1.1
---hf-dataset Maxwell-Jia/AIME_2024 /mnt/local/_data/@PROJECT@/AIME_2024
---hf-dataset yentinglin/aime_2025 /mnt/local/_data/@PROJECT@/aime_2025
---hf-dataset HuggingFaceH4/MATH-500 /mnt/local/_data/@PROJECT@/MATH-500
---hf-dataset AI-MO/aimo-validation-amc /mnt/local/_data/@PROJECT@/aimo-validation-amc
-#models
---hf Qwen/Qwen2.5-7B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-7B-Instruct
---hf Qwen/Qwen3-8B /mnt/local/_models/@PROJECT@/Qwen3-8B
-
-#log
+#1 +60
+#iwc
 #v1
+
+cd SpectralGuidedLearning && CUDA_VISIBLE_DEVICES=5 bash project_commands_b200_gain.sh 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
@@ -39,8 +31,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_logs.sh
+# cd ./OpenED
+# bash gather_logs.sh
 # bash ./project_commands_3.sh
 
 # cd ./opsd

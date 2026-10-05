@@ -1,0 +1,28 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[math500] generating for 500 problems x 3
+WARNING 10-01 05:27:46 [vllm.py:1194] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+WARNING 10-01 05:27:46 [vllm.py:1247] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=2001491) Loading safetensors checkpoint shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+(EngineCore pid=2001491) Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:00<00:02,  1.07it/s]
+(EngineCore pid=2001491) Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:01<00:01,  1.04it/s]
+(EngineCore pid=2001491) Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:02<00:00,  1.08it/s]
+(EngineCore pid=2001491) Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:03<00:00,  1.16it/s]
+(EngineCore pid=2001491) Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:03<00:00,  1.13it/s]
+(EngineCore pid=2001491) 
+(EngineCore pid=2001491) WARNING 10-01 05:28:03 [utils.py:279] Using default LoRA kernel configs
+(EngineCore pid=2001491) 2026-10-01 05:28:06,669 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2001491) 2026-10-01 05:28:08,291 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2001491) 2026-10-01 05:28:08,302 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/1a0d4bce20394f31598903bc2c119fc4f7c7225354d9ba13649983105800f70f/autotune_configs.json (0 new, 0 from previous config)
+WARNING 10-01 05:28:14 [input_processor.py:166] vLLM has deprecated support for supporting different tokenizers for different LoRAs. By default, vLLM uses base model's tokenizer. If you are using a LoRA with its own tokenizer, consider specifying `--tokenizer [lora_path]` to use the LoRA tokenizer.
+(EngineCore pid=2001491) WARNING 10-01 05:28:16 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_shrink_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2001491) WARNING 10-01 05:28:16 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_expand_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2001491) WARNING 10-01 05:28:16 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2001491) WARNING 10-01 05:28:17 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[math500] pass@1 = 56.60%  pass@3 = 76.80%  length = 3572 tok  truncated = 47.73%
+
+iwc-nogate-l05-lora-qwen25-7b-palign-6k: Overall pass@1 = 56.60%  Overall pass@3 = 76.80%  Overall length = 3572 tok -> /root/project/new_nothingnew_2/SpectralGuidedLearning/results_6k/iwc-nogate-l05-lora-qwen25-7b-palign-6k/summary.json
+
+=== iwc-nogate-l05-lora-qwen25-7b-palign-6k ===
+benchmark  pass@1  pass@3  length  truncated  no_boxed    n
+---------  ------  ------  ------  ---------  --------  ---
+math500    56.60%  76.80%    3572     47.73%    42.73%  500

@@ -1,0 +1,16 @@
+# P-ALIGN family defaults: runs are named palign-<model>, train with uniform NLL on every response
+# token of the prefix-aligned traces, and use P-ALIGN's own schedule (cosine to 0, as LLaMA-Factory's
+# `lr_scheduler_type: cosine`), not the SGL arms' cosine-to-1e-5.
+family: palign
+name: palign
+run_name: palign-${model.key}${run_suffix}
+run_suffix: ""
+train_variant: vanilla
+pipeline: [prepare, vanilla, train, eval]
+stages:
+  train:
+    args:
+      objective: nll
+      min-learning-rate: 0.0
+      logging-steps: 1
+      save-total-limit: null

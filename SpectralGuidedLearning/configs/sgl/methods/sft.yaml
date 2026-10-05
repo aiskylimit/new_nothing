@@ -1,0 +1,7 @@
+# Plain SFT: uniform NLL on every response token (on P-ALIGN data this is P-ALIGN itself).
+train_variant: vanilla
+pipeline: [prepare, vanilla, train, eval]
+stages:
+  train:
+    args:
+      objective: nll

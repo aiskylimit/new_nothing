@@ -1,0 +1,10 @@
+# P-ALIGN, Qwen2.5-7B-Instruct (the paper's Table 1 student), LoRA on the released data.
+defaults:
+  - ../common/base.yaml
+  - ../common/models/qwen25-7b.yaml
+  - _released-data.yaml
+  - _lora.yaml
+  - ../common/eval/palign-protocol.yaml
+  - _palign.yaml
+run_suffix: -lora
+stop_suffix: "\n"          # LLaMA-Factory qwen template: "<|im_end|>\n"

@@ -1,0 +1,54 @@
+[
+  {
+    "benchmark": "math500",
+    "accuracy": 0.7773333333333333,
+    "pass@1": 0.7773333333333333,
+    "samples_per_problem": 3,
+    "length": 1538.186,
+    "n_problems": 500,
+    "n_generations": 1500,
+    "truncation_rate": 0.016,
+    "no_boxed_answer_rate": 0.018666666666666668,
+    "pass@3": 0.898,
+    "model": "sft-nll-8k"
+  },
+  {
+    "benchmark": "aime24",
+    "accuracy": 0.17777777777777778,
+    "pass@1": 0.17777777777777778,
+    "samples_per_problem": 3,
+    "length": 4211.955555555555,
+    "n_problems": 30,
+    "n_generations": 90,
+    "truncation_rate": 0.15555555555555556,
+    "no_boxed_answer_rate": 0.12222222222222222,
+    "pass@3": 0.3333333333333333,
+    "model": "sft-nll-8k"
+  },
+  {
+    "benchmark": "aime25",
+    "accuracy": 0.2,
+    "pass@1": 0.2,
+    "samples_per_problem": 3,
+    "length": 3677.688888888889,
+    "n_problems": 30,
+    "n_generations": 90,
+    "truncation_rate": 0.08888888888888889,
+    "no_boxed_answer_rate": 0.08888888888888889,
+    "pass@3": 0.3333333333333333,
+    "model": "sft-nll-8k"
+  },
+  {
+    "benchmark": "amc12",
+    "accuracy": 0.5823293172690763,
+    "pass@1": 0.5823293172690763,
+    "samples_per_problem": 3,
+    "length": 2577.028112449799,
+    "n_problems": 83,
+    "n_generations": 249,
+    "truncation_rate": 0.04417670682730924,
+    "no_boxed_answer_rate": 0.05220883534136546,
+    "pass@3": 0.7349397590361446,
+    "model": "sft-nll-8k"
+  }
+]

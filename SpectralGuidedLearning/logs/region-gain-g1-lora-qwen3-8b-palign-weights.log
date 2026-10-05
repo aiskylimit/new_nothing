@@ -1,0 +1,4 @@
+$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.allocation.build --data-path data/qwen3-8b-palign/train-segmented.jsonl --strengths data/qwen3-8b-palign/spectral-strengths.parquet --variants region-gain --energy-threshold-p 1.0 --temperature 2.0 --interpolation 0.5 --clip 2.0 --seed 42 --output-name region-gain-g1 --check-mass --tokenizer Qwen/Qwen3-8B --region-signal data/qwen3-8b-palign/signals/signal-answer-gain.parquet --region-gamma 1.0 --region-tail-fraction 0.1
+answer gain per token: prefix 0.00221525, continuation 0.00151344 -> b_P/b_C = 1.4637 (gamma 1.0, tail fraction 0.1)
+region-gain: 966 records -> data/qwen3-8b-palign/train-region-gain-g1.jsonl; mean weighted/selected mass=1.000000
+diagnostics -> data/qwen3-8b-palign/region-gain-g1-selection-stats.json

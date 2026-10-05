@@ -1,0 +1,79 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[math500] generating for 500 problems x 3
+WARNING 10-01 16:35:05 [vllm.py:1194] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+WARNING 10-01 16:35:05 [vllm.py:1247] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=2550412) Loading safetensors checkpoint shards:   0% Completed | 0/5 [00:00<?, ?it/s]
+(EngineCore pid=2550412) Loading safetensors checkpoint shards:  20% Completed | 1/5 [00:00<00:03,  1.17it/s]
+(EngineCore pid=2550412) Loading safetensors checkpoint shards:  40% Completed | 2/5 [00:01<00:02,  1.17it/s]
+(EngineCore pid=2550412) Loading safetensors checkpoint shards:  60% Completed | 3/5 [00:02<00:01,  1.19it/s]
+(EngineCore pid=2550412) Loading safetensors checkpoint shards:  80% Completed | 4/5 [00:03<00:00,  1.25it/s]
+(EngineCore pid=2550412) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.60it/s]
+(EngineCore pid=2550412) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.40it/s]
+(EngineCore pid=2550412) 
+(EngineCore pid=2550412) WARNING 10-01 16:35:21 [utils.py:279] Using default LoRA kernel configs
+(EngineCore pid=2550412) 2026-10-01 16:35:23,951 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json
+(EngineCore pid=2550412) 2026-10-01 16:35:23,951 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2550412) 2026-10-01 16:35:24,114 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2550412) 2026-10-01 16:35:24,123 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json (0 new, 0 from previous config)
+WARNING 10-01 16:35:31 [input_processor.py:166] vLLM has deprecated support for supporting different tokenizers for different LoRAs. By default, vLLM uses base model's tokenizer. If you are using a LoRA with its own tokenizer, consider specifying `--tokenizer [lora_path]` to use the LoRA tokenizer.
+(EngineCore pid=2550412) WARNING 10-01 16:35:31 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_expand_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2550412) WARNING 10-01 16:35:31 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_shrink_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2550412) WARNING 10-01 16:35:31 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2550412) WARNING 10-01 16:35:31 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[math500] pass@1 = 85.33%  pass@3 = 91.40%  length = 2297 tok  truncated = 22.13%
+[aime24] generating for 30 problems x 3
+(EngineCore pid=2582626) Loading safetensors checkpoint shards:   0% Completed | 0/5 [00:00<?, ?it/s]
+(EngineCore pid=2582626) Loading safetensors checkpoint shards:  20% Completed | 1/5 [00:00<00:03,  1.10it/s]
+(EngineCore pid=2582626) Loading safetensors checkpoint shards:  40% Completed | 2/5 [00:01<00:02,  1.11it/s]
+(EngineCore pid=2582626) Loading safetensors checkpoint shards:  60% Completed | 3/5 [00:02<00:01,  1.13it/s]
+(EngineCore pid=2582626) Loading safetensors checkpoint shards:  80% Completed | 4/5 [00:03<00:00,  1.21it/s]
+(EngineCore pid=2582626) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.56it/s]
+(EngineCore pid=2582626) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.35it/s]
+(EngineCore pid=2582626) 
+(EngineCore pid=2582626) WARNING 10-01 17:07:08 [utils.py:279] Using default LoRA kernel configs
+(EngineCore pid=2582626) 2026-10-01 17:07:10,675 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json
+(EngineCore pid=2582626) 2026-10-01 17:07:10,675 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2582626) 2026-10-01 17:07:11,943 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2582626) 2026-10-01 17:07:11,951 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=2582626) WARNING 10-01 17:07:17 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_expand_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2582626) WARNING 10-01 17:07:17 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_shrink_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2582626) WARNING 10-01 17:07:17 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2582626) WARNING 10-01 17:07:17 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[aime24] pass@1 = 30.00%  pass@3 = 40.00%  length = 3831 tok  truncated = 85.56%
+[aime25] generating for 30 problems x 3
+(EngineCore pid=2597754) Loading safetensors checkpoint shards:   0% Completed | 0/5 [00:00<?, ?it/s]
+(EngineCore pid=2597754) Loading safetensors checkpoint shards:  20% Completed | 1/5 [00:00<00:02,  1.37it/s]
+(EngineCore pid=2597754) Loading safetensors checkpoint shards:  40% Completed | 2/5 [00:01<00:02,  1.26it/s]
+(EngineCore pid=2597754) Loading safetensors checkpoint shards:  60% Completed | 3/5 [00:02<00:01,  1.23it/s]
+(EngineCore pid=2597754) Loading safetensors checkpoint shards:  80% Completed | 4/5 [00:03<00:00,  1.30it/s]
+(EngineCore pid=2597754) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.66it/s]
+(EngineCore pid=2597754) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.46it/s]
+(EngineCore pid=2597754) 
+(EngineCore pid=2597754) WARNING 10-01 17:11:36 [utils.py:279] Using default LoRA kernel configs
+(EngineCore pid=2597754) 2026-10-01 17:11:39,446 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json
+(EngineCore pid=2597754) 2026-10-01 17:11:39,446 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2597754) 2026-10-01 17:11:40,623 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2597754) 2026-10-01 17:11:40,632 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=2597754) WARNING 10-01 17:11:45 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_expand_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2597754) WARNING 10-01 17:11:45 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_shrink_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2597754) WARNING 10-01 17:11:45 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2597754) WARNING 10-01 17:11:45 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[aime25] pass@1 = 22.22%  pass@3 = 30.00%  length = 3810 tok  truncated = 91.11%
+[amc12] generating for 83 problems x 3
+(EngineCore pid=2614181) Loading safetensors checkpoint shards:   0% Completed | 0/5 [00:00<?, ?it/s]
+(EngineCore pid=2614181) Loading safetensors checkpoint shards:  20% Completed | 1/5 [00:00<00:03,  1.04it/s]
+(EngineCore pid=2614181) Loading safetensors checkpoint shards:  40% Completed | 2/5 [00:01<00:02,  1.06it/s]
+(EngineCore pid=2614181) Loading safetensors checkpoint shards:  60% Completed | 3/5 [00:02<00:01,  1.08it/s]
+(EngineCore pid=2614181) Loading safetensors checkpoint shards:  80% Completed | 4/5 [00:03<00:00,  1.18it/s]
+(EngineCore pid=2614181) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.52it/s]
+(EngineCore pid=2614181) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.30it/s]
+(EngineCore pid=2614181) 
+(EngineCore pid=2614181) WARNING 10-01 17:16:12 [utils.py:279] Using default LoRA kernel configs
+(EngineCore pid=2614181) 2026-10-01 17:16:15,086 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json
+(EngineCore pid=2614181) 2026-10-01 17:16:15,086 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2614181) 2026-10-01 17:16:16,342 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2614181) 2026-10-01 17:16:16,352 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/03a367261a3426820c2a402955175afe2a56ce8af8824877fb293425bd0036af/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=2614181) WARNING 10-01 17:16:21 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_shrink_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2614181) WARNING 10-01 17:16:21 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _lora_expand_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2614181) WARNING 10-01 17:16:21 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2614181) WARNING 10-01 17:16:21 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.

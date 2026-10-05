@@ -1,0 +1,3 @@
+iwc: 966 records -> data/r1-qwen-1.5b-palign/train-iwc.jsonl; mean weighted/selected mass=0.904267
+iwc-stable: 966 records -> data/r1-qwen-1.5b-palign/train-iwc-stable.jsonl; mean weighted/selected mass=1.000000
+diagnostics -> data/r1-qwen-1.5b-palign/iwc-selection-stats.json

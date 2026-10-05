@@ -1,0 +1,9 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights: 100%|██████████| 339/339 [00:00<00:00, 7130.88it/s]
+resumed 966 samples from existing npz; computed 0 fresh
+wrote 966 rows -> data/qwen25-7b-palign/spectral-strengths.parquet (+ per-sample npz in data/qwen25-7b-palign/spectral)
+runtime: 0s total, 0.44s/computed-sample
+k* : mean=215.5 median=209 max=542
+k*/T mean ratio = 0.0845  (low-rank premise holds if << 1)
+step strength: mean=0.1213 p10=0.0277 median=0.0936 p90=0.2510 max=0.9792
+strength spread (p90/p10) = 9.1x  (flat => selection drops little)

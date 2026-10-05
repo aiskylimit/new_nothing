@@ -1,0 +1,2 @@
+$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.selection.build_masks --data-path data/qwen25-7b-palign/train-segmented.jsonl --vanilla-only
+vanilla only: 966 samples, 2919210 response tokens supervised -> data/qwen25-7b-palign/train-vanilla.jsonl

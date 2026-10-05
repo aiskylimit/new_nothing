@@ -1,0 +1,6 @@
+# IWC-Stable on top of the spectral gate (p=0.95, lambda 1.0): the paper's selection+allocation arm.
+defaults: [iwc-entropy.yaml]
+train_variant: iwc-stable-gated
+iwc:
+  energy_threshold_p: 0.95
+  interpolation: 1.0

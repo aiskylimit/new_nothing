@@ -1,0 +1,6 @@
+# NLL with the response tail (last 128 supervised tokens) weighted x3.
+defaults: [../tracks/qwen25-7b-palign.yaml, ../methods/sft.yaml, ../methods/_tail.yaml]
+name: nll-tail128-lora
+tail_base: vanilla
+train_variant: vanilla-tail128
+pipeline: [prepare, vanilla, tail, train, eval]

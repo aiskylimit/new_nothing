@@ -1,0 +1,14 @@
+# Tail boost (sgl.transforms.tail_boost): the last `tail_tokens` supervised tokens of each response
+# (final answer + stop token) weighted x`tail_boost`, sample mass kept. Arms set `tail_base` (the
+# dataset it is applied to) and put `tail` in their pipeline before `train`.
+tail_tokens: 128
+tail_boost: 3.0
+stages:
+  tail:
+    module: sgl.transforms.tail_boost
+    creates: ${data_dir}/train-${train_variant}.jsonl
+    args:
+      data-path: ${data_dir}/train-${tail_base}.jsonl
+      output: ${data_dir}/train-${train_variant}.jsonl
+      tail-tokens: ${tail_tokens}
+      boost: ${tail_boost}

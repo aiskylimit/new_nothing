@@ -1,0 +1,95 @@
+# Segment-Selective SFT family defaults (SegmentSelectiveSFT fork: run_pipeline.sh / train.sh /
+# commands.sh). Runs are named ssft-<model>; traces, IG scores and selections are student
+# independent (the attribution model is fixed), so they live in one build dir per segmentation.
+family: ssft
+name: ssft
+run_name: ssft-${model.key}${run_suffix}
+run_suffix: ""
+track: ${model.key}-ssft
+segment_mode: paragraph            # fork default; the paper's cue split: segment_mode=cue
+build_dir: data/ssft-s1k-${segment_mode}
+attribution_model: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B   # paper App. C.3, also for the 1.5B student
+selective: true                    # false = the fork's full long-CoT SFT baseline (run_suffix=-fullsft)
+prompt_style: default
+think_prefix: none
+train_seed: 3407                   # train_mask.py default
+train_variant: ssft
+pipeline: [traces, attribution, select, build, train, eval]
+stages:
+  traces:
+    module: sgl.data.s1k
+    creates: ${build_dir}/train.jsonl
+    args:
+      dataset: simplescaling/s1K-1.1
+      trace-field: deepseek_thinking_trajectory
+      answer-source: trace
+      max-answer-chars: 200
+      segment-mode: ${segment_mode}
+      output: ${build_dir}/train.jsonl
+  attribution:
+    module: sgl.ssft.attribution
+    creates: ${build_dir}/ig_compact.jsonl
+    gpus: ${run.gpus}              # device_map=auto spreads the 7B model over every run GPU
+    args:
+      model: ${attribution_model}
+      data-path: ${build_dir}/train.jsonl
+      output: ${build_dir}/ig_compact.jsonl
+      ig-steps: 20
+      ig-batch-size: 4
+      gradient-checkpointing: true
+  select:
+    module: sgl.ssft.select
+    creates: ${build_dir}/selected.jsonl
+    args:
+      data-path: ${build_dir}/train.jsonl
+      ig: ${build_dir}/ig_compact.jsonl
+      output: ${build_dir}/selected.jsonl
+      cumulative-ratio: 0.7
+      coherence-max: 0.8
+  build:
+    module: sgl.ssft.build
+    creates: ${data_dir}/train-${train_variant}.jsonl
+    args:
+      data-path: ${build_dir}/selected.jsonl
+      tokenizer: ${model.name}
+      output: ${data_dir}/train-${train_variant}.jsonl
+      selective: ${selective}
+      prompt-style: ${prompt_style}
+      think-prefix: ${think_prefix}
+      segment-mode: ${segment_mode}
+      max-seq-length: 32768
+  train:
+    # native trainer: train_mask.py's hyperparameters (adamw_torch, wd 0, cosine to 0, warmup 0.1,
+    # max_grad_norm 1, batch 1 x 32, 3 epochs, lr 5e-5, seed 3407); loss = mean NLL over the
+    # step's supervised tokens, which is what TRL's num_items_in_batch normalisation computes
+    args:
+      min-learning-rate: 0.0
+      logging-steps: 1
+      save-total-limit: 3
+      objective: nll
+  train_reference:
+    # the fork's own trainer, untouched (Unsloth + TRL), in its own env:
+    #   ssft run <cfg> --stages train_reference stages.train_reference.python=/envs/ssft_train/bin/python
+    script: train_mask.py
+    cwd: references/SegmentSelectiveSFT/SelectiveSFT
+    raw_keys: true
+    creates: checkpoints/${run_name}-unsloth
+    args:
+      model_name_or_path: ${model.name}
+      data_names: ../../../${build_dir}/selected.jsonl
+      output_dir: ../../../checkpoints/${run_name}-unsloth
+      epochs: 3
+      learning_rate: 5.0e-5
+      max_seq_length: 32768
+      per_device_train_batch_size: 1
+      gradient_accumulation_steps: 32
+      optim: adamw_torch
+      weight_decay: 0.0
+      lr_scheduler_type: cosine
+      warmup_ratio: 0.1
+      seed: ${train_seed}
+      segment_mode: ${segment_mode}
+      prompt_style: ${prompt_style}
+      think_prefix: ${think_prefix}
+      mask: ${selective}
+      apply_all: ${selective}

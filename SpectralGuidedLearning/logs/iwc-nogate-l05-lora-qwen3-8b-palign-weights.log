@@ -1,0 +1,3 @@
+$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.allocation.build --data-path data/qwen3-8b-palign/train-segmented.jsonl --strengths data/qwen3-8b-palign/spectral-strengths.parquet --variants iwc-stable --energy-threshold-p 1.0 --temperature 2.0 --interpolation 0.5 --clip 2.0 --seed 42 --output-name iwc-stable-nogate-l05 --check-mass
+iwc-stable: 966 records -> data/qwen3-8b-palign/train-iwc-stable-nogate-l05.jsonl; mean weighted/selected mass=1.000000
+diagnostics -> data/qwen3-8b-palign/iwc-stable-nogate-l05-selection-stats.json

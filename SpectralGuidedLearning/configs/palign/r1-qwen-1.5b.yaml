@@ -1,0 +1,15 @@
+# P-ALIGN, DeepSeek-R1-Distill-Qwen-1.5B, full fine-tuning on the released data
+# (P-ALIGN/project_commands_r1_1.5b.sh), with LLaMA-Factory's token layout (_llamafactory-format.yaml).
+#   palign run r1-qwen-1.5b
+#   palign run r1-qwen-1.5b --stages reference_data,train_reference     # upstream LLaMA-Factory trainer
+#   palign run r1-qwen-1.5b --stages eval run_suffix=-llamafactory      # ... and its evaluation
+defaults:
+  - ../common/base.yaml
+  - ../common/models/r1-qwen-1.5b.yaml
+  - _released-data.yaml
+  - ../common/train/full-ds-z2.yaml
+  - _full.yaml
+  - ../common/eval/palign-protocol.yaml
+  - _palign.yaml
+  - _reference.yaml
+reference_config: configs/r1_distill_qwen_1.5b_palign_full_sft.yaml

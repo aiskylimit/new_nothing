@@ -1,0 +1,32 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:  28%|██▊       | 96/339 [00:00<00:00, 721.10it/s]Loading weights:  50%|████▉     | 169/339 [00:00<00:00, 574.06it/s]Loading weights:  96%|█████████▌| 326/339 [00:00<00:00, 941.45it/s]Loading weights: 100%|██████████| 339/339 [00:00<00:00, 880.18it/s]
+analytic vs autograd max|diff| = 2.980e-08
+analytic vs autograd max|diff| = 2.980e-08
+analytic vs autograd max|diff| = 2.980e-08
+50 computed (+0 resumed, 50/966 seen), 2.30s/sample
+100 computed (+0 resumed, 100/966 seen), 2.50s/sample
+150 computed (+0 resumed, 150/966 seen), 2.65s/sample
+200 computed (+0 resumed, 200/966 seen), 2.60s/sample
+250 computed (+0 resumed, 250/966 seen), 2.53s/sample
+300 computed (+0 resumed, 300/966 seen), 2.53s/sample
+350 computed (+0 resumed, 350/966 seen), 2.55s/sample
+400 computed (+0 resumed, 400/966 seen), 2.48s/sample
+450 computed (+0 resumed, 450/966 seen), 2.50s/sample
+500 computed (+0 resumed, 500/966 seen), 2.50s/sample
+550 computed (+0 resumed, 550/966 seen), 2.49s/sample
+600 computed (+0 resumed, 600/966 seen), 2.46s/sample
+650 computed (+0 resumed, 650/966 seen), 2.47s/sample
+700 computed (+0 resumed, 700/966 seen), 2.45s/sample
+750 computed (+0 resumed, 750/966 seen), 2.46s/sample
+800 computed (+0 resumed, 800/966 seen), 2.46s/sample
+850 computed (+0 resumed, 850/966 seen), 2.47s/sample
+900 computed (+0 resumed, 900/966 seen), 2.47s/sample
+950 computed (+0 resumed, 950/966 seen), 2.48s/sample
+wrote 966 rows -> data/qwen25-7b-palign/spectral-strengths.parquet (+ per-sample npz in data/qwen25-7b-palign/spectral)
+runtime: 2383s total, 2.47s/computed-sample
+gradient: mean=442ms/sample median=387ms total=427s
+SVD: mean=1994ms/sample median=1755ms max=4693ms total=1926s  (82% of gradient+SVD)
+k* : mean=215.5 median=209 max=542
+k*/T mean ratio = 0.0845  (low-rank premise holds if << 1)
+step strength: mean=0.1213 p10=0.0277 median=0.0936 p90=0.2510 max=0.9792
+strength spread (p90/p10) = 9.1x  (flat => selection drops little)

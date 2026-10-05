@@ -1,0 +1,6 @@
+# SARW ablation, arm region-cont: continuation-only SFT (teacher-prefix steps dropped from the loss,
+# every other supervised token at weight 1) -- the b_P -> 0 limit of region-gain.
+defaults: [sarw.yaml]
+iwc:
+  variant: region-cont
+train_variant: region-cont

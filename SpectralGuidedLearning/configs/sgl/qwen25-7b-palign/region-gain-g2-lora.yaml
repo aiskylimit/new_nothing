@@ -1,0 +1,4 @@
+defaults: [../tracks/qwen25-7b-palign.yaml, ../methods/region-gain.yaml]
+name: region-gain-g2-lora
+region_gamma: 2.0
+train_variant: region-gain-g2

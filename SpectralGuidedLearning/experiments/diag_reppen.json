@@ -1,0 +1,22 @@
+{
+ "adapter rep=1.05 (eval protocol)": {
+  "pass1": 57.5,
+  "truncated": 44.2,
+  "mean_tokens": 2506
+ },
+ "adapter rep=1.00": {
+  "pass1": 34.2,
+  "truncated": 86.7,
+  "mean_tokens": 3612
+ },
+ "BASE model rep=1.05": {
+  "pass1": 77.5,
+  "truncated": 0.0,
+  "mean_tokens": 583
+ },
+ "BASE model rep=1.00": {
+  "pass1": 76.7,
+  "truncated": 0.8,
+  "mean_tokens": 641
+ }
+}

@@ -1,0 +1,5 @@
+# SARW ablation, arm region-iwc-l05: a_k only (entropy IWC inside each region, b_r = 1).
+defaults: [sarw.yaml]
+iwc:
+  variant: region-iwc
+train_variant: region-iwc-l05

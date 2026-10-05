@@ -1,0 +1,39 @@
+# Student-aligned region weighting (SARW, sgl.allocation.region), arm sarw-l05-g1: w_k = a_k * b_r.
+# a_k = IWC-Stable on step entropy computed inside the teacher prefix and inside the continuation
+# separately (no budget moves between them); b_r = prefix/continuation budget from the frozen
+# student's answer gain per token, b_P / b_C = (G_P / G_C) ** gamma, keeping each sample's mass.
+# Only defined on P-ALIGN hybrid targets (every response needs <End_of_Prefix>).
+defaults: [_capture.yaml, _iwc.yaml]
+signal_parquet: ${data_dir}/spectral-strengths.parquet
+gain_parquet: ${data_dir}/signals/signal-answer-gain.parquet
+region_gamma: 1.0
+# Answer gain spikes on the last decile of steps (the answer itself, ~half of all continuation gain
+# on both Qwen students), which says nothing about the student; estimate G_P / G_C without it.
+region_tail_fraction: 0.1
+iwc:
+  variant: sarw
+train_variant: sarw-l05-g1
+pipeline: [prepare, capture, answer_gain, gain_signal, weights, train, eval]
+stages:
+  answer_gain:
+    module: sgl.signals.answer_gain
+    creates: ${data_dir}/signals/step_answer_gain.json
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      model: ${model.name}
+      output: ${data_dir}/signals/step_answer_gain.json
+      gpu-memory-utilization: 0.4
+  gain_signal:
+    module: sgl.signals.gain_parquet
+    creates: ${gain_parquet}
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      gains: ${data_dir}/signals/step_answer_gain.json
+      strengths: ${data_dir}/spectral-strengths.parquet
+      output: ${gain_parquet}
+  weights:
+    args:
+      tokenizer: ${model.name}
+      region-signal: ${gain_parquet}
+      region-gamma: ${region_gamma}
+      region-tail-fraction: ${region_tail_fraction}

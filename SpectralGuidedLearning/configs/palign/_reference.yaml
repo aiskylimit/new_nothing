@@ -1,0 +1,23 @@
+# Upstream trainer, untouched: references/P-ALIGN/src/train.py (LLaMA-Factory) with its YAML and the
+# overrides its project_commands*.sh pass. Needs a LLaMA-Factory environment:
+#   palign run <cfg> --stages train_reference stages.train_reference.python=/envs/llamafactory/bin/python
+stages:
+  reference_data:
+    # LLaMA-Factory reads data/palign_sft_qwen2.5-7b.json (dataset_info.json), shipped gzipped
+    module: gzip
+    creates: references/P-ALIGN/data/palign_sft_qwen2.5-7b.json
+    positional: [-d, -k, references/P-ALIGN/data/palign_sft_qwen2.5-7b.json.gz]
+  train_reference:
+    script: src/train.py
+    cwd: references/P-ALIGN
+    launcher: torchrun
+    creates: checkpoints/${run_name}-llamafactory/config.json
+    positional:
+      - ${reference_config}
+      - model_name_or_path=${model.name}
+      - output_dir=../../checkpoints/${run_name}-llamafactory
+      - gradient_accumulation_steps=32
+      - seed=${train_seed}
+    env:
+      DISABLE_VERSION_CHECK: "1"
+      WANDB_DISABLED: "true"

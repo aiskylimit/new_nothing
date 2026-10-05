@@ -1,0 +1,18 @@
+# Provenance-aware SFT on P-ALIGN data: NLL on the teacher prefix, DFT on the student continuation
+# (arm prov-nll-dft). Same supervised tokens as sft; only the per-token objective differs.
+junction_tokens: 0
+train_variant: provenance
+pipeline: [prepare, vanilla, provenance, train, eval]
+stages:
+  provenance:
+    module: sgl.transforms.provenance
+    creates: ${data_dir}/train-${train_variant}.jsonl
+    args:
+      data-dir: ${data_dir}
+      tokenizer: ${model.name}
+      junction-tokens: ${junction_tokens}
+      output-name: train-${train_variant}.jsonl
+  train:
+    args:
+      prefix-objective: nll
+      cont-objective: dft

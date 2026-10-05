@@ -1,0 +1,14 @@
+# Spectral-guided learning (SGL): keep the steps holding a fraction p of the spectral energy (Eq. 8),
+# uniform NLL on them.
+defaults: [_capture.yaml]
+energy_threshold_p: 0.95
+train_variant: spectral
+pipeline: [prepare, capture, masks, train, eval]
+stages:
+  masks:
+    module: sgl.selection.build_masks
+    creates: ${data_dir}/train-spectral.jsonl
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      strengths: ${data_dir}/spectral-strengths.parquet
+      energy-threshold-p: ${energy_threshold_p}

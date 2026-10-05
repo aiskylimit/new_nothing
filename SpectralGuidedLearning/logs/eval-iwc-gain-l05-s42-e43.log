@@ -1,0 +1,61 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[math500] generating for 500 problems x 3
+WARNING 09-27 17:22:40 [vllm.py:1194] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+WARNING 09-27 17:22:40 [vllm.py:1247] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=2491755) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=2491755) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.28it/s]
+(EngineCore pid=2491755) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.28it/s]
+(EngineCore pid=2491755) 
+(EngineCore pid=2491755) 2026-09-27 17:22:50,136 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json
+(EngineCore pid=2491755) 2026-09-27 17:22:50,136 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2491755) 2026-09-27 17:22:50,167 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2491755) 2026-09-27 17:22:50,176 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=2491755) WARNING 09-27 17:22:53 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2491755) WARNING 09-27 17:22:53 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[math500] pass@1 = 77.40%  pass@3 = 87.00%  length = 1437 tok  truncated = 6.80%
+[aime24] generating for 30 problems x 3
+(EngineCore pid=2517325) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=2517325) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.25it/s]
+(EngineCore pid=2517325) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.25it/s]
+(EngineCore pid=2517325) 
+(EngineCore pid=2517325) 2026-09-27 17:31:12,650 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json
+(EngineCore pid=2517325) 2026-09-27 17:31:12,651 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2517325) 2026-09-27 17:31:12,685 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2517325) 2026-09-27 17:31:12,692 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=2517325) WARNING 09-27 17:31:14 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2517325) WARNING 09-27 17:31:14 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[aime24] pass@1 = 18.89%  pass@3 = 30.00%  length = 3089 tok  truncated = 44.44%
+[aime25] generating for 30 problems x 3
+(EngineCore pid=2522422) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=2522422) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.37it/s]
+(EngineCore pid=2522422) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.37it/s]
+(EngineCore pid=2522422) 
+(EngineCore pid=2522422) 2026-09-27 17:32:47,623 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json
+(EngineCore pid=2522422) 2026-09-27 17:32:47,623 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2522422) 2026-09-27 17:32:47,644 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2522422) 2026-09-27 17:32:47,651 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=2522422) WARNING 09-27 17:32:49 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2522422) WARNING 09-27 17:32:49 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[aime25] pass@1 = 20.00%  pass@3 = 30.00%  length = 2902 tok  truncated = 32.22%
+[amc12] generating for 83 problems x 3
+(EngineCore pid=2526814) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=2526814) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.34it/s]
+(EngineCore pid=2526814) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  1.34it/s]
+(EngineCore pid=2526814) 
+(EngineCore pid=2526814) 2026-09-27 17:34:11,471 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json
+(EngineCore pid=2526814) 2026-09-27 17:34:11,471 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=2526814) 2026-09-27 17:34:11,505 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=2526814) 2026-09-27 17:34:11,514 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/502b3c18273a1973368f11557ded2cba12b006ea0ef27b9c2e6459f9f0dda5fa/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=2526814) WARNING 09-27 17:34:13 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _gumbel_sample_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+(EngineCore pid=2526814) WARNING 09-27 17:34:13 [jit_monitor.py:135] Triton kernel JIT compilation during inference: _topk_topp_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+[amc12] pass@1 = 53.41%  pass@3 = 67.47%  length = 2253 tok  truncated = 21.69%
+
+iwc-gain-l05-s42-e43: Overall pass@1 = 42.43%  Overall pass@3 = 53.62%  Overall length = 2420 tok -> /root/project/new_nothingnew_2/SpectralGuidedLearning/results_evalseed/iwc-gain-l05-s42-e43/summary.json
+
+=== iwc-gain-l05-s42-e43 ===
+benchmark  pass@1  pass@3  length  truncated  no_boxed    n
+---------  ------  ------  ------  ---------  --------  ---
+math500    77.40%  87.00%    1437      6.80%     6.80%  500
+aime24     18.89%  30.00%    3089     44.44%    44.44%   30
+aime25     20.00%  30.00%    2902     32.22%    31.11%   30
+amc12      53.41%  67.47%    2253     21.69%    22.09%   83

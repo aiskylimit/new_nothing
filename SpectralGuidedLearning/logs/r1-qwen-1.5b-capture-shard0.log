@@ -1,0 +1,33 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights: 100%|██████████| 339/339 [00:00<00:00, 5480.32it/s]
+analytic vs autograd max|diff| = 2.235e-08
+analytic vs autograd max|diff| = 1.676e-08
+analytic vs autograd max|diff| = 2.235e-08
+50 computed (+0 resumed, 50/1000 seen), 0.51s/sample
+100 computed (+0 resumed, 100/1000 seen), 0.49s/sample
+150 computed (+0 resumed, 150/1000 seen), 0.49s/sample
+200 computed (+0 resumed, 200/1000 seen), 0.49s/sample
+250 computed (+0 resumed, 250/1000 seen), 0.50s/sample
+300 computed (+0 resumed, 300/1000 seen), 0.49s/sample
+350 computed (+0 resumed, 350/1000 seen), 0.49s/sample
+400 computed (+0 resumed, 400/1000 seen), 0.48s/sample
+450 computed (+0 resumed, 450/1000 seen), 0.48s/sample
+500 computed (+0 resumed, 500/1000 seen), 0.48s/sample
+550 computed (+0 resumed, 550/1000 seen), 0.48s/sample
+600 computed (+0 resumed, 600/1000 seen), 0.48s/sample
+650 computed (+0 resumed, 650/1000 seen), 0.48s/sample
+700 computed (+0 resumed, 700/1000 seen), 0.47s/sample
+750 computed (+0 resumed, 750/1000 seen), 0.47s/sample
+800 computed (+0 resumed, 800/1000 seen), 0.47s/sample
+850 computed (+0 resumed, 850/1000 seen), 0.47s/sample
+900 computed (+0 resumed, 900/1000 seen), 0.47s/sample
+950 computed (+0 resumed, 950/1000 seen), 0.47s/sample
+1000 computed (+0 resumed, 1000/1000 seen), 0.47s/sample
+wrote 1000 rows -> data/r1-qwen-1.5b/spectral-strengths.parquet (+ per-sample npz in data/r1-qwen-1.5b/spectral)
+runtime: 468s total, 0.47s/computed-sample
+gradient: mean=312ms/sample median=298ms total=312s
+SVD: mean=144ms/sample median=138ms max=341ms total=144s  (32% of gradient+SVD)
+k* : mean=321.9 median=320 max=531
+k*/T mean ratio = 0.0386  (low-rank premise holds if << 1)
+step strength: mean=0.0428 p10=0.0088 median=0.0322 p90=0.0886 max=0.7697
+strength spread (p90/p10) = 10.1x  (flat => selection drops little)

@@ -1,0 +1,8 @@
+# P-ALIGN full fine-tuning (configs/r1_distill_qwen_1.5b_palign_full_sft.yaml): no DeepSpeed, fp32
+# trainable weights with bf16 autocast (LLaMA-Factory upcasts full-tuning params to fp32).
+defaults: [../common/train/full-ds-z2.yaml]
+stages:
+  train:
+    args:
+      deepspeed-config: null
+      model-dtype: float32
