@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/thiennh-p6-tw7m-worker-0_20261005_1624/
+#i spectral_guided_learning.txt
 #log
 #v1
 
