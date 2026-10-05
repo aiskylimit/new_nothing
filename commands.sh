@@ -1,5 +1,5 @@
-#1 +10
-#gpu-check
+#1 +75
+#rlsd-spdo
 #v1
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
@@ -36,5 +36,5 @@ export NCCL_DEBUG=WARN
 # cd ./opsd
 # bash ./project_commands.sh
 
-# cd ./offline_olmo7b_b200
-# bash ./project_commands.sh
+cd ./offline_olmo7b_b200
+bash ./project_commands.sh
