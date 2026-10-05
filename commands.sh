@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
+#1 +10
 #log
 #v1
 
