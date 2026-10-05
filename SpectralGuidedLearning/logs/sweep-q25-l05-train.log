@@ -1,3 +1,0 @@
-
-=== [iwc-gain-l05-lora] stage prepare ===
-CUDA_VISIBLE_DEVICES=0 /root/miniforge3/envs/sgl/bin/python -u -m sgl.data.prepare --dataset-name references/P-ALIGN/data/palign_sft_qwen2.5-7b.json.gz --tokenizer Qwen/Qwen2.5-7B-Instruct --max-tokens 32768 --chat-template --no-enable-thinking --palign-prompt --output-path data/qwen25-7b-palign/train-segmented.jsonl

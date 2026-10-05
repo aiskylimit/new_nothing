@@ -1,2 +1,0 @@
-$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.transforms.tail_boost --data-path data/qwen25-7b-palign/train-vanilla.jsonl --output data/qwen25-7b-palign/train-vanilla-tail128.jsonl --tail-tokens 128 --boost 3.0
-966 records -> data/qwen25-7b-palign/train-vanilla-tail128.jsonl; tail loss share mean 0.1454, max weight 2.936, mean mass ratio 1.000000

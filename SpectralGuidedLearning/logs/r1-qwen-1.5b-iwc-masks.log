@@ -1,3 +1,0 @@
-iwc: 1000 records -> data/r1-qwen-1.5b/train-iwc.jsonl; mean weighted/selected mass=0.910440
-iwc-stable: 1000 records -> data/r1-qwen-1.5b/train-iwc-stable.jsonl; mean weighted/selected mass=1.000000
-diagnostics -> data/r1-qwen-1.5b/iwc-selection-stats.json

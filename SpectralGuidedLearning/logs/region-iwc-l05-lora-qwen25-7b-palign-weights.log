@@ -1,3 +1,0 @@
-$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.allocation.build --data-path data/qwen25-7b-palign/train-segmented.jsonl --strengths data/qwen25-7b-palign/spectral-strengths.parquet --variants region-iwc --energy-threshold-p 1.0 --temperature 2.0 --interpolation 0.5 --clip 2.0 --seed 42 --output-name region-iwc-l05 --check-mass --tokenizer Qwen/Qwen2.5-7B-Instruct --region-signal data/qwen25-7b-palign/signals/signal-answer-gain.parquet --region-gamma 1.0
-region-iwc: 966 records -> data/qwen25-7b-palign/train-region-iwc-l05.jsonl; mean weighted/selected mass=1.000000
-diagnostics -> data/qwen25-7b-palign/region-iwc-l05-selection-stats.json

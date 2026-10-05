@@ -1,2 +1,0 @@
-$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.signals.gain_parquet --data-path data/qwen25-7b-palign/train-segmented.jsonl --gains data/qwen25-7b-palign/signals/step_answer_gain.json --strengths data/qwen25-7b-palign/spectral-strengths.parquet --output data/qwen25-7b-palign/signals/signal-answer-gain.parquet
-wrote 966 rows -> data/qwen25-7b-palign/signals/signal-answer-gain.parquet (0 without a gain signal)

@@ -1,4 +1,0 @@
-$ /root/miniforge3/envs/sgl/bin/python -u -m sgl.allocation.build --data-path data/qwen25-7b-palign/train-segmented.jsonl --strengths data/qwen25-7b-palign/spectral-strengths.parquet --variants sarw --energy-threshold-p 1.0 --temperature 2.0 --interpolation 0.5 --clip 2.0 --seed 42 --output-name sarw-l05-g1 --check-mass --tokenizer Qwen/Qwen2.5-7B-Instruct --region-signal data/qwen25-7b-palign/signals/signal-answer-gain.parquet --region-gamma 1.0 --region-tail-fraction 0.1
-answer gain per token: prefix 0.000611188, continuation 0.00158838 -> b_P/b_C = 0.3848 (gamma 1.0, tail fraction 0.1)
-sarw: 966 records -> data/qwen25-7b-palign/train-sarw-l05-g1.jsonl; mean weighted/selected mass=1.000000
-diagnostics -> data/qwen25-7b-palign/sarw-l05-g1-selection-stats.json
