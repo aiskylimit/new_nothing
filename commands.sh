@@ -1,5 +1,5 @@
-#2 -20 +a
-#opsd
+#1 +5
+#check_gpu
 #v1
 
 # cd SpectralGuidedLearning && CUDA_VISIBLE_DEVICES=5 bash project_commands_b200_gain.sh 
