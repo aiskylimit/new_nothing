@@ -39,6 +39,10 @@ export NCCL_DEBUG=WARN
 
 # cd ./opsd
 # bash ./project_commands.sh
+cd ./opsd
+kill -9 436595 436597
+sleep 2
+bash ./project_commands.sh
 
 # cd ./offline_olmo7b_b200
 # bash ./project_commands.sh
