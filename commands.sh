@@ -1,4 +1,4 @@
-#1 +75
+#1 +10
 #opsd-check
 #v1
 
@@ -11,6 +11,8 @@
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
 # sleep 2
+kill -9 492642 492644
+sleep 25
 nvidia-smi
 
 # ls OPSD/results/raw/olmo3-7b-think/grpo/
