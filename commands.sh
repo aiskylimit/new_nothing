@@ -1,5 +1,5 @@
-#2 +20
-#opsd-check
+#1 +30
+#opsd
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -11,8 +11,6 @@
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
 # sleep 2
-kill -9 492642 492644
-sleep 25
 nvidia-smi
 
 # ls OPSD/results/raw/olmo3-7b-think/grpo/
@@ -39,12 +37,8 @@ export NCCL_DEBUG=WARN
 # bash gather_logs.sh
 # bash ./project_commands_4.sh
 
-# cd ./opsd
-# bash ./project_commands.sh
-# cd ./opsd
-# kill -9 436595 436597
-# sleep 2
-# bash ./project_commands.sh
+cd ./opsd
+bash ./project_commands.sh
 
 # cd ./offline_olmo7b_b200
 # bash ./project_commands.sh
