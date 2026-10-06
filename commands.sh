@@ -1,5 +1,5 @@
-#2 -0-10
-#logs
+#1 +75
+#opsd
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
