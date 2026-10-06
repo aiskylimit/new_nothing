@@ -83,6 +83,8 @@ def parse_args():
     p.add_argument("--limit", type=int, default=-1, help="truncate each split to N rows (debug/smoke)")
     p.add_argument("--save", required=True)
     p.add_argument("--resume", action="store_true")
+    p.add_argument("--ours", action="store_true",
+                   help="add our distillation (f12_pl recipe, cl_lora/ours.py); inclora/olora/tree")
     return p.parse_args()
 
 
@@ -202,6 +204,9 @@ def runtime_fingerprint():
         os.path.join(module_root, "migu.py"),
         os.path.join(module_root, "multi_adapter.py"),
         os.path.join(module_root, "treelora.py"),
+        os.path.join(module_root, "ours.py"),
+        os.path.join(project_root, "distillm", "losses.py"),
+        os.path.join(project_root, "tools", "ced_pseudo_label.py"),
     ])
 
 
@@ -345,7 +350,7 @@ def epi_router_diagnostics(a, model, tok, device, router, streams, upto):
     }
 
 
-def train_task(a, model, ds, device, task_id, mgr, migu, tree, gates):
+def train_task(a, model, ds, device, task_id, mgr, migu, tree, gates, ours=None):
     sampler = DistributedSampler(
         ds,
         num_replicas=1,
@@ -388,9 +393,13 @@ def train_task(a, model, ds, device, task_id, mgr, migu, tree, gates):
             labels = nmb["label"].to(device)
             if gates is not None:
                 gates.set_batch_gates(mb["input_ids"], mb["attention_mask"])
+            if ours is not None:
+                ours.before_forward()
             logits = model(**mb, use_cache=False).logits
             loss = torch.nn.functional.cross_entropy(
                 logits[:, :-1].reshape(-1, logits.size(-1)).float(), labels[:, 1:].reshape(-1))
+            if ours is not None:
+                loss = ours.loss(mb, nmb, logits, labels, loss)
             if mgr is not None and a.cl_method in ORTH:
                 loss = loss + mgr.orth_loss(cur)
             if tree is not None:
@@ -499,6 +508,8 @@ def main():
         "status": "running",
         "completed_task": -1,
     }
+    if a.ours:
+        requested_manifest["ours"] = "f12_pl"
     if os.path.exists(manifest_path):
         if not a.resume:
             raise FileExistsError(f"partial run exists; pass --resume or use a new path: {a.save}")
@@ -507,7 +518,7 @@ def main():
         for key in (
             "method", "data_root", "seed", "model", "rank", "alpha", "dropout",
             "data_sha256", "runtime_sha256", "micro_batch", "gradient_accumulation",
-            "epochs", "num_tasks", "row_limit", "scheduler", "prompt_mode"
+            "epochs", "num_tasks", "row_limit", "scheduler", "prompt_mode", "ours"
         ):
             if manifest.get(key) != requested_manifest.get(key):
                 raise ValueError(
@@ -545,9 +556,16 @@ def main():
     router = MahalanobisRouter() if isolate else None
     gates = gain_mod.GainGates(model, device) if method in GATED else None
     streams = None
-    if isolate:
+    if isolate or a.ours:
         with open(os.path.join(a.data_root, "streams.json"), encoding="utf-8") as stream_file:
             streams = json.load(stream_file)
+    ours = ours_mod = None
+    if a.ours:
+        # imported only here, so a plain baseline run never loads it
+        from cl_lora import ours as ours_mod
+        if method not in ours_mod.SUPPORTED:
+            raise ValueError(f"--ours supports {ours_mod.SUPPORTED}, not {method}")
+        ours = ours_mod.Ours(model)
 
     results = {}
     start_task = 0
@@ -606,6 +624,15 @@ def main():
                                train_A=method not in DESIGNED_B, train_B=True)
         train_ds = JsonlED(os.path.join(a.data_root, str(t), "train.jsonl"),
                            tok, a.max_length, a.max_prompt_length, "train", limit=a.limit)
+        if ours is not None and t > 0:
+            # the new adapter's lora_B is still zero here, so the model is the previous one:
+            # it labels this task's data and is frozen as the distillation teacher
+            path = ours_mod.prepare_task_data(
+                a, model, tok, t, streams, device, os.path.join(a.save, "ours_data", str(t)))
+            train_ds = ours_mod.OursTrainSet(
+                JsonlED(path, tok, a.max_length, a.max_prompt_length, "train"),
+                ours_mod.old_types_of(streams, t))
+            ours.start_task(model)
         if gates is not None:
             gates.clear_gates()                # calibration/setup below must run ungated
         if method in DESIGNED_B:
@@ -613,8 +640,10 @@ def main():
         if gates is not None:
             gates.add_branch(current)
         updates_per_epoch, total_updates = train_task(
-            a, model, train_ds, device, t, mgr, migu, tree, gates
+            a, model, train_ds, device, t, mgr, migu, tree, gates, ours
         )
+        if ours is not None:
+            ours.end_task()
         if method in DESIGNED_B:
             grow_inflora(a, model, train_ds, device, dualgpm)
         if gates is not None:
