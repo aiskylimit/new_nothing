@@ -1,5 +1,5 @@
 #1 +10
-#log
+#OpenED
 #v1
 
 # cd SpectralGuidedLearning && CUDA_VISIBLE_DEVICES=5 bash project_commands_b200_gain.sh 
@@ -33,7 +33,7 @@ export NCCL_DEBUG=WARN
 
 cd ./OpenED
 bash gather_logs.sh
-# bash ./project_commands_3.sh
+bash ./project_commands_4.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
