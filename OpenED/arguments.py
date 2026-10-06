@@ -298,6 +298,13 @@ def add_ced_args(parser: argparse.ArgumentParser):
                        help="also drop samples that are not valid JSON from the SD loss")
     group.add_argument("--ced-sd-warmup", type=float, default=0.0,
                        help="fraction of total_iters to train before SD starts (0 = from step 1)")
+    # SDFT as a baseline on its own (main.py of the SDFT release)
+    group.add_argument("--ced-sd-only", action="store_true",
+                       help="SDFT baseline: the update is the SD loss alone (no CE, no KD from the "
+                            "previous model)")
+    group.add_argument("--ced-sd-skip-tokens", type=int, default=0,
+                       help="leave the first N sampled tokens of each response out of the SD loss "
+                            "(SDFT num_loss_tokens_to_skip; its main.py uses 3)")
     # CL-LoRA baselines (cl_lora/): which method + its reg/ratio knobs
     group.add_argument("--cl-method", type=str, default=None,
                        choices=["inclora", "olora", "migu", "tree",

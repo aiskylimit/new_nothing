@@ -446,6 +446,11 @@ def sd_prepare(args, tokenizer, model, ema, gen_data, no_model_batch, device):
         sd_omission_mask(args, tokenizer, prompts, responses, label, kept_rows, no_model_batch["label"], stats)
         if not (label != -100).any():
             return None, stats
+    if args.ced_sd_skip_tokens > 0:
+        # SDFT num_loss_tokens_to_skip: label row k holds response k from its first token
+        label[:, :args.ced_sd_skip_tokens] = -100
+        if not (label != -100).any():
+            return None, stats
     return {"ids": s_ids, "mask": s_mask, "pos": s_pos, "label": label, "t_logits": t_logits,
             "t_entropy": sd_teacher_entropy(t_logits, label),
             "resp_len": sum(len(r) for r in responses) / len(responses)}, stats
@@ -879,6 +884,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
     SD_STAT_KEYS = ("steps", "active", "rows", "truncated", "unparsed", "kept", "masked_rec", "masked_tok")
     sd_win = dict.fromkeys(SD_STAT_KEYS, 0)
     assert args.ced_sd or args.ced_sd_mix == "sum", "--ced-sd-mix random needs --ced-sd"
+    assert args.ced_sd or not args.ced_sd_only, "--ced-sd-only needs --ced-sd"
     if args.ced_sd:
         assert not args.student_gen, "--ced-sd and --student-gen both replace generation; use one"
         assert dataset["train"].t_lm_ctx is not None, \
@@ -992,9 +998,8 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                         sd_win[k] += st[k]
                     sd_win["active"] += int(sd_batch is not None)
 
-            outputs = model(**model_batch, use_cache=False)
-
-            logits = outputs.logits
+            # --ced-sd-only: nothing trains on this forward (the SD term runs its own), so skip it
+            logits = None if args.ced_sd_only else model(**model_batch, use_cache=False).logits
 
             # CED: route losses by replay flag. Replay samples (exemplars of old
             # tasks) get KD + span loss against the previous-task teacher; new-task
@@ -1030,14 +1035,14 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             if args.ced_replay_mode == "kd_only" and has_replay:
                 ce_label = ce_label.clone()
                 ce_label[is_replay] = -100
-            if (ce_label != -100).any():
+            if logits is not None and (ce_label != -100).any():
                 lm_loss = loss_func(logits.float().reshape(-1, logits.shape[-1]), ce_label.view(-1))
             else:
-                lm_loss = torch.tensor(0.0, device=logits.device)
+                lm_loss = torch.tensor(0.0, device=device)
 
-            distil_loss = torch.tensor(0.0, device=logits.device)
-            distil_loss_new = torch.tensor(0.0, device=logits.device)
-            if teacher_model is not None and (has_kd or lwf_active):
+            distil_loss = torch.tensor(0.0, device=device)
+            distil_loss_new = torch.tensor(0.0, device=device)
+            if teacher_model is not None and (has_kd or lwf_active) and not args.ced_sd_only:
                 with torch.no_grad():
                     teacher_model.eval()
                     teacher_outputs = teacher_model(
@@ -1101,6 +1106,10 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             if lwf_active:
                 w_new = min(kd_ratio_new, getattr(args, "ced_kd_new_cap", 0.3))
                 loss = loss + w_new * distil_loss_new
+            if args.ced_sd_only:
+                # SDFT: the SD term below is the whole update. A step with nothing to distil
+                # still needs a loss attached to the trainable weights for backward().
+                loss = sum(p.sum() for p in model.parameters() if p.requires_grad) * 0.0
 
             if sd_batch is not None:
                 capture["on"] = False
@@ -1413,6 +1422,9 @@ def main():
         
         if args.eval_interval == -1:
             args.eval_interval = args.train_iters_per_epoch
+        elif args.eval_interval == -2:
+            # only the evaluation after the last update: the one the result tables read
+            args.eval_interval = args.total_iters
     
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args, ds_config, device, set_optim=args.do_train)
     
