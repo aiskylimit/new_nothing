@@ -1,5 +1,5 @@
-#1 +30
-#opsd
+#2 -0-10
+#iwc
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -37,8 +37,8 @@ export NCCL_DEBUG=WARN
 # bash gather_logs.sh
 # bash ./project_commands_4.sh
 
-cd ./opsd
-bash ./project_commands.sh
+# cd ./opsd
+# bash ./project_commands.sh
 
 # cd ./offline_olmo7b_b200
 # bash ./project_commands.sh
