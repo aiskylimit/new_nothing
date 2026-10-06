@@ -1,5 +1,5 @@
-#1 +10
-#gpu-check
+#2 -0-10
+#iwc
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
