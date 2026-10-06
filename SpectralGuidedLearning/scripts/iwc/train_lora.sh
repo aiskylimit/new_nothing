@@ -9,7 +9,7 @@
 # Usage: MODEL_NAME=<hf id> TRACK=<track> scripts/iwc/train_lora.sh <arm-name> <data-variant> [train_sft.py args...]
 #   e.g. MODEL_NAME=Qwen/Qwen3-8B TRACK=qwen3-8b-palign ... sft-nll-lora vanilla --objective nll
 # Env: MODEL_NAME and TRACK (required), GPUS (default "0"), SEED, LR, MIN_LR, LORA_R, LORA_ALPHA, DS_CONFIG (empty = no DeepSpeed),
-#      MODEL_DTYPE (bfloat16 default | float32: fp32 weights + bf16 autocast; DeepSpeed is then off by default because
+#      EFFECTIVE_BATCH (8 for qwen25-7b* tracks, else 32), MODEL_DTYPE (bfloat16 default | float32: fp32 weights + bf16 autocast; DeepSpeed is then off by default because
 #      its bf16 engine would cast the module back to bf16).
 set -euo pipefail
 TRACK="${TRACK:?set TRACK, e.g. qwen25-7b-palign}"
@@ -58,9 +58,11 @@ LR="${LR:-5.0e-5}"
 MIN_LR="${MIN_LR:-1.0e-5}"
 WARMUP_RATIO=0.1
 BATCH_SIZE=1
-EFFECTIVE_BATCH=32
+# Qwen2.5-7B trains with effective batch 8; every other student keeps 32 (override: EFFECTIVE_BATCH=<n>).
+case "${TRACK}" in qwen25-7b*) _DEFAULT_EB=8 ;; *) _DEFAULT_EB=32 ;; esac
+EFFECTIVE_BATCH="${EFFECTIVE_BATCH:-${_DEFAULT_EB}}"
 (( EFFECTIVE_BATCH % GPUS_PER_NODE == 0 )) || { echo "GPU count ${GPUS_PER_NODE} must divide ${EFFECTIVE_BATCH}" >&2; exit 2; }
-GRAD_ACC=$((EFFECTIVE_BATCH / (BATCH_SIZE * GPUS_PER_NODE)))   # bs1 x ga x n GPU = effective batch 32
+GRAD_ACC=$((EFFECTIVE_BATCH / (BATCH_SIZE * GPUS_PER_NODE)))   # bs1 x ga x n GPU = effective batch ${EFFECTIVE_BATCH}
 ATTN=sdpa
 LOG_INTERVAL=5
 SEED="${SEED:-42}"

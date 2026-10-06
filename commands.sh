@@ -1,8 +1,8 @@
-#1 +60
+#2 -0-10
 #iwc
 #v1
 
-cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
+# cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/

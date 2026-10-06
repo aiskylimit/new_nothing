@@ -10,7 +10,7 @@
 #   nll  -> sft-nll-lora        : plain NLL = P-ALIGN through this pipeline
 # Same data, format and recipe as the 1.5B track (project_commands_iwc_palign_r1-qwen-1.5b.sh): 966 P-ALIGN
 # samples, thinking OFF (Qwen2.5: no think block; Qwen3: empty <think></think>, exactly P-ALIGN's
-# enable_thinking=false), 3 epochs, eff. batch 32, lr 5e-5 -> 1e-5 cosine, DeepSpeed ZeRO-2, except LoRA
+# enable_thinking=false), 3 epochs, eff. batch 32 (qwen25-7b: 8, set in scripts/iwc/train_lora.sh), lr 5e-5 -> 1e-5 cosine, DeepSpeed ZeRO-2, except LoRA
 # (r16 / alpha16 / dropout 0.05 / all linear, as P-ALIGN's configs; adapter-only checkpoints).
 # Signals (entropy, answer gain) come from the student being trained, so they are recomputed per model.
 # Seed protocol: train once (seed 42), evaluate with 3 vLLM sampling seeds (42/43/44); seed 42 goes to
