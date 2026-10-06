@@ -1,4 +1,4 @@
-#1 +30
+#2 -0-10
 #opened
 #v1
 
@@ -33,9 +33,9 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_logs.sh
-bash ./project_commands_6.sh
+# cd ./OpenED
+# bash gather_logs.sh
+# bash ./project_commands_6.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
