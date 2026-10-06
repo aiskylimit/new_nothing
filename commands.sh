@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/thiennh-p6-tw7m-worker-0_20261006_0120/
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
 #OpenED
 #v1
 
@@ -31,9 +31,9 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_logs.sh
-bash ./project_commands_4.sh
+# cd ./OpenED
+# bash gather_logs.sh
+# bash ./project_commands_4.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
