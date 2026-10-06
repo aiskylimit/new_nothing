@@ -1,5 +1,5 @@
-#1 +30
-#opsd-check
+#2 -0-10
+#logs
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -13,7 +13,7 @@
 # sleep 2
 nvidia-smi
 
-ls OPSD/results/raw/olmo3-7b-think/grpo/
+# ls OPSD/results/raw/olmo3-7b-think/grpo/
 
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
