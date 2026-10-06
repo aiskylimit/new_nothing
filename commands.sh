@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs/thiennh-p6-tw7m-worker-0_20261006_0953/
-#log
+#2 -0-10
+#opsd
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -33,8 +33,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_logs.sh
+# cd ./OpenED
+# bash gather_logs.sh
 # bash ./project_commands_5.sh
 
 # cd ./opsd
