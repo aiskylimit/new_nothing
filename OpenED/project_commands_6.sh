@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # SDFT baseline (Shenfeld et al., 2026; code in ../../Self-Distillation), on every dataset and perm.
 #
-#   bash project_commands_6.sh                          # gpus 0 and 1, 2 jobs each, all datasets
+#   bash project_commands_6.sh                          # SDFT + CE, gpus 4 and 5, all datasets
+#   SD_CE=0 bash project_commands_6.sh                  # pure SDFT, the first version of this file
 #   DRY=1 bash project_commands_6.sh                    # print the plan, train nothing
-#   DATASETS="ace geneva" PERMS="0" bash project_commands_6.sh
+#   DATASETS="ace geneva" PERMS="1 2" bash project_commands_6.sh
+#
+# SD_CE=1 (default since 2026-10-07): pure SDFT collapsed (ACE Last 21.1, GENEVA 3.7, MAVEN 0):
+# the 0.6B teacher copies the gold answer from its prompt too weakly to teach the new types
+# (new-type recall after task1: ACE 0.30, GENEVA 0.08), and with nothing else in the loss the
+# teacher's entropy grows every step. This variant adds cross-entropy on every row's gold target
+# and changes nothing else: loss = CE + 1.0 * SD on every micro-batch (--kd-ratio 0, so the CE
+# weight does not drop on micro-batches with replay rows). Run names dist_sdftce_*, so the pure
+# SDFT runs (dist_sdft_*) are kept and not skipped as done.
 #
 # Self-distillation only, as in the SDFT release (main.py + distil_trainer.py), through the SD
 # path of ced_finetune.py that was ported from it:
@@ -25,28 +34,41 @@
 #   * evaluation only after the last update of each task (--eval-interval -2): the per-epoch
 #     dev+test generation was most of the wall time, and SDFT never reads it during training
 #   * no SD probe (a diagnostic only); eval batch stays at the runner default (32), as for every other run
-#   * SLOTS jobs per GPU (default 2), each started only when the GPU has NEED_MB free
+#   * SLOTS jobs per GPU, each started at once (NEED_MB=80000 makes it wait for that much free
+#     memory first): default 1 with CE
+#     (its extra forward at micro-batch 32 needs more memory), 2 for pure SDFT
 #
 # Jobs are (dataset, perm), smallest datasets first; each slot takes the next unclaimed job.
-# Run names: dist_sdft_perm<p>_<ds>_v2_s42, task0 dist_shared_task0_perm<p>_<ds>_v2_s42.
+# Run names: dist_sdftce_perm<p>_<ds>_v2_s42 (dist_sdft_* with SD_CE=0),
+# task0 dist_shared_task0_perm<p>_<ds>_v2_s42.
 # Safe to re-run: finished runs are skipped; a crashed partial one is moved to
 # results/qwen3/ced/_failed/ (never deleted) and retrained.
 set -uo pipefail
 cd "$(dirname "$0")"
 
 DRY=${DRY:-0}
-GPUS=(${GPUS:-0 1})
-SLOTS=${SLOTS:-2}            # concurrent jobs per GPU
-NEED_MB=${NEED_MB:-80000}    # free GPU memory a job waits for before it starts
+SD_CE=${SD_CE:-1}            # 1 = SDFT + CE, 0 = pure SDFT
+GPUS=(${GPUS:-4 5})          # 0 1 until 2026-10-07 (pure SDFT)
+if [ "${SD_CE}" = "1" ]; then SLOTS=${SLOTS:-1}; else SLOTS=${SLOTS:-2}; fi   # concurrent jobs per GPU
+NEED_MB=${NEED_MB:-0}        # free GPU MiB a job waits for before it starts; 0 = start at once
 DATASETS=${DATASETS:-"ace geneva tacred rams fewrel maven"}   # rows to train, small -> large
 PERMS=${PERMS:-"0 1 2 3 4"}
 SEED=${SEED:-42}
 R=results/qwen3/ced
-CLAIMS=logs/sdft_claims
+if [ "${SD_CE}" = "1" ]; then
+    NAME=sdftce
+    LOSS_ARGS=(--kd-ratio 0)          # CE + SD; full CE weight on every micro-batch
+    SD_ONLY=""
+else
+    NAME=sdft
+    LOSS_ARGS=()
+    SD_ONLY="--ced-sd-only "          # the SD term is the whole update
+fi
+CLAIMS=logs/${NAME}_claims
 mkdir -p logs "${R}/_failed"
 rm -rf "${CLAIMS}"; mkdir -p "${CLAIMS}"
-LOG=logs/sdft_baseline.log
-log () { echo "[sdft $(date '+%F %T')] $*" | tee -a "${LOG}"; }
+LOG=logs/${NAME}_baseline.log
+log () { echo "[${NAME} $(date '+%F %T')] $*" | tee -a "${LOG}"; }
 
 # ---------------------------------------------------------------- environment (as project_commands.sh)
 if [ -z "${VENV:-}" ] && [ -z "${VIRTUAL_ENV:-}" ] && [ -f /mnt/local/uvenvs/opened/bin/activate ]; then
@@ -101,8 +123,8 @@ job () {  # $1 = gpu $2 = master port $3 = dataset $4 = perm. 1 = failed
     local pre; pre=$(prefix_of "${ds}")
     local proto="${ds}_v2"
     local shared="dist_shared_task0_perm${p}_${proto}_s${SEED}"
-    local run="dist_sdft_perm${p}_${proto}_s${SEED}"
-    local logp="logs/${ds}_dist_sdft_perm${p}"
+    local run="dist_${NAME}_perm${p}_${proto}_s${SEED}"
+    local logp="logs/${ds}_dist_${NAME}_perm${p}"
     [ -s "data/${pre}${p}/streams.json" ] || { log "  missing data/${pre}${p}, skip ${run}"; return 1; }
     if [ -f "${R}/${run}/.complete" ]; then log "  skip ${run} (complete)"; return 0; fi
     if live "${run}"; then log "  skip ${run} (running elsewhere)"; return 0; fi
@@ -130,11 +152,11 @@ job () {  # $1 = gpu $2 = master port $3 = dataset $4 = perm. 1 = failed
     [ "${DRY}" = "1" ] && return 0
     MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh \
         --run-name "${run}" --mode ce_kd --data-prefix "${pre}" --perm "${p}" \
-        --kd-type no --w-span 0 --pl 0 \
+        --kd-type no --w-span 0 --pl 0 ${LOSS_ARGS[@]+"${LOSS_ARGS[@]}"} \
         --sd 1 --w-sd 1.0 --sd-mu 0.99 --sd-temp 1.0 --sd-top-p 1.0 --sd-div fkl \
         --rank 16 --alpha 64 --epochs 5 --lr 0.0002 --seed "${SEED}" --bs 32 --acc 1 \
         --greedy 1 --gpus "${g}" --start-task 1 --task0-source-run "${shared}" \
-        --extra "--ced-sd-only --ced-sd-skip-tokens 3 --ced-sd-probe 0 --eval-interval -2" \
+        --extra "${SD_ONLY}--ced-sd-skip-tokens 3 --ced-sd-probe 0 --eval-interval -2" \
         > "${logp}_steps.log" 2>&1 || rc=$?
     : > "${logp}_results.log"   # per-task log.txt dump, as dist_queue.sh writes
     for f in $(find "${R}/${run}" -name log.txt 2>/dev/null | sort -V); do
@@ -145,24 +167,29 @@ job () {  # $1 = gpu $2 = master port $3 = dataset $4 = perm. 1 = failed
     return 1
 }
 
-worker () {  # $1 = gpu $2 = slot: take the next unclaimed (dataset, perm); mkdir is the atomic claim
+# Atomic claim: bash creates the file with O_EXCL. Not `mkdir`: the Rust coreutils mkdir of newer
+# Ubuntu (26.04, uutils 0.8) lets two racing callers both succeed, so two workers could train
+# the same run at once.
+claim () { ( set -o noclobber; : > "$1" ) 2>/dev/null; }
+
+worker () {  # $1 = gpu $2 = slot: take the next unclaimed (dataset, perm)
     local g=$1 s=$2 ds p n=0
     local port=$((29900 + 10 * g + s))
     # later slots start a little later, so the GPU memory check sees the earlier job's usage
     [ "${DRY}" = "1" ] || sleep $(( (s - 1) * 300 ))
     for ds in ${DATASETS}; do
         for p in ${PERMS}; do
-            mkdir "${CLAIMS}/${ds}_${p}" 2>/dev/null || continue
+            claim "${CLAIMS}/${ds}_${p}" || continue
             job "${g}" "${port}" "${ds}" "${p}" || n=$((n + 1))
         done
     done
     log "worker gpu${g}/slot${s} finished, ${n} failed"
 }
 
-log "=== SDFT baseline: datasets '${DATASETS}', perms '${PERMS}', gpus ${GPUS[*]} x ${SLOTS} slots (DRY=${DRY}) ==="
+log "=== SDFT baseline (${NAME}): datasets '${DATASETS}', perms '${PERMS}', gpus ${GPUS[*]} x ${SLOTS} slots (DRY=${DRY}) ==="
 pids=()
 for s in $(seq 1 "${SLOTS}"); do
     for g in "${GPUS[@]}"; do worker "${g}" "${s}" & pids+=($!); done
 done
 wait "${pids[@]}"
-log "=== all done: grep FAILED ${LOG}; results in ${R}/dist_sdft_perm*_*_v2_s${SEED}/ ==="
+log "=== all done: grep FAILED ${LOG}; results in ${R}/dist_${NAME}_perm*_*_v2_s${SEED}/ ==="
