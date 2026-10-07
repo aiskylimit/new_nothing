@@ -41,13 +41,14 @@ class ModelArguments:
     projector_config_path: str = field(default=None, metadata={"help": "projector config path, if None, no projector will be used"})
     projector_path: str = field(default=None, metadata={"help": "projector model path, if None, no projector will be used"})
     projector_lr: float = field(default=1e-4, metadata={"help": "projector learning rate"})
-    proj_dim: int = field(default=512, metadata={"help": "shared projection dim used by projector config suffix `p`"})
     student_hidden_dim: int = field(default=896, metadata={"help": "student hidden dim"})
     teacher_hidden_dim: int = field(default=1536, metadata={"help": "teacher hidden dim"})
     load_pretrained_lora: bool = field(default=False, metadata={"help": "load pretrained lora model for student"})
     #! new args for span loss
     
-    
+    modality_gated_pooling: bool = field(default=False, metadata={"help": "whether to use modality gated pooling"})
+    teacher_modality_gated_pooling: bool = field(default=False, metadata={"help": "whether to use modality gated pooling for teacher"})
+    frozen_backbone: bool = field(default=False, metadata={"help": "whether to freeze the backbone model"})
 
 @dataclass
 class DataArguments:
@@ -60,10 +61,10 @@ class DataArguments:
     encode_output_path: str = field(default=None, metadata={"help": "encode output path"})
     max_len: int = field(default=None, metadata={"help": "The maximum total input sequence length after tokenization. Use with caution, since it may truncate text prompts due to large image lengths."},)
     embedding_type: str = field(default="", metadata={"help": "embedding type"})
-    image_resolution: str = field(default=None, metadata={"help": "Optional coarse pre-resize cap before processor-specific image preprocessing."})
-    resize_use_processor: Optional[bool] = field(default=None, metadata={"help": "Override processor image resizing. Leave unset to keep the model processor default; set false only if image sizes are already processor-compatible."})
-    resize_min_pixels: int = field(default=28*28*4, metadata={"help": "Optional processor min_pixels override for processors that support it."})
-    resize_max_pixels: int = field(default=28*28*1280, metadata={"help": "Optional processor max_pixels override for processors that support it."})
+    image_resolution: str = field(default=None, metadata={"help": "for models i.e. LLaVA-next and Qwen, resize images first, none means using original image resolution. This is only works when `--resize_use_processor false`."})
+    resize_use_processor: bool = field(default=False, metadata={"help": "Resize visual inputs insides processor, e.g. Qwen2VLImageProcessor, instead of by our code."})
+    resize_min_pixels: int = field(default=28*28*4, metadata={"help": "The min pixels of the image to resize the image. This is only works when `--resize_use_processor true`."})
+    resize_max_pixels: int = field(default=28*28*1280, metadata={"help": "The max pixels of the image to resize the image. This is only works when `--resize_use_processor true`."})
     image_decay_factor: float = field(default=None, metadata={"help": "The image decay factor for resizing temporal images"})
     num_hardneg: int = field(default=0, metadata={"help": "hard negative number"})
     #! new args
@@ -78,9 +79,11 @@ class DataArguments:
     eval_image_dir: str = field(default=None, metadata={"help": "Eval Image directory path"})
     pos_only: bool = field(default=False, metadata={"help": "Only use positives"})
     # new args distillation
-    percent_data: float = field(default=1.0, metadata={"help": "percentage (%%) of data used for distillation training"})
-    data_path: str = field(default=None, metadata={"help": "path to the training data for distillation, should be a json file with list of {image_path, question, answer}"})
-    
+    percent_data: float = field(default=1.0, metadata={"help": "percentage of data used for distillation training"})
+    # args for TALAS
+    caching_dir: str = field(default=None, metadata={"help": "caching directory for TALAS"})
+
+
 @dataclass
 class TrainingArguments(TrainingArguments):
     image_encoder_freeze: bool = field(default=False, metadata={"help": "huggingface model name"})
@@ -97,88 +100,18 @@ class TrainingArguments(TrainingArguments):
     #!new args
     gc_dynamic_limit: int = field(default=125, metadata={"help": "gc_chunk default limit - (128, 125) sized matrices works for Qwen2b. gc_dynamic_limit would be 125 and gc_p|q_chunk_size would be 128"})
     #!new kd loss weight
-    kd_weight: float = field(default=0.01, metadata={"help": "weight of kd loss in total loss (used by `default` criterion)"})
-    kd_loss_type: str = field(default="ce_only", metadata={"help": "kd criterion: one of {ce_only, default, default_distillation, emkd, em_kd, sre, joint, unit_aligned, scva, cgkd, scva_cgkd, draft, mcw_kd, dskd_v2_with_eta}"})
-    # dwa-kd loss weight/config
-    ce_rate: float = field(default=1.0, metadata={"help": "DWA-KD supervised CE loss weight"})
-    kd_rate: float = field(default=1.0, metadata={"help": "DWA-KD dual-space KD loss weight"})
-    dtw_rate: float = field(default=0.0, metadata={"help": "DWA-KD soft-DTW loss weight"})
-    kd_temperature: float = field(default=1.0, metadata={"help": "DWA-KD student/teacher KD temperature"})
-    teacher_temperature: float = field(default=1.0, metadata={"help": "Additional DWA-KD teacher temperature"})
-    kd_objective: str = field(default="forward_kl", metadata={"help": "DWA-KD divergence objective"})
-    adaptive_kl_alpha: float = field(default=0.5, metadata={"help": "DWA-KD adaptive KL tail probability threshold"})
-    skew_lambda: float = field(default=0.5, metadata={"help": "DWA-KD skewed KL interpolation weight"})
-    kd_warmup_steps: int = field(default=300, metadata={"help": "DWA-KD confidence-gated KD warmup steps"})
-    dtw_warmup_steps: int = field(default=0, metadata={"help": "DWA-KD DTW loss warmup steps"})
-    dtw_gamma: float = field(default=2.0, metadata={"help": "DWA-KD SoftDTW gamma"})
-    dtw_gamma_start: float = field(default=2.0, metadata={"help": "DWA-KD SoftDTW gamma schedule start"})
-    dtw_gamma_end: float = field(default=0.8, metadata={"help": "DWA-KD SoftDTW gamma schedule end"})
-    dtw_gamma_steps: int = field(default=3570, metadata={"help": "DWA-KD SoftDTW gamma schedule steps"})
-    dtw_band_width: float = field(default=5.0, metadata={"help": "DWA-KD adaptive DTW band base width"})
-    dtw_band_penalty: float = field(default=1.0, metadata={"help": "DWA-KD adaptive DTW band penalty"})
-    dtw_band_center_blend: float = field(default=0.7, metadata={"help": "DWA-KD blend between CMA and linear DTW band centers"})
-    dtw_band_entropy_coef: float = field(default=2.0, metadata={"help": "DWA-KD entropy coefficient for adaptive DTW band width"})
-    dtw_band_warmup_steps: int = field(default=0, metadata={"help": "DWA-KD adaptive DTW band penalty warmup"})
-    dtw_band_source: str = field(default="cma", metadata={"help": "DWA-KD adaptive DTW band source"})
-    only_save_projector: bool = field(default=False, metadata={"help": "DWA-KD trains projector-only objective"})
-    # DSKDv2 with ETA config
-    init_t2s_projector: bool = field(default=False, metadata={"help": "Initialize DSKDv2 t2s projector via LM-head pseudo-inverse"})
-    init_s2t_projector: bool = field(default=False, metadata={"help": "Use DSKDv2 dynamic s2t pseudo-inverse projection"})
-    dskd_topk_vocab: int = field(default=-1, metadata={"help": "Top-k vocab used for DSKDv2 projector initialization; -1 disables"})
-    topk_vocab: int = field(default=-1, metadata={"help": "Alias for DSKDv2 top-k vocab"})
-    only_stu_kd: bool = field(default=False, metadata={"help": "DSKDv2: only apply student-space KD"})
-    only_tea_kd: bool = field(default=False, metadata={"help": "DSKDv2: only apply teacher-space KD"})
-    t2s_agreement: float = field(default=1.0, metadata={"help": "DSKDv2 t2s agreement threshold"})
-    # MCW-KD text-only OT loss config
-    top_k_vocab: Optional[int] = field(default=None, metadata={"help": "Alias for MCW-KD top-k sorted logits"})
-    mcw_top_k_vocab: int = field(default=128, metadata={"help": "MCW-KD top-k sorted logits used for text-token OT cost"})
-    mcw_tau_seq: float = field(default=1.0, metadata={"help": "MCW-KD sequence-level logit temperature"})
-    mcw_window_size: int = field(default=4, metadata={"help": "MCW-KD hidden-context window size"})
-    mcw_total_steps: int = field(default=0, metadata={"help": "MCW-KD interpolation steps; 0 falls back to full teacher interpolation"})
-    mcw_ot_logits_rate: float = field(default=1.0, metadata={"help": "MCW-KD OT logits loss weight"})
-    mcw_ot_hidden_rate: float = field(default=1.0, metadata={"help": "MCW-KD OT hidden loss weight"})
-    mcw_sinkhorn_alpha: float = field(default=0.1, metadata={"help": "MCW-KD ETP/Sinkhorn alpha"})
-    mcw_sinkhorn_iter: int = field(default=100, metadata={"help": "MCW-KD ETP/Sinkhorn max iterations"})
-    # emkd loss weight
-    em_kd_alpha: float = field(default=0.5, metadata={"help": "EM-KD weight for supervised CE loss"})
-    em_kd_beta: float = field(default=0.25, metadata={"help": "EM-KD weight for matched vision-logit distillation"})
-    em_kd_gamma: float = field(default=25.0, metadata={"help": "EM-KD weight for vision-language affinity distillation"})
-    em_kd_temperature: float = field(default=1.0, metadata={"help": "Temperature used by EM-KD reverse KL losses"})
-    em_kd_max_vision_tokens: int = field(default=512, metadata={"help": "Max vision tokens per side for EM-KD Hungarian matching; <=0 disables cap"})
-    em_kd_max_text_tokens: int = field(default=1024, metadata={"help": "Max text tokens per side for EM-KD affinity matrices; <=0 disables cap"})
-    # sre loss weight
-    sre_alpha: float = field(default=0.5, metadata={"help": "SRE weight for supervised CE loss"})
-    sre_p: float = field(default=1.0, metadata={"help": "SRE token-weight exponent"})
-    sre_span_loss_weight: float = field(default=1.0, metadata={"help": "SRE weighted hidden-state cosine loss weight"})
-    sre_geom_loss_weight: float = field(default=3.0, metadata={"help": "SRE geometry affinity loss weight"})
-    sre_logit_loss_weight: float = field(default=1.0, metadata={"help": "SRE soft-label logit distillation loss weight"})
-    sre_temperature: float = field(default=2.0, metadata={"help": "SRE soft-label distillation temperature"})
-    sre_skew_loss_weight: float = field(default=1.0, metadata={"help": "Weight of the SRA-v2 skewed-forward logit term inside SRE logit loss"})
-    sre_skew_lambda: float = field(default=0.01, metadata={"help": "Teacher mixture coefficient for the SRA-v2 skewed-forward term"})
-    sre_use_projector: bool = field(default=True, metadata={"help": "Use a learned student-to-teacher projector for the SRE span cosine loss."})
-    # joint criterion weights (Unit-Aligned = SRE + EM-KD)
-    joint_ce_weight: float = field(default=0.5, metadata={"help": "CE weight inside the `joint` criterion; remaining weight goes to averaged KD terms."})
-    joint_emkd_weight: float = field(default=1.0, metadata={"help": "Weight of EM-KD term inside the `joint` criterion."})
-    joint_sre_weight: float = field(default=1.0, metadata={"help": "Weight of SRE term inside the `joint` criterion."})
-    # SCVA (semantic-cluster visual attention) — see draft.pdf
-    scva_alpha: float = field(default=0.5, metadata={"help": "SCVA weight for supervised CE loss inside the single-method SCVA criterion."})
-    scva_weight: float = field(default=1.0, metadata={"help": "Multiplier for the SCVA KD term inside the single-method SCVA criterion."})
-    scva_n_clusters: int = field(default=16, metadata={"help": "Deprecated compatibility knob; SCVA now uses density clusters on teacher vision tokens."})
-    scva_kmeans_iters: int = field(default=10, metadata={"help": "Deprecated compatibility knob; SCVA no longer runs Lloyd k-means."})
-    scva_min_vision_tokens: int = field(default=4, metadata={"help": "Skip SCVA loss for a sample if fewer than this many vision tokens are present."})
-    scva_spatial_weight: float = field(default=0.1, metadata={"help": "Spatial-distance weight for SCVA teacher vision clustering."})
-    scva_dbscan_min_samples: int = field(default=8, metadata={"help": "DBSCAN min_samples for SCVA teacher vision clustering."})
-    scva_dbscan_eps_percentile: float = field(default=3.0, metadata={"help": "Percentile of pairwise distances used as DBSCAN eps for SCVA clustering."})
-    # CGKD (confidence-gated generative KD) — see draft.pdf
-    cgkd_alpha: float = field(default=0.5, metadata={"help": "CGKD weight for supervised CE loss inside the single-method CGKD criterion."})
-    cgkd_weight: float = field(default=1.0, metadata={"help": "Multiplier for the CGKD KD term inside the single-method CGKD criterion."})
-    cgkd_temperature: float = field(default=1.0, metadata={"help": "Temperature for the CGKD softmax."})
-    # SCVA + CGKD joint criterion (the draft's headline method)
-    scva_cgkd_ce_weight: float = field(default=1.0, metadata={"help": "L_CE coefficient in the SCVA+CGKD joint loss (draft notation)."})
-    scva_cgkd_lambda_v: float = field(default=1.0, metadata={"help": "λ_v: weight on SCVA term in the SCVA+CGKD joint loss."})
-    scva_cgkd_lambda_g: float = field(default=1.0, metadata={"help": "λ_g: weight on CGKD term in the SCVA+CGKD joint loss."})
+    kd_weight: float = field(default=0.01, metadata={"help": "weight of kd loss in total loss"})
+    rkd_distance_weight: float = field(default=1.0, metadata={"help": "weight of distance loss in total kd loss"})
+    rkd_angle_weight: float = field(default=2.0, metadata={"help": "weight of angle loss in total kd loss"})
+    kd_loss_type: str = field(default="contrastive_rkd", metadata={"help": "type of kd loss, current only support RKD"})
     ds_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
     deepspeed_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
+    muon_lr: Optional[float] = field(default=None, metadata={"help": "Learning rate for Muon parameter groups. If None, uses torch.optim.Muon default."})
+    muon_weight_decay: Optional[float] = field(default=None, metadata={"help": "Weight decay for Muon parameter groups. If None, uses torch.optim.Muon default."})
+    adjust_lr_fn: Optional[str] = field(default="match_rms_adamw", metadata={"help": "Muon learning-rate adjustment function. Use original, match_rms_adamw, or None."})
+    # args for TALAS
+    num_projectors: int = field(default=0, metadata={"help": "Number of projectors for distillation"})
+    num_self_kd_layers: int = field(default=0, metadata={"help": "Number of self-kd layers for distillation"})
     # new args for span loss
     teacher_layer_mapping: List[int] = field(
         default_factory=list,
@@ -193,6 +126,22 @@ class TrainingArguments(TrainingArguments):
         metadata={"help": "List of split layers for student; number of elements equals number of projectors"}   
     )
     w_cross_modal_loss: float = field(default=1.0, metadata={"help": "weight for cross modal loss"})
+    
+    num_centroids: int = field(default=8, metadata={"help": "Number of centroids for distillation"})
+    centroid_hidden_size: int = field(default=896, metadata={"help": "Hidden size for centroids in distillation"})
+
+    use_distill_loss: bool = field(default=True, metadata={"help": "Use distill loss"})
+    use_distill_cse_loss: bool = field(default=True, metadata={"help": "Use distill cse loss"})
+    use_distill_vison_loss: bool = field(default=True, metadata={"help": "Use distill vison loss"})
+    use_sigreg_loss: bool = field(default=True, metadata={"help": "Use sigreg loss"})
+    sigreg_weight: float = field(default=0.05, metadata={"help": "weight for sigreg loss"})
+    num_layers: int = field(default=1, metadata={"help": "Number of layers for sigreg"})
+    d_cse_temperature: float = field(default=0.02, metadata={"help": "distill cse temperature for softmax"})
+    gmm_ckpt: str = field(default=None, metadata={"help": "GMM checkpoint path for distillation"})
+    num_t: int = field(default=33, metadata={"help": "Number of t for characteristic function"})
+    t_max: float = field(default=1.5, metadata={"help": "Maximum t for characteristic function"})
+    Ds: int = field(default=896, metadata={"help": "Hidden dimension for student model"})
+
 @dataclass
 class MTEBArguments:
     device: str = field(default="cuda", metadata={"help": "use cuda for single GPU inference, if multiple GPUs are available it will use DP automatically"})
