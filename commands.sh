@@ -1,4 +1,4 @@
-#1 +10
+#2
 #oeddeh10
 #v1
 
@@ -38,7 +38,7 @@ cd ./OpenED
 bash gather_logs.sh all4
 tar -czf collected_logs.tar.gz collected_logs/all4/
 ls -lh collected_logs.tar.gz
-bash ./project_commands_10.sh
+# bash ./project_commands_10.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
