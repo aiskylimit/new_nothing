@@ -48,6 +48,24 @@ def process_image(image, resolution, max_dim=1344):
     return image
 
 
+# def process_image(image, resolution, max_dim=1344):
+#     if image is None:
+#         return None
+#     if resolution == "high":
+#         image = image.resize((1344, 1344))
+#     elif resolution == "mid":
+#         image = image.resize((672, 672))
+#     elif resolution == "low":
+#         image = image.resize((448, 448))
+#     elif resolution == "tiny":
+#         image = image.resize((336, 336))
+#     else:
+#         cur_max_dim = max(image.size)
+#         if cur_max_dim > max_dim:
+#             image = image.resize((max_dim, max_dim))
+#     return image
+
+
 def get_image_bytes_and_path(img_path, image_dir, model_backbone, image_resolution):
     '''
     caveat: datasets will convert PIL.Image.Image objects into Arrow-compatible types (aka bytes) behind the scene and only image.filename is reserved (datasets/features/image.py L311)
@@ -269,9 +287,17 @@ class EvalDataset(Dataset):
         self.model_args = model_args
         self.backbone = self.model_args.model_backbone
 
+        # self.eval_data = load_dataset(
+        #     self.data_args.dataset_name,
+        #     subset,
+        #     split=self.data_args.dataset_split,
+        # )
         self.eval_data = load_dataset(
-            self.data_args.dataset_name,
-            subset,
+            "parquet",
+            data_files={
+                self.data_args.dataset_split:
+                    f"{self.data_args.dataset_name}/{subset}/{self.data_args.dataset_split}-00000-of-00001.parquet"
+            },
             split=self.data_args.dataset_split,
         )
         if (subset =="WebQA" or subset=="EDIS") and "qry_text" in self.eval_data.column_names and model_args.model_backbone=="llava_qwen2":
