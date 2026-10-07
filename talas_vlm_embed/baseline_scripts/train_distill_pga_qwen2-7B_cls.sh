@@ -16,6 +16,7 @@ torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
     --model_name "models/FastVLM-0.5B" \
     --teacher_model_name "models/B3_Qwen2_7B" \
+    --teacher_hidden_dim 3584 \
     --lora True \
     --teacher_lora True \
     --lora_r 64 \
