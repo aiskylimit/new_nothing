@@ -44,7 +44,7 @@ torchrun --standalone \
     --teacher_normalize True \
     --lr_scheduler_type "cosine" \
     --warmup_ratio 0.03 \
-    --kd_weight 1 \
+    --kd_weight 0.1 \
     --kd_loss_type "pga" \
     --image_resolution "low" \
     --projector_lr 5e-4 \
