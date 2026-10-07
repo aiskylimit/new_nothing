@@ -1,5 +1,5 @@
-#1 +30
-#oed
+#1 +10
+#log
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -36,7 +36,7 @@ export NCCL_DEBUG=WARN
 
 cd ./OpenED
 bash gather_logs.sh
-bash ./project_commands_6.sh
+# bash ./project_commands_6.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
