@@ -3,9 +3,9 @@
 # those logs was a CUDA OOM: jobs from several queues sharing a GPU, and the SDFT + CE pool of
 # project_commands_6.sh at micro-batch 32 peaking at 145 GB of a 178 GB card.
 #
-#   bash project_commands_10.sh                      # gpus 4 and 5, one job per GPU
+#   bash project_commands_10.sh                      # gpus 1, 6 and 7, one job per GPU
 #   DRY=1 bash project_commands_10.sh                # print the plan, train nothing
-#   GPUS="4 5 6" STEPS="cllora_ours ace" bash project_commands_10.sh
+#   GPUS="6 7" STEPS="cllora_ours ace" bash project_commands_10.sh
 #
 # Stop project_commands_6.sh (SDFT + CE, on gpus 4 and 5) before starting this: it keeps going at
 # micro-batch 32. Its runs that are still training then die and are retrained here at 8 x 4.
@@ -28,13 +28,13 @@
 # A finished run is skipped, a run whose name is on a live process's command line is left alone,
 # and a crashed partial one is moved to results/qwen3/ced/_failed/ (never deleted) and retrained.
 #
-# Knobs: GPUS ["4 5"], SLOTS jobs per GPU [1], NEED_MB free MiB a job waits for [60000],
+# Knobs: GPUS ["1 6 7"], SLOTS jobs per GPU [1], NEED_MB free MiB a job waits for [60000],
 # STEPS ["cllora_ours ace geneva3 sdftce"], SD_MB SDFT micro-batch [8], SEED [42].
 set -uo pipefail
 cd "$(dirname "$0")"
 
 DRY=${DRY:-0}
-GPUS=(${GPUS:-4 5})
+GPUS=(${GPUS:-1 6 7})
 SLOTS=${SLOTS:-1}
 NEED_MB=${NEED_MB:-60000}
 STEPS=${STEPS:-"cllora_ours ace geneva3 sdftce"}
