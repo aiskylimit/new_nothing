@@ -8,8 +8,8 @@
 #   DRY=1 bash project_commands_12.sh                 # print the plan, train nothing
 #   STEPS="cllora" PERMS="0" bash project_commands_12.sh
 #
-# Data: datht/processed-new-cl-<ds> (download.txt puts <ds>_all.tar.gz here; fetched from the
-# hub when it is not), unpacked to data/<ds>_sent_perm<p> and processed_data/<ds>_sent_perm<p>.
+# Data: datht/processed-new-cl-<ds>. download.txt puts <ds>_all.tar.gz here; this script only
+# unpacks it (to data/<ds>_sent_perm<p> and processed_data/<ds>_sent_perm<p>), downloads nothing.
 # Runs (run names as scripts/qwen/cre_sent/ in the local OpenED tree):
 #   task0   dist_shared_task0_perm<p>_<ds>_sent_s42, plain CE, trained here once per perm; the
 #           distillation baselines and Ours start from it (the paper's same theta_0)
@@ -82,28 +82,30 @@ have_data () {
     done
 }
 unpack () {  # $1 = archive: only one holding data/<ds>_sent_perm*, never the old <ds>_perm one
-    "${PY}" - "$1" "${PRE}" <<'EOF' >> "${LOG}" 2>&1
+    "${PY}" - "$1" "${PRE}" <<'EOF' 2>&1
 import sys, tarfile
 tgz, pre = sys.argv[1], sys.argv[2]
 with tarfile.open(tgz) as tf:
     if not any(n.startswith(f"data/{pre}") for n in tf.getnames()):
-        sys.exit(f"{tgz} holds no data/{pre}*, not unpacking it")
+        sys.exit(f"{tgz} holds no data/{pre}* (the old processed-cl archive?), not unpacking it")
     tf.extractall(".", filter="data")
 EOF
 }
 if ! have_data; then
     log "data/${PRE}* or processed_data/${PRE}* missing"
     if [ "${DRY}" != "1" ]; then
-        if [ -e "${DS}_all.tar.gz" ] && unpack "${DS}_all.tar.gz"; then
-            log "  unpacked ${DS}_all.tar.gz"; rm -f "${DS}_all.tar.gz"
+        # download.txt puts the archive here, next to this script
+        if [ -e "${DS}_all.tar.gz" ]; then
+            log "  unpacking ${PWD}/${DS}_all.tar.gz ($(du -h "${DS}_all.tar.gz" | cut -f1))"
+            if out=$(unpack "${DS}_all.tar.gz"); then
+                log "  unpacked"; rm -f "${DS}_all.tar.gz"
+            else
+                log "  not unpacked: ${out}"
+            fi
+        else
+            log "  no ${PWD}/${DS}_all.tar.gz"
         fi
-        if ! have_data; then
-            log "  fetching datht/processed-new-cl-${DS}"
-            HF_HUB_OFFLINE=0 "${PY}" -c "import sys; from huggingface_hub import hf_hub_download
-hf_hub_download('datht/processed-new-cl-' + sys.argv[1], sys.argv[1] + '_all.tar.gz', repo_type='dataset', local_dir='.')" \
-                "${DS}" >> "${LOG}" 2>&1 && unpack "${DS}_all.tar.gz" && rm -f "${DS}_all.tar.gz"
-        fi
-        have_data || { log "no data/${PRE}*, see ${LOG}"; exit 1; }
+        have_data || { log "no data/${PRE}*: fetch the new ${DS}_all.tar.gz with download.txt into ${PWD} and run again"; exit 1; }
     fi
 fi
 
