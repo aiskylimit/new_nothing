@@ -1,4 +1,4 @@
-#1 +30
+#1 +10
 #oed12
 #v1
 
@@ -38,7 +38,9 @@ cd ./OpenED
 bash gather_logs.sh all8
 tar -czf collected_logs.tar.gz collected_logs/all8/
 ls -lh collected_logs.tar.gz
-bash ./project_commands_12.sh
+rm -rf tacred_all.tar.gz
+rm -rf fewrel_all.tar.gz
+# bash ./project_commands_12.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
