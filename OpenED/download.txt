@@ -6,5 +6,7 @@
 --url https://huggingface.co/datasets/datht/processed-cl-geneva/resolve/main/geneva_all.tar.gz /mnt/local/@PROJECT@/OpenED
 --url https://huggingface.co/datasets/datht/processed-cl-tacred/resolve/main/tacred_all.tar.gz /mnt/local/@PROJECT@/OpenED
 --url https://huggingface.co/datasets/datht/processed-cl-fewrel/resolve/main/fewrel_all.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-new-cl-tacred/resolve/main/tacred_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-new-cl-fewrel/resolve/main/fewrel_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
 #models
 --hf Qwen/Qwen3-0.6B /mnt/local/@PROJECT@/OpenED/models/Qwen3-0.6B

@@ -1,4 +1,8 @@
-#1 +30
+#d
+#datasets
+--url https://huggingface.co/datasets/datht/processed-new-cl-tacred/resolve/main/tacred_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-new-cl-fewrel/resolve/main/fewrel_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
+
 #oed12
 #v1
 
