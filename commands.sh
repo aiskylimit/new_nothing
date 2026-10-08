@@ -1,5 +1,5 @@
-#1 +30
-#oed11
+#1 +10
+#log
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -38,8 +38,8 @@ cd ./OpenED
 bash gather_logs.sh all6
 tar -czf collected_logs.tar.gz collected_logs/all6/
 ls -lh collected_logs.tar.gz
-bash ./project_commands_11.sh
-
+# bash ./project_commands_11.sh
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ../talas_vlm_embed/multi_gpu_v2.py
 # cd ./opsd
 # bash ./project_commands.sh
 
