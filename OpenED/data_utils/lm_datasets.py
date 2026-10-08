@@ -132,6 +132,11 @@ class LMTrainDataset(Dataset):
             old_types.update(s)
         flags = []
         for item in self.raw:
+            if "is_memory" in item:
+                # sentence-level CRE marks its memory rows: their targets are re-annotated
+                # with every seen label, so they can also hold current-task records
+                flags.append(bool(item["is_memory"]))
+                continue
             events = json.loads(item["response"]).get("events", [])
             types = {e[1] for e in events}
             flags.append(bool(types) and types <= old_types)

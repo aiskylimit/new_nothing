@@ -140,10 +140,10 @@ def main():
                 
                 binary_builder.add_item(torch.IntTensor(prompt + [-1] + response))
 
-            json_file.write(json.dumps({
-                "prompt": prompt_str,
-                "response": line["response"],
-            }) + "\n")
+            rec = {"prompt": prompt_str, "response": line["response"]}
+            if "is_memory" in line:  # sentence-level CRE marks its memory rows (build_cre_sent.py)
+                rec["is_memory"] = line["is_memory"]
+            json_file.write(json.dumps(rec) + "\n")
 
             prompt_lens.append(len(prompt))
             response_lens.append(len(response))
