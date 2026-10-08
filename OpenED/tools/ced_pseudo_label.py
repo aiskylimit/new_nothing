@@ -20,6 +20,13 @@ Filters, in order:
   tokens); "percentile" keeps the top p% events of the task, "thresh" applies
   an absolute mean-logprob cutoff.
 
+--anchor pair (sentence-level CRE, default from $PL_ANCHOR, else trigger): a record
+is anchored by its (subject, object) pair instead of its trigger/subject. The object
+must also appear in the sentence, H2 drops a candidate only when that exact pair is
+already labelled, and duplicates are (subject, relation, object). One subject usually
+holds several relations, so trigger-style dedup would throw most old triples away.
+Rows marked "is_memory" are skipped: their targets already hold every seen label.
+
 Usage:
   python tools/ced_pseudo_label.py --teacher <merged_dir> --data-dir data/ace_b10_perm0/1 \
       --streams data/ace_b10_perm0/streams.json --task-id 1 --out data/r6_run/1 \
@@ -49,6 +56,14 @@ def parse_events(text):
         return json.loads(m.group(0)).get("events", [])
     except Exception:
         return []
+
+
+def object_of(e):
+    """Object span of a CRE record [subject, relation, [[object, "object"]], desc], else None."""
+    if len(e) > 2 and isinstance(e[2], list) and e[2] and isinstance(e[2][0], list) \
+            and e[2][0] and isinstance(e[2][0][0], str):
+        return e[2][0][0]
+    return None
 
 
 def find_spans(text, values, search_start=0):
@@ -119,6 +134,9 @@ def main():
                     help="keep the top p%% highest-scored events of the task")
     ap.add_argument("--conf-thresh", type=float, default=None,
                     help="absolute mean-logprob cutoff (e.g. -0.5)")
+    ap.add_argument("--anchor", choices=["trigger", "pair"],
+                    default=os.environ.get("PL_ANCHOR", "trigger"),
+                    help="pair: anchor = (subject, object), for sentence-level CRE")
     args = ap.parse_args()
 
     if args.conf_filter == "thresh" and args.conf_thresh is None:
@@ -157,6 +175,8 @@ def main():
     # replay exemplars and pure no-event rows keeps teacher calls low-risk)
     cand_idx = []
     for i, r in enumerate(rows):
+        if r.get("is_memory"):  # sentence-level CRE memory: already fully annotated
+            continue
         gold = json.loads(r["response"]).get("events", [])
         types = {e[1] for e in gold}
         if types - old_types:
@@ -197,8 +217,12 @@ def main():
             r = rows[i]
             sent = input_text_of(r["user_prompt"]) or ""
             gold = json.loads(r["response"]).get("events", [])
-            gold_keys = {(e[0], e[1]) for e in gold}
-            gold_triggers = {str(e[0]).lower() for e in gold if isinstance(e, list) and e}
+            if args.anchor == "pair":
+                gold_keys = {(e[0], e[1], object_of(e)) for e in gold}
+                gold_anchors = {(str(e[0]).lower(), str(object_of(e)).lower()) for e in gold}
+            else:
+                gold_keys = {(e[0], e[1]) for e in gold}
+                gold_triggers = {str(e[0]).lower() for e in gold if isinstance(e, list) and e}
             if need_scores:
                 # strip padding/eos from the id/logprob views
                 gid = [t for t in gen_ids_batch[pos].tolist()
@@ -212,14 +236,26 @@ def main():
                     continue
                 if not isinstance(trig, str) or trig not in sent:
                     continue
-                if (trig, ty) in gold_keys:
-                    continue
-                # H2: never contradict a gold label on the same/overlapping token
-                if args.conflict_dedup:
-                    tl = trig.lower()
-                    if any(tl == g or tl in g or g in tl for g in gold_triggers):
+                if args.anchor == "pair":
+                    obj = object_of(e)
+                    if obj is None or obj not in sent:
+                        continue
+                    key, anchor = (trig, ty, obj), (trig.lower(), obj.lower())
+                    if key in gold_keys:
+                        continue
+                    # H2 for pairs: never put a second label on an already labelled pair
+                    if args.conflict_dedup and anchor in gold_anchors:
                         n_dropped_conflict += 1
                         continue
+                else:
+                    if (trig, ty) in gold_keys:
+                        continue
+                    # H2: never contradict a gold label on the same/overlapping token
+                    if args.conflict_dedup:
+                        tl = trig.lower()
+                        if any(tl == g or tl in g or g in tl for g in gold_triggers):
+                            n_dropped_conflict += 1
+                            continue
                 if args.lexicon_filter and (trig.lower(), ty) not in lexicon:
                     continue
                 args_clean = []
@@ -234,11 +270,16 @@ def main():
                 if need_scores:
                     score = event_conf_score(text, trig, ty, gid, lp, tokenizer)
                 pending.setdefault(i, []).append((ev, score))
-                gold_keys.add((trig, ty))
-                if args.conflict_dedup:
-                    # an accepted pseudo trigger also blocks later overlapping
-                    # pseudo events (pseudo-vs-pseudo conflicts, not just gold)
-                    gold_triggers.add(trig.lower())
+                if args.anchor == "pair":
+                    gold_keys.add(key)
+                    if args.conflict_dedup:
+                        gold_anchors.add(anchor)
+                else:
+                    gold_keys.add((trig, ty))
+                    if args.conflict_dedup:
+                        # an accepted pseudo trigger also blocks later overlapping
+                        # pseudo events (pseudo-vs-pseudo conflicts, not just gold)
+                        gold_triggers.add(trig.lower())
                 n_seen += 1
         print(f"pseudo-label {min(b + args.batch_size, len(cand_idx))}/{len(cand_idx)} "
               f"(candidates so far: {n_seen}, conflict-dropped: {n_dropped_conflict})", flush=True)
