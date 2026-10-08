@@ -1,4 +1,4 @@
-#2
+#1 +10
 #oeddeh10
 #v1
 
@@ -35,8 +35,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-bash gather_logs.sh all4
-tar -czf collected_logs.tar.gz collected_logs/all4/
+bash gather_logs.sh all5
+tar -czf collected_logs.tar.gz collected_logs/all5/
 ls -lh collected_logs.tar.gz
 # bash ./project_commands_10.sh
 
