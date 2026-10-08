@@ -8,7 +8,7 @@
 #   DRY=1 bash project_commands_12.sh                 # print the plan, train nothing
 #   STEPS="cllora" PERMS="0" bash project_commands_12.sh
 #
-# Data: datht/processed-new-cl-<ds>. download.txt puts <ds>_all.tar.gz here; this script only
+# Data: datht/processed-new-cl-<ds>. download.txt puts <ds>_all_new.tar.gz here; this script only
 # unpacks it (to data/<ds>_sent_perm<p> and processed_data/<ds>_sent_perm<p>), downloads nothing.
 # Runs (run names as scripts/qwen/cre_sent/ in the local OpenED tree):
 #   task0   dist_shared_task0_perm<p>_<ds>_sent_s42, plain CE, trained here once per perm; the
@@ -81,7 +81,7 @@ have_data () {
         [ -s "data/${PRE}${p}/streams.json" ] && [ -f "processed_data/${PRE}${p}/9/qwen/train_0.idx" ] || return 1
     done
 }
-unpack () {  # $1 = archive: only one holding data/<ds>_sent_perm*, never the old <ds>_perm one
+unpack () {  # $1 = archive: only one holding data/<ds>_sent_perm*, never an old <ds>_perm one
     "${PY}" - "$1" "${PRE}" <<'EOF' 2>&1
 import sys, tarfile
 tgz, pre = sys.argv[1], sys.argv[2]
@@ -94,18 +94,20 @@ EOF
 if ! have_data; then
     log "data/${PRE}* or processed_data/${PRE}* missing"
     if [ "${DRY}" != "1" ]; then
-        # download.txt puts the archive here, next to this script
-        if [ -e "${DS}_all.tar.gz" ]; then
-            log "  unpacking ${PWD}/${DS}_all.tar.gz ($(du -h "${DS}_all.tar.gz" | cut -f1))"
-            if out=$(unpack "${DS}_all.tar.gz"); then
-                log "  unpacked"; rm -f "${DS}_all.tar.gz"
+        # download.txt puts the archive here, next to this script. Its own name, so the old
+        # processed-cl <ds>_all.tar.gz can never stand in for it.
+        TGZ=${DS}_all_new.tar.gz
+        if [ -e "${TGZ}" ]; then
+            log "  unpacking ${PWD}/${TGZ} ($(du -h "${TGZ}" | cut -f1))"
+            if out=$(unpack "${TGZ}"); then
+                log "  unpacked"; rm -f "${TGZ}"
             else
                 log "  not unpacked: ${out}"
             fi
         else
-            log "  no ${PWD}/${DS}_all.tar.gz"
+            log "  no ${PWD}/${TGZ}"
         fi
-        have_data || { log "no data/${PRE}*: fetch the new ${DS}_all.tar.gz with download.txt into ${PWD} and run again"; exit 1; }
+        have_data || { log "no data/${PRE}*: fetch ${TGZ} with download.txt into ${PWD} and run again"; exit 1; }
     fi
 fi
 
