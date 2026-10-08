@@ -16,7 +16,7 @@ USE_SIGREG_LOSS=${2:-True}
 
 KD_WEIGHT=${3:-10}
 
-SIGREG_WEIGHT=${4:-0.1}
+SIGREG_WEIGHT=${4:-0.2}
 
 NUM_T=${5:-17}
 

@@ -3047,35 +3047,7 @@ def retrieve_text(frames,
 
 
 def setup_internvideo2(config):
-    model = InternVideo2_Stage2(config=config, is_pretrain=True)
-
-    torch.set_float32_matmul_precision('high')
-    model = torch.compile(model)
-
-    model = model.to(torch.device(config.device))
-    model_without_ddp = model
-
-    if config.pretrained_path.strip() and os.path.isfile(config.pretrained_path):
-        checkpoint = torch.load(config.pretrained_path, map_location="cpu")
-        try:
-            if "model" in checkpoint.keys():
-                state_dict = checkpoint["model"]
-            else:
-                state_dict = checkpoint["module"]  # This is a deepspeed stage 1 model
-        except:
-            state_dict = checkpoint
-
-        # if config.get('origin_num_frames', None) is not None:
-        a = len(state_dict)
-        interpolate_pos_embed_internvideo2_new(state_dict, model_without_ddp.vision_encoder,
-                                               orig_t_size=config.origin_num_frames)
-        assert a == len(state_dict), state_dict.keys()
-
-        msg = model_without_ddp.load_state_dict(state_dict, strict=False)
-
-    model_without_ddp = model_without_ddp.to(torch.float32)
-
-    return model_without_ddp.eval()
+    pass
 
 
 class DictToClass:

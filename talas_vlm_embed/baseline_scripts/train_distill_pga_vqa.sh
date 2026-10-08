@@ -13,8 +13,8 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 # =========================================================================
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name "apple/FastVLM-0.5B" \
-    --teacher_model_name "raghavlite/B3_Qwen2_2B" \
+    --model_name "models/FastVLM-0.5B" \
+    --teacher_model_name "models/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
     --lora_r 64 \
@@ -24,7 +24,7 @@ torchrun --standalone \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_qwen2_old" \
     --pooling "eos" \
-    --dataset_name "TIGER-Lab/MMEB-train" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -44,7 +44,7 @@ torchrun --standalone \
     --teacher_normalize True \
     --lr_scheduler_type "cosine" \
     --warmup_ratio 0.03 \
-    --kd_weight 1 \
+    --kd_weight 0.1 \
     --kd_loss_type "pga" \
     --image_resolution "low" \
     --projector_lr 5e-4 \
@@ -57,7 +57,7 @@ EVAL_SUBSETS=(
 )
 
 
-
+rm -rf ./MMEB-eval_outputs/FastVLM-0.5B_pga_vqa
 
 python eval_mmeb_2.py \
   --model_name "training/FastVLM-0.5B_pga_vqa/checkpoint-epoch-0" \
@@ -69,12 +69,11 @@ python eval_mmeb_2.py \
   --model_backbone llava_qwen2_old \
   --normalize True \
   --bf16 \
-  --dataset_name TIGER-Lab/MMEB-eval \
+  --dataset_name vlm2vec_eval/MMEB-eval \
   --subset_name "${EVAL_SUBSETS[@]}" \
   --dataset_split test \
   --per_device_eval_batch_size 4 \
   --image_dir eval_images/ \
-  --image_resolution "low" \
   --tgt_prefix_mod \
   --load_pretrained_lora True \
   --report_to none
