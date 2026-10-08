@@ -35,11 +35,11 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-bash gather_logs.sh all6
-tar -czf collected_logs.tar.gz collected_logs/all6/
+bash gather_logs.sh all7
+tar -czf collected_logs.tar.gz collected_logs/all7/
 ls -lh collected_logs.tar.gz
 # bash ./project_commands_11.sh
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ../talas_vlm_embed/multi_gpu_v2.py
+
 # cd ./opsd
 # bash ./project_commands.sh
 
