@@ -11,7 +11,7 @@ export MODEL_ROOT="${BASE_DIR}/models"
 export RAW_DATA_ROOT="${BASE_DIR}/data/raw"
 export PREPARED_DATA_ROOT="${BASE_DIR}/data/processed"
 export OUTPUT_ROOT="${BASE_DIR}/outputs"
-export RESULTS_ROOT="${BASE_DIR}/results"
+export RESULTS_ROOT="${BASE_DIR}/results/seed42"
 export HF_HOME="${BASE_DIR}/.cache/huggingface"
 
 # Two-GPU training and evaluation allocation.
@@ -30,17 +30,14 @@ if [[ ! -d "${PREPARED_DATA_ROOT}/eval/aime24" ]]; then
         --only_eval aime24
 fi
 
-# Preserve completed evaluations for other benchmarks and any existing AIME24 results.
+# Preserve completed evaluations from older runs without an explicit seed.
+export EVAL_SEED=42
 export OVERWRITE_EVAL=0
 
-# Qwen3-4B and Qwen3-8B: train OPSD, then evaluate configured checkpoints
+# Qwen3-4B: train OPSD, then evaluate configured checkpoints
 # on AIME24, AIME25, AIME26, and HMMT25.
-for model in 4b 8b; do
-    EVAL_DATASETS="aime24" bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" "${model}" base
-    bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd "${model}"
-    bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" "${model}" opsd
-done
+bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd 4b
+bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b opsd
 
-# Olmo-3-7B-Think was already trained: evaluate base and OPSD on AIME24 only.
-EVAL_DATASETS="aime24" bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b base
+# Olmo-3-7B-Think was already trained: evaluate OPSD on AIME24 only.
 EVAL_DATASETS="aime24" bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b opsd

@@ -1,7 +1,5 @@
-#d
-#datasets
---hf-dataset HuggingFaceH4/aime_2024 /mnt/local/@PROJECT@/OPSD/data/raw/eval/aime24
-
+#1 +75
+#opsd
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -42,8 +40,8 @@ export NCCL_DEBUG=WARN
 # ls -lh collected_logs.tar.gz
 # bash ./project_commands_12.sh
 
-# cd ./opsd
-# bash ./project_commands.sh
+cd ./opsd
+bash ./project_commands.sh
 
 # cd ./offline_olmo7b_b200
 # bash ./project_commands.sh

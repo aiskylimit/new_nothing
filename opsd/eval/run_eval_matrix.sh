@@ -61,6 +61,7 @@ evaluate_checkpoint() {
             --min_p 0 \
             --presence_penalty 0 \
             --val_n "${EVAL_VAL_N}" \
+            --seed "${EVAL_SEED}" \
             --tensor_parallel_size "${EVAL_TENSOR_PARALLEL_SIZE}" \
             --gpu_memory_utilization "${GPU_MEMORY_UTILIZATION}" \
             --output_file "${output_file}" \
