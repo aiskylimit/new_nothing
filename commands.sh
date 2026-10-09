@@ -10,7 +10,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 2111524 2259372 2290960 2301727 2134525 2312628 2027875 2305017
+kill -9 2331718 2324573 2328468
 # sleep 2
 nvidia-smi
 
@@ -38,7 +38,7 @@ cd ./OpenED
 bash gather_logs.sh all15
 tar -czf collected_logs.tar.gz collected_logs/all15/
 ls -lh collected_logs.tar.gz
-# bash ./project_commands_12.sh
+# bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
