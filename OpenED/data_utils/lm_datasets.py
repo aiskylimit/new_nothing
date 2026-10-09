@@ -21,6 +21,15 @@ def balanced_smoke_indices(replay_flags, limit):
         current_limit += min(len(current) - current_limit, remaining)
     selected = current[:current_limit] + replay[:replay_limit]
     return selected
+
+
+def resolve_num(num, available):
+    """Rows to use from a split: all of them for -1, else at most what the split holds.
+    DistributedMMapIndexedDataset loops forever on an index past its end
+    (distributed_indexed.py:201), so a cap larger than the split must never reach it."""
+    if num is None or num < 0:
+        return available
+    return min(num, available)
 import pickle
 import numpy as np
 from torch.utils.data import Dataset
@@ -70,10 +79,8 @@ class LMTrainDataset(Dataset):
                 f"CED smoke subset: {self.num} rows "
                 f"({sum(flags[index] for index in self.sample_indices)} replay)"
             )
-        elif num == -1:
-            self.num = len(self.lm_ctx)
         else:
-            self.num = num
+            self.num = resolve_num(num, len(self.lm_ctx))
 
         print_rank(f"Num LM instances: {len(self.lm_ctx)}")
 
@@ -283,10 +290,28 @@ class LMTrainDataset(Dataset):
 
         return model_data, no_model_data, gen_data
 
+    def batch_width(self, samples):
+        """Columns of the model inputs: --max-length, or with dynamic padding the longest row
+        of the batch rounded up to a multiple of 64 (at most --max-length). Rows are right
+        padded and attention is causal, so a row's logits do not depend on its padding."""
+        if not getattr(self.args, "dynamic_pad_effective", False):
+            return self.max_length
+        need = 1
+        for sample in samples:
+            ids = sample["input_ids"]
+            if self.args.model_type in ["qwen"] and 4294967295 in ids:
+                n = len(ids) - 1
+            elif 65535 in ids:
+                n = len(ids) - 1
+            else:
+                n = len(ids)
+            need = max(need, min(n, self.max_length) - 1)
+        return min(self.max_length, -(-need // 64) * 64)
+
     def collate(self, samples):
         bs = len(samples)
 
-        max_length = self.max_length
+        max_length = self.batch_width(samples)
         
         model_data = {
             "input_ids": torch.ones(bs, max_length, dtype=torch.long) * self.pad_id,

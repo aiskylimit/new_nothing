@@ -159,6 +159,190 @@ Notes:
   completion marker before starting and skips finished work, so a re-run after any
   interruption just resumes.
 
+## Running on H200s (branch `perf/h200-throughput`)
+
+Same experiments, same objectives, much less wall-clock. What changed and how to control it:
+
+- **Physical vs logical batch.** Each runner keeps its micro-batch (`--bs`) as the unit the
+  loss is defined over. `PHYS_BS` (environment) sets how many rows go through the GPU at once.
+  The loss is still computed per `--bs` rows and averaged, and the accumulation shrinks so
+  rows per update stay 32. Runner scripts default to `PHYS_BS = --bs`. `project_commands.sh`
+  and `run.sh` set the H200 value below.
+- **Evaluation.** `run_ced_v2.sh` now generates answers once per task, for the test set after
+  the last update (`EVAL_GEN_MODE=final`; set `every` for the old per-epoch dev+test
+  evaluation, which `--select-best-dev 1` forces). Generation runs in batches of 128
+  (`EVAL_BS`).
+- **Padding.** Batches are padded to their longest row (`DYNAMIC_PAD=1`), except for runs
+  with a span loss (Ours and its ablations) or DistiLLM/AMiD.
+- **Packing.** `project_commands.sh` uses every GPU (`POOL_GPUS` to restrict) with
+  `SLOTS_PER_GPU` runs per card, a torchrun port per slot, and, on H200, optional CUDA MPS
+  (`USE_MPS`). CRE baselines run as one job per method after each order's shared task0.
+  `run.sh` accepts repeated GPU ids (`GPU_DIST_ALL=0,0,1,1`).
+- **Several launches on one host.** Launches started side by side in one tree share the cards,
+  each with its own `DS` (or `ONLY` / `PERMS`) and all with the same `POOL_GPUS` and
+  `SLOTS_PER_GPU`.
+  - Each job holds its slot's lock file in `SLOT_DIR` (default `.slots`) until it exits, so no
+    card carries more than `SLOTS_PER_GPU` runs, and each slot has its own torchrun port.
+  - The launches share one CUDA MPS daemon, and the last one to finish stops it.
+  - A launch with nothing to run because other launches hold every slot says so in its pool log,
+    every 30 minutes.
+  - `ONLY` also takes single configs (`b_cllora`, `g1_full`).
+  - Nothing stops two launches from training the same runs, so give each its own.
+
+  For example, Ours on every dataset plus the TACRED baselines on a 4-GPU host:
+
+      mkdir -p logs
+      export POOL_GPUS="0 1 2 3" SKIP_INSTALL=1 PHYS_BS=16 NEED_GPU_MB=51200 NEED_LORA_MB=32768 \
+             OURS_PHYS_BS=32 OURS_GRAD_CKPT=1 COMPILE_GEN=1
+      for ds in ace maven rams geneva; do
+          DS=${ds} nohup bash project_commands.sh > logs/${ds}.out 2>&1 &
+      done
+      DS=tacred ONLY="g1 b" nohup bash project_commands.sh > logs/tacred.out 2>&1 &
+      DS=fewrel ONLY=g1 nohup bash project_commands.sh > logs/fewrel_ours.out 2>&1 &
+- **Decoding (read this).** transformers 4.57 fills `GenerationConfig` fields left at their
+  library default from Qwen3's `generation_config.json`. As a result:
+  - the `--greedy 1` evaluation of task0, the distillation baselines and Ours **samples at
+    T=0.5, top_p 0.95**;
+  - SD and DistiLLM/AMiD sample at **T=0.6, top_p 0.95** instead of the requested 1.0/1.0;
+  - CL-LoRA evaluation is really greedy.
+
+  This branch keeps that behaviour so new numbers match existing ones. `STRICT_GEN=1`
+  (`--strict-generation`) makes every config literal: greedy evaluation and the requested
+  temperatures. That changes results, so decide it for the whole table.
+- **Generation backend.** `GEN_BACKEND=vllm` generates the evaluation answers and the teacher's
+  pseudo-labels with vLLM (`gen_backend.py`, `tools/vllm_generate.py`).
+  - vLLM gets the settings transformers' `generate()` would use, including the fill-in above,
+    and the same prompt tokens.
+  - Text handling and scoring stay as they are.
+  - GainLoRA and EPI keep Hugging Face generation, because they pick adapters per input. The
+    CL-LoRA manifest records which backend each run used.
+  - vLLM runs in its own environment. `VLLM_PY` points at its Python; otherwise
+    `./.venv-vllm` or `/venv/main` is used. To create one:
+    `uv venv .venv-vllm --python 3.12 && uv pip install --python .venv-vllm vllm==0.27.1`.
+  - `VLLM_GPU_GB` (default 10) is each vLLM instance's memory budget; the instance holds about
+    12 GB on the card at the default. `VLLM_EAGER=1` turns off CUDA graphs.
+  - vLLM runs as an ordinary CUDA process even when the scheduler uses MPS (that is how it was
+    checked). A failed vLLM start is retried once without CUDA graphs, and a vLLM that hangs is
+    stopped after `VLLM_TIMEOUT_S` (default 1,200 s plus 0.5 s per row).
+  - On H200-class cards `GEN_BACKEND` defaults to `vllm` when the tested vLLM 0.27.x is found
+    and its torch can use the GPU (`scripts/qwen/lib.sh`). vLLM 0.27.1 ships torch for CUDA 13,
+    so with an older driver the default falls back to `hf`. It is `hf` everywhere else. Another
+    vLLM version works only when `GEN_BACKEND=vllm` is set explicitly, with a warning. Measured
+    against Hugging Face on 1× H200 NVL, next to running jobs (`tools/gen_parity.py`):
+
+    | check | result |
+    |---|---|
+    | CL-LoRA greedy, IncLoRA TACRED task 9 (1,240 rows) | 98.95% identical answers, F1 63.06 → 63.31 |
+    | Distillation path, strict greedy, FewRel task 0 (1,120 rows) | 99.02% identical answers, F1 89.29 → 89.55 |
+    | Distillation path, sampled at T=0.5, 3 seeds each | mean F1 89.16 (spread 0.89) → 89.21 (spread 0.49) |
+    | Pseudo-labels, ACE task 1, confidence filter on | 99.15% identical rows, the same 17 pseudo-labels |
+    | Speed, trained FewRel model (7 tasks), task 3 test set (4,480 rows), strict greedy | evaluation 318 s → 141 s, of which answer generation about 257 s → 80 s; 99.04% identical answers, F1 59.58 → 59.63 |
+
+    In that speed check vLLM spends 17 s generating. The rest is starting it: 8 s of imports
+    and 50 s of engine start, plus the model export, at every evaluation. The FewRel run's own
+    Hugging Face evaluation, under MPS, takes 170-220 s at this size and 650-1,900 s on the
+    11,200-row test set of task 9. With vLLM each FewRel job should take about 20% less. On small
+    test sets (TACRED, ACE) the start-up makes the two about even.
+
+    An earlier speed row (2,503 s → 572 s on 11,200 rows) is not a guide: it used a task-0 model
+    on rows it was never trained for, and ran under heavier contention.
+
+    Also measured on the same 4,480 prompts (`/venv/main`, outside MPS):
+    - vLLM's Transformers modeling backend (`model_impl="transformers"`): 79 s against 75 s for
+      vLLM's own Qwen3 code, with identical answers.
+    - Transformers 5.15 continuous batching (`generate_batch`) with CUDA graphs: 270 s.
+    - The same with FlashAttention-3 from the kernel hub (`kernels-community/flash-attn3`): 64 s,
+      98.7% identical to vLLM.
+
+    End to end, TACRED order 0, all 10 tasks, against the round-1 runs above: RKL final-task
+    trigger F1 65.56 → 65.56, IncLoRA 63.06 → 62.98. Peak memory per run, trainer plus its vLLM:
+    RKL 32.3 GiB, IncLoRA 23.7 GiB. The wall-clock of that run (5,071 s and 4,912 s) is not
+    comparable with the round-1 table: the card also ran three FewRel jobs and the checks
+    above at 100% utilization.
+- **Compiled sampling (opt-in).** `COMPILE_GEN=1` (`--compile-generation`) samples Ours'
+  self-distillation responses with a static KV cache, which transformers compiles. Measured on a
+  shared H200 (ACE task 1, physical batch 8): 27.6-35.5 s → 22.8-23.8 s per update.
+  - The samples are not bit-identical to eager sampling: compiled kernels flip near-tied tokens,
+    so a compiled run differs from an eager one like another random draw. It stays off by
+    default, so new Ours numbers stay comparable with eager runs.
+  - DistiLLM/AMiD student generation stays uncompiled. It samples a different number of rows
+    each step, every new batch size recompiles, and it measured slower.
+- **Gradient checkpointing (opt-in).** `GRAD_CKPT=1` (`--gradient-checkpointing`) recomputes
+  each decoder layer in the backward pass instead of keeping its activations. This is what lets
+  Ours run at a larger physical batch.
+  - One Ours step, span loss included, gives the same loss and LoRA gradients with and without
+    it (`tests/test_ced_step.py`).
+  - On the GPU, Ours runs do not repeat exactly: two runs with the same seed already differ by up
+    to 6% in the first logged loss. Two runs with checkpointing landed inside that spread.
+  - Measured on a shared H200 (`tools/bench_ours.sh`'s workload, ACE task 1) at PHYS_BS 16 with
+    `COMPILE_GEN=1`, the trainer peaked at 20.8 GB (67.5 GiB at 16 without checkpointing, in the
+    table below). It took 7.6-7.8 s per update after warm-up, against 21.7-23.2 s at PHYS_BS 8
+    eager.
+  - PHYS_BS 32, one physical batch per update of `--bs 2 --acc 16`, is faster still. Run back to
+    back with PHYS_BS 16 next to the same three FewRel jobs, both with checkpointing and
+    `COMPILE_GEN=1`: 6.3 s against 7.9 s per update over the last two log windows, with peaks of
+    27.2 GB and 21.5 GB.
+  - The trainers count steps from 1, so they never apply a run's last update (the original code
+    included), and a run with several micro-steps per update logs half its first loss. A physical
+    batch that holds a whole update would apply that update; `ced_step.first_global_step` makes it
+    count like the run it splits, so PHYS_BS 32 trains, logs, saves and evaluates exactly as 8 and
+    16 do (`tests/test_ced_step.py`) on any split of at least 64 rows. Inside an update the step
+    count still differs by one, which only knobs no table uses read (`--ced-sd-mix random`,
+    `--ced-sd-warmup`).
+  - Baselines already fit at PHYS_BS 16 and only pay the recomputation, so leave it off for them.
+    `OURS_PHYS_BS=32 OURS_GRAD_CKPT=1` gives Ours and its ablations these settings while the
+    baselines of the same launch keep `PHYS_BS` and `GRAD_CKPT`.
+  - `bash tools/bench_ours.sh <tag>` on a free card compares packings for Ours runs: 3 runs at
+    PHYS_BS 16 and 3 at 32 with checkpointing, and one run per card at 32 without (104.1 GiB in
+    the table below).
+
+Measured on 1× H200 NVL (`bash tools/bench_gpu.sh h200`):
+
+| phase | phys | runs | mps | wall_s | s_per_update | peak_gib | mean_util |
+|---|---|---|---|---|---|---|---|
+| rkl | 2 | 1 | 0 | 159 | 2.67 | 13.7 | 21 |
+| ours | 2 | 1 | 0 | 704 | 49.42 | 31.9 | 24 |
+| cl | 2 | 1 | 0 | 284 | - | 15.8 | 40 |
+| rkl | 8 | 1 | 0 | 77 | 0.72 | 13.6 | 28 |
+| ours | 8 | 1 | 0 | 366 | 20.39 | 36.9 | 29 |
+| cl | 8 | 1 | 0 | 136 | - | 16.0 | 63 |
+| rkl | 16 | 1 | 0 | 83 | 0.41 | 21.1 | 35 |
+| ours | 16 | 1 | 0 | 290 | 13.66 | 67.5 | 34 |
+| cl | 16 | 1 | 0 | 142 | - | 24.1 | 69 |
+| rkl | 32 | 1 | 0 | 63 | 0.32 | 36.1 | 31 |
+| ours | 32 | 1 | 0 | 239 | 8.24 | 104.1 | 36 |
+| cl | 32 | 1 | 0 | 150 | - | 46.2 | 69 |
+| share | 16 | 1 | 0 | 84 | 0.46 | 21.1 | 35 |
+| share | 16 | 2 | 0 | 107 | 0.68 | 42.1 | 55 |
+| share | 16 | 3 | 0 | 142 | 0.96 | 63.2 | 67 |
+| share | 16 | 4 | 0 | 268 | 1.32 | 84.3 | 48 |
+| share | 16 | 1 | 1 | 83 | 0.41 | 21.1 | 36 |
+| share | 16 | 2 | 1 | 110 | 0.52 | 42.2 | 34 |
+| share | 16 | 3 | 1 | 112 | 0.68 | 63.3 | 58 |
+| share | 16 | 4 | 1 | 288 | 0.96 | 84.3 | 26 |
+
+The defaults come from these rows (the rule at the end of `tools/bench_gpu.sh`):
+`PHYS_BS=8`, because Ours peaks at 67.5 GiB at 16 and two Ours runs would not fit on one
+card; `SLOTS_PER_GPU=3` with `USE_MPS=1`, which finished the most runs per hour (three
+RKL runs in 112 s, one alone in 83 s). Matrices without Ours runs (the FewRel/TACRED
+baselines) can set `PHYS_BS=16`: RKL then takes 0.41 s per update instead of 0.72 s
+(measured for RKL and CL-LoRA; DistiLLM/AMiD at 16 are not measured).
+
+End-to-end check, TACRED perm0, all 10 tasks, old code (`4257d86`) vs this branch, sharing one H200:
+
+| method | final-task trigger F1, old → new | wall-clock, old → new |
+|---|---|---|
+| RKL (distillation) | 63.79 → 65.56 | 3 h 24 min → 1 h 05 min (3.1×) |
+| IncLoRA (CL-LoRA) | 63.95 → 63.06 | 3 h 26 min → 1 h 10 min (2.9×) |
+
+The four runs ran at the same time on one H200 NVL, without MPS. The new runs used this
+branch's defaults: `PHYS_BS=8`; one test evaluation per task where the old RKL runner
+evaluated dev and test after each of its 5 epochs; CL-LoRA evaluation batches of 128
+instead of 16. The final-task test set has 1,240 triggers, so one point is about 12 of
+them. RKL's evaluation samples at T=0.5 in both trees (see Decoding above). IncLoRA's
+evaluation is greedy; its per-task F1 differs between the trees in both directions, by
+3.4 points at most (after task 1).
+
 ## Results
 
 ```bash
