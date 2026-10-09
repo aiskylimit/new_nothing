@@ -1,4 +1,4 @@
-#1 +75
+#2
 #opsd
 #v1
 
@@ -40,8 +40,8 @@ export NCCL_DEBUG=WARN
 # ls -lh collected_logs.tar.gz
 # bash ./project_commands_12.sh
 
-cd ./opsd
-bash ./project_commands.sh
+# cd ./opsd
+# bash ./project_commands.sh
 
 # cd ./offline_olmo7b_b200
 # bash ./project_commands.sh
