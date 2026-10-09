@@ -195,3 +195,7 @@ collected_logs/
 eval_outputs/
 /logs
 /logs2
+/.mps
+/.slots
+/bench
+/.venv-vllm

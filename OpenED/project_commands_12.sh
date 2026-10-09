@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Sentence-level CRE on TACRED: the model extracts the subject, the object and the relation
 # itself, so the logs give entity F1 ("entity") next to triple F1 ("argument"). Every baseline
-# plus Ours, 5 perms, on GPUs 0 1 5 with several runs per GPU. project_commands_13.sh runs the
-# same for FewRel (DS=fewrel).
+# plus Ours, 5 perms, on GPU 4 with several runs on it. project_commands_13.sh runs the same for
+# FewRel (DS=fewrel).
 #
-#   bash project_commands_12.sh                       # TACRED, gpus 0 1 5, 2 runs per GPU
+#   bash project_commands_12.sh                       # TACRED, gpu 4, 2 runs at a time
 #   DRY=1 bash project_commands_12.sh                 # print the plan, train nothing
 #   STEPS="cllora" PERMS="0" bash project_commands_12.sh
 #
@@ -21,27 +21,34 @@
 # ED_EVAL_ARG_PER_TYPE=1 adds per-relation triple counts (FGT on triples), PL_ANCHOR=pair the
 # pair anchor; both only change these runs.
 #
-# Faster than the earlier CRE runs, same objectives:
-#   - tasks 1-9 of the distillation and Ours runs generate answers once, for the test set after
-#     the last update (--eval-interval -2), instead of dev and test after every epoch. DistiLLM
-#     and AMiD keep the per-epoch evaluation (their adaptive threshold reads the dev loss), and
-#     so does task0 (finetune.py has no -2).
-#   - micro-batch 8 x 4 for the baselines and task0 (effective batch 32 as always), evaluation
-#     batch 64. Ours keeps its recipe's 2 x 16.
-#   - SLOTS runs per GPU, each starting only when its GPU has NEED_MB free.
+# Trainer of the h200-vllm branch (ced_step.py, ced_eval.py), same objectives as before:
+#   - answers are generated once per task, for the test set after the last update
+#     (run_ced_v2.sh's EVAL_GEN_MODE=final); DistiLLM and AMiD keep a dev loss pass for their
+#     adaptive threshold. Evaluation batch 64, as the runs of 08/10.
+#   - the loss stays defined per logical micro-batch: 8 x 4 for the baselines and task0 (as the
+#     runs of 08/10), 2 x 16 for Ours (its recipe). PHYS_BS rows go through the GPU at once,
+#     the loss is still taken per logical micro-batch (--loss-group-size), so only the speed
+#     changes. Ours also recomputes activations in the backward (GRAD_CKPT=1) to fit 32 rows.
+#   - Hugging Face generation (GEN_BACKEND=hf) and eager SD sampling (COMPILE_GEN=0): vLLM is not
+#     checked on this host, and the compiled sampler broke Ours on H200.
+#   - SLOTS runs at a time per GPU, each starting only when its GPU has NEED_MB free.
+# Runs of 08/10 (perm 0, part of perms 1-2) were trained with the earlier trainer; their loss is
+# the same per micro-batch, and they are skipped as finished.
 # A finished run is skipped, a run whose name is on a live process's command line is left alone,
 # and a crashed partial one is moved to results/qwen3/ced/_failed/ (never deleted) and retrained.
 #
-# Knobs: DS [tacred], GPUS ["0 1 5"], SLOTS runs per GPU [2], NEED_MB [60000], PERMS [0 1 2 3 4],
-# STEPS ["cllora dist ours"], EPOCHS [5], SEED [42].
+# Knobs: DS [tacred], GPUS ["4"], SLOTS runs per GPU [2], NEED_MB [50000], PHYS_BS [32],
+# PERMS [0 1 2 3 4], STEPS ["cllora dist ours"], EPOCHS [5], SEED [42].
 set -uo pipefail
 cd "$(dirname "$0")"
 
 DRY=${DRY:-0}
 DS=${DS:-tacred}
-GPUS=(${GPUS:-0 1 5})
+GPUS=(${GPUS:-4})
 SLOTS=${SLOTS:-2}
-NEED_MB=${NEED_MB:-60000}
+NEED_MB=${NEED_MB:-50000}
+PHYS=${PHYS_BS:-32}
+export GEN_BACKEND=hf COMPILE_GEN=0
 PERMS=${PERMS:-"0 1 2 3 4"}
 STEPS=${STEPS:-"cllora dist ours"}
 EPOCHS=${EPOCHS:-5}
@@ -166,12 +173,12 @@ run_job () {  # $1 gpu $2 port $3 kind $4 name $5 perm -> 0 done, 1 failed, 2 bu
     [ "${DRY}" = "1" ] && return 0
     case ${k} in
         t0)
-            MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" --mode sft \
+            PHYS_BS="${PHYS}" MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" --mode sft \
                 --data-prefix "${PRE}" --perm "${p}" --rank 16 --alpha 64 --epochs "${EPOCHS}" --lr 0.0002 \
                 --seed "${SEED}" --bs 8 --acc 4 --eval-bs 64 --greedy 1 --gpus "${g}" --end-task 0 \
                 > "${jlog}" 2>&1 || rc=$? ;;
         cl)
-            bash scripts/qwen/ced/run_cllora.sh --method "${m}" --data-root "data/${PRE}${p}" --num-tasks 10 \
+            PHYS_BS="${PHYS}" bash scripts/qwen/ced/run_cllora.sh --method "${m}" --data-root "data/${PRE}${p}" --num-tasks 10 \
                 --rank 16 --alpha 64 --lr 2e-4 --epochs "${EPOCHS}" --batch-size 8 --grad-accum 4 \
                 --eval-batch-size 64 --protocol "${PROTO}" --seed "${SEED}" --gpu "${g}" --py "${PY}" \
                 > "${jlog}" 2>&1 || rc=$?
@@ -180,19 +187,19 @@ run_job () {  # $1 gpu $2 port $3 kind $4 name $5 perm -> 0 done, 1 failed, 2 bu
             case ${m} in   # run_cre_dist.sh's DistiLLM/AMiD flags
                 distillm) kdt=adaptive-srkl; extra="--student-gen --init-threshold 0.0 --loss-eps 0.1 --capacity 1000" ;;
                 amid)     kdt=adaptive-amid; extra="--student-gen --init-threshold 0.0 --loss-eps 0.1 --capacity 1000 --amid-div-name ab --amid-div-order pr --amid-alpha 0.5 --amid-lam 0.5" ;;
-                *)        kdt=${m};          extra="--eval-interval -2" ;;
+                *)        kdt=${m};          extra="" ;;
             esac
-            MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" --mode ce_kd \
+            PHYS_BS="${PHYS}" MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" --mode ce_kd \
                 --data-prefix "${PRE}" --perm "${p}" --kd-type "${kdt}" --w-span 0 --kd-ratio 0.9 --skew 0.1 \
                 --span-metric cosine --layers "22 25 28" --rank 16 --alpha 64 --epochs "${EPOCHS}" --lr 0.0002 \
                 --seed "${SEED}" --bs 8 --acc 4 --eval-bs 64 --greedy 1 --gpus "${g}" --start-task 1 \
                 --task0-source-run "${t0}" --extra "${extra}" > "${jlog}" 2>&1 || rc=$? ;;
         ours)   # ours_queue.sh's h2 flags (project_commands_9.sh), from the shared task0
-            MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" --mode ce_kd \
+            PHYS_BS="${PHYS}" GRAD_CKPT=1 MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" --mode ce_kd \
                 --data-prefix "${PRE}" --perm "${p}" --kd-type sfkl --w-span 2.0 --kd-ratio 0.9 --skew 0.1 \
                 --span-metric cosine --layers "22 25 28" --rank 16 --alpha 64 --epochs "${EPOCHS}" --lr 0.0002 \
                 --seed "${SEED}" --bs 2 --acc 16 --eval-bs 64 --pl 1 --replay-boost 5 --greedy 1 --gpus "${g}" \
-                --start-task 1 --task0-source-run "${t0}" --extra "--eval-interval -2" > "${jlog}" 2>&1 || rc=$? ;;
+                --start-task 1 --task0-source-run "${t0}" > "${jlog}" 2>&1 || rc=$? ;;
     esac
     if [ "${rc}" -eq 0 ] && [ -f "${R}/${run}/.complete" ]; then
         case ${k} in dist|ours) rm -rf "${R}/${run}"/task*/merged ;; esac   # the last task's model, never read again

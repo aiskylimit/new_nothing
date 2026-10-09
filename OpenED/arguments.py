@@ -97,6 +97,14 @@ def add_data_args(parser: argparse.ArgumentParser):
     group.add_argument("--eval-ppl", action="store_true")
     group.add_argument("--eval-rw", action="store_true")
     group.add_argument("--eval-gen", action="store_true")
+    group.add_argument("--eval-gen-mode", type=str, default="every", choices=["every", "final"],
+                       help="every: dev and test answers after each epoch (historical); final: test answers "
+                            "after the last update only, and a loss-only dev pass for the adaptive methods")
+    group.add_argument("--eval-loss-batch-size", type=int, default=32,
+                       help="rows per chunk of the evaluation loss pass (32 = the historical eval batch)")
+    group.add_argument("--dynamic-pad", action="store_true",
+                       help="pad each batch to its longest row (rounded up to 64) instead of --max-length; "
+                            "ignored with a span loss or --student-gen")
     
     group.add_argument("--only-prompt", action="store_true")
     return parser
@@ -128,6 +136,9 @@ def add_hp_args(parser: argparse.ArgumentParser):
                        help='total number of epochs to train over all training runs')
     group.add_argument('--training-epochs', type=int, default=10000)
     group.add_argument("--gradient-accumulation-steps", type=int, default=1)
+    group.add_argument("--loss-group-size", type=int, default=None,
+                       help="rows per logical micro-batch, the unit the CE/KD loss is defined over; "
+                            "--batch-size (the physical batch) must be a multiple of it (default: --batch-size)")
     group.add_argument("--gradient-checkpointing", action="store_true")
     group.add_argument("--attn-dtype", default=None)
     
@@ -235,7 +246,17 @@ def add_gen_args(parser: argparse.ArgumentParser):
     group.add_argument("--repetition-penalty", type=float, default=None)
     group.add_argument("--num-beams", type=int, default=1)
     group.add_argument("--temperature", type=float, default=1)
-    
+    group.add_argument("--strict-generation", action="store_true",
+                       help="use every GenerationConfig as written; by default transformers fills fields "
+                            "left at their library default from the model's generation_config.json (see "
+                            "gen_config.py), which is how all runs so far were made")
+    group.add_argument("--gen-backend", choices=["hf", "vllm"], default="hf",
+                       help="hf: answers come from model.generate(); vllm: from tools/vllm_generate.py in the "
+                            "vLLM environment, with the settings generate() would use (gen_backend.py)")
+    group.add_argument("--compile-generation", action="store_true",
+                       help="sample inside training steps (self-distillation, DistiLLM/AMiD) with a static KV "
+                            "cache, which transformers compiles (gen_config.train_generation_kwargs)")
+
     return parser
 
 
