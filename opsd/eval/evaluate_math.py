@@ -540,14 +540,14 @@ def main():
         "--dataset",
         type=str,
         default="aime25",
-        choices=["aime25", "aime26", "hmmt25"],
+        choices=["aime24", "aime25", "aime26", "hmmt25"],
         help="Prepared paper benchmark to evaluate.",
     )
     parser.add_argument(
         "--dataset_dir",
         type=str,
         required=True,
-        help="Directory containing the prepared paper benchmarks and AIME26.",
+        help="Directory containing the prepared evaluation benchmarks.",
     )
     parser.add_argument(
         "--max_new_tokens",

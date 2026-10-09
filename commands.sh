@@ -1,5 +1,7 @@
-#1 +50
-#check-gpu
+#d
+#datasets
+--hf-dataset HuggingFaceH4/aime_2024 /mnt/local/@PROJECT@/OPSD/data/raw/eval/aime24
+
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
