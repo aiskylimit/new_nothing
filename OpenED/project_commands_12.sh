@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Sentence-level CRE on TACRED: the model extracts the subject, the object and the relation
 # itself, so the logs give entity F1 ("entity") next to triple F1 ("argument"). Every baseline
-# plus Ours, 5 perms, on GPU 4 with several runs on it. project_commands_13.sh runs the same for
-# FewRel (DS=fewrel).
+# plus Ours, 5 perms, on GPU 4 with several runs on it. FewRel_sent and what failed here now run
+# in project_commands_13.sh ... 18.sh (project_commands_lib.sh), one GPU each.
 #
 #   bash project_commands_12.sh                       # TACRED, gpu 4, 2 runs at a time
 #   DRY=1 bash project_commands_12.sh                 # print the plan, train nothing
