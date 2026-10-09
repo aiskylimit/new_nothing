@@ -10,7 +10,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-# kill -9 756059 789827
+kill -9 2111524 2259372 2290960 2301727 2134525 2312628 2027875 2305017
 # sleep 2
 nvidia-smi
 
@@ -35,8 +35,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./OpenED
-bash gather_logs.sh all14
-tar -czf collected_logs.tar.gz collected_logs/all14/
+bash gather_logs.sh all15
+tar -czf collected_logs.tar.gz collected_logs/all15/
 ls -lh collected_logs.tar.gz
 # bash ./project_commands_12.sh
 
