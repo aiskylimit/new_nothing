@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 SELECTED_PAPER_BENCHMARKS = ("aime25", "hmmt25")
-ACTIVE_BENCHMARKS = ("aime25", "aime26", "hmmt25")
+ACTIVE_BENCHMARKS = ("aime24", "aime25", "aime26", "hmmt25")
 
 
 def load_rows(results_root: Path):
@@ -56,14 +56,14 @@ def render_results_table(rows: list[dict]) -> str:
         return model, method, -1 if step == "base" else int(step)
 
     lines = [
-        "| Model | Method | Step | AIME25 Avg@12 | AIME26 Avg@12 | HMMT25 Avg@12 | Average |",
-        "|---|---|---:|---:|---:|---:|---:|",
+        "| Model | Method | Step | AIME24 Avg@12 | AIME25 Avg@12 | AIME26 Avg@12 | HMMT25 Avg@12 | Average |",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     for (model, method, step), scores in sorted(grouped.items(), key=step_key):
         values = [scores.get(dataset) for dataset in ACTIVE_BENCHMARKS]
         average = sum(value for value in values if value is not None) / sum(value is not None for value in values)
         formatted = ["-" if value is None else f"{value:.1f}" for value in values]
-        lines.append(f"| {model} | {method} | {step} | {formatted[0]} | {formatted[1]} | {formatted[2]} | {average:.1f} |")
+        lines.append(f"| {model} | {method} | {step} | {' | '.join(formatted)} | {average:.1f} |")
     return "\n".join(lines)
 
 

@@ -11,7 +11,7 @@ export MODEL_ROOT="${BASE_DIR}/models"
 export RAW_DATA_ROOT="${BASE_DIR}/data/raw"
 export PREPARED_DATA_ROOT="${BASE_DIR}/data/processed"
 export OUTPUT_ROOT="${BASE_DIR}/outputs"
-export RESULTS_ROOT="${BASE_DIR}/results"
+export RESULTS_ROOT="${BASE_DIR}/results/seed42"
 export HF_HOME="${BASE_DIR}/.cache/huggingface"
 
 # Two-GPU training and evaluation allocation.
@@ -22,41 +22,22 @@ export VLLM_GPU_MEMORY_UTILIZATION=0.6
 export GPU_MEMORY_UTILIZATION=0.9
 export MAIN_PROCESS_PORT=auto
 
-# Data already prepared; re-enable only if raw data changed.
-# python "${PROJECT_ROOT}/data/prepare_data.py" \
-#     --raw_root "${RAW_DATA_ROOT}" \
-#     --output_root "${PREPARED_DATA_ROOT}" \
-#     --overwrite
+# Download HuggingFaceH4/aime_2024 to RAW_DATA_ROOT/eval/aime24 first (see download.txt).
+if [[ ! -d "${PREPARED_DATA_ROOT}/eval/aime24" ]]; then
+    python "${PROJECT_ROOT}/data/prepare_data.py" \
+        --raw_root "${RAW_DATA_ROOT}" \
+        --output_root "${PREPARED_DATA_ROOT}" \
+        --only_eval aime24
+fi
 
-# Evaluate each base model once, independently of method training and checkpoint evaluation.
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd 4b
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b opsd
+# Preserve completed evaluations from older runs without an explicit seed.
+export EVAL_SEED=42
+export OVERWRITE_EVAL=0
 
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd 8b
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b opsd
+# Qwen3-4B: train OPSD, then evaluate configured checkpoints
+# on AIME24, AIME25, AIME26, and HMMT25.
+bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd 4b
+bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b opsd
 
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd olmo7b  # completed
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b opsd  # completed
-
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b base  # completed
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b base  # completed
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b base  # done, skip to avoid re-eval
-
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo 4b
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b grpo
-
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo 8b
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b grpo
-
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" sft 4b
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b sft
-
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" sft 8b
-# bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b sft
-
-# GRPO olmo7b training done (checkpoints through 500 exist); 400/425/450 already evaluated.
-# bash "${PROJECT_ROOT}/scripts/run_training.sh" grpo olmo7b
-GRPO_EVAL_STEPS="475 500" bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b grpo
-
-bash "${PROJECT_ROOT}/scripts/run_training.sh" sft olmo7b
-bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b sft
+# Olmo-3-7B-Think was already trained: evaluate OPSD on AIME24 only.
+EVAL_DATASETS="aime24" bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b opsd

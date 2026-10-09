@@ -9,7 +9,7 @@ from datasets import Dataset
 
 
 TRAIN_COLUMNS = ("problem", "solution", "Question", "Answer")
-EVAL_DATASETS = ("aime25", "aime26", "hmmt25")
+EVAL_DATASETS = ("aime24", "aime25", "aime26", "hmmt25")
 
 
 def parquet_files(path: Path) -> list[str]:
@@ -77,12 +77,17 @@ def main():
     parser.add_argument("--raw_root", type=Path, required=True)
     parser.add_argument("--output_root", type=Path, required=True)
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--only_eval", choices=EVAL_DATASETS,
+        help="Prepare just one evaluation dataset without rewriting train or other eval datasets.",
+    )
     args = parser.parse_args()
 
     raw_root = args.raw_root.expanduser().resolve()
     output_root = args.output_root.expanduser().resolve()
-    prepare_training_dataset(raw_root, output_root, args.overwrite)
-    for name in EVAL_DATASETS:
+    if not args.only_eval:
+        prepare_training_dataset(raw_root, output_root, args.overwrite)
+    for name in (args.only_eval,) if args.only_eval else EVAL_DATASETS:
         prepare_eval_dataset(name, raw_root, output_root, args.overwrite)
 
 
