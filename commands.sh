@@ -1,5 +1,5 @@
-#1 +10
-#log
+#2
+#oped
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -10,29 +10,6 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-#!/usr/bin/env bash
-
-pids=$(ps -eo pid=,args= | \
-  grep -E '[p]roject_commands_(0?[1-9]|1[0-8])(\.sh|[[:space:]])')
-
-echo "=== Found project_commands processes ==="
-echo "$pids"
-
-roots=$(echo "$pids" | awk '{print $1}')
-
-if [ -z "$roots" ]; then
-    echo "No matching project_commands processes found."
-    exit 0
-fi
-
-echo "=== Sending SIGTERM ==="
-kill -9 $roots
-
-sleep 3
-
-echo "=== Remaining matching processes ==="
-ps -eo pid,ppid,stat,args | \
-  grep -E '[p]roject_commands_(0?[1-9]|1[0-8])(\.sh|[[:space:]])'
 # sleep 2
 nvidia-smi
 
