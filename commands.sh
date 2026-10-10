@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/pl_logs.tar.gz +a
-#glog
+#2 -0-10 
+#opsd
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -33,8 +33,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_pl_logs.sh 
+# cd ./OpenED
+# bash gather_pl_logs.sh 
 # tar -czf collected_logs.tar.gz collected_logs/all17/
 # ls -lh collected_logs.tar.gz
 # bash ./project_commands.sh
