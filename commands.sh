@@ -38,7 +38,6 @@ cd ./OpenED
 # bash gather_logs.sh all16
 # tar -czf collected_logs.tar.gz collected_logs/all16/
 # ls -lh collected_logs.tar.gz
-kill -9 1305952 1305934 1131687 1131703 1131704 935241 935257 935258
 # bash ./project_commands.sh
 
 # cd ./opsd
