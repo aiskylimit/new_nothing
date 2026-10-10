@@ -1,4 +1,4 @@
-#1 +10
+#3
 #log
 #v1
 
@@ -10,7 +10,7 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-kill -9 2373844
+# kill -9 2373844
 # sleep 2
 nvidia-smi
 
@@ -34,10 +34,10 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_logs.sh all15
-tar -czf collected_logs.tar.gz collected_logs/all15/
-ls -lh collected_logs.tar.gz
+# cd ./OpenED
+# bash gather_logs.sh all15
+# tar -czf collected_logs.tar.gz collected_logs/all15/
+# ls -lh collected_logs.tar.gz
 # bash ./project_commands.sh
 
 # cd ./opsd
