@@ -169,6 +169,52 @@ def generate_vllm(teacher, tokenizer, prompts, max_new_tokens, need_scores, work
             for output, text in zip(outputs, texts)]
 
 
+def keys_of(response):
+    """(lower-cased trigger, type) of every record in a response string."""
+    return {(str(e[0]).lower(), e[1]) for e in json.loads(response).get("events", [])
+            if isinstance(e, list) and len(e) >= 2}
+
+
+def oracle_dir_of(data_dir):
+    """data/ace_b10_perm0/1 -> data/ace_oracle_b10_perm0/1 (build_ced_perms.py --oracle: same rows,
+    old-type records kept), or None when the prefix has no oracle form."""
+    base, task = os.path.split(os.path.normpath(data_dir))
+    name = os.path.basename(base)
+    oracle = re.sub(r"_(b\d+_perm\d+)$", r"_oracle_\1", name)
+    return None if oracle == name else os.path.join(os.path.dirname(base), oracle, task)
+
+
+def pl_quality(rows, gold_resp, oracle_rows, old_types, pending, all_scores, cand_idx):
+    """Precision / recall of the pseudo-labels against the records the split stripped, matched on
+    (trigger, type) as tools/ced_pl_quality.py does: memory rows skipped, recall over every stripped
+    record (no-event rows included). Also at other shares q of the confidence filter: the same
+    teacher answers, only the cutoff moves. None when the oracle rows do not line up."""
+    if len(oracle_rows) != len(rows) or any(r["user_prompt"] != o["user_prompt"] for r, o in zip(rows, oracle_rows)):
+        return None
+    golds, stripped = {}, {}
+    for i, (g, o) in enumerate(zip(gold_resp, oracle_rows)):
+        gold = keys_of(g)
+        if rows[i].get("is_memory") or (gold and {ty for _, ty in gold} <= old_types):
+            continue
+        golds[i], stripped[i] = gold, keys_of(o["response"]) - gold
+    n_stripped = sum(len(s) for s in stripped.values())
+
+    def score(added):  # row -> added keys
+        n_added = sum(len(a) for a in added.values())
+        hit = sum(len(a & stripped[i]) for i, a in added.items())
+        return {"added": n_added, "hit": hit, "precision": round(100 * hit / max(n_added, 1), 2),
+                "recall": round(100 * hit / max(n_stripped, 1), 2)}
+
+    out = {"stripped": n_stripped, "stripped_in_candidates": sum(len(stripped.get(i, ())) for i in cand_idx),
+           "kept": score({i: keys_of(rows[i]["response"]) - golds[i] for i in stripped})}
+    if all_scores:
+        for q in (30, 50, 70, 100):
+            cut = all_scores[min(int(len(all_scores) * (1 - q / 100.0)), len(all_scores) - 1)]
+            out[f"q{q}"] = score({i: {(str(ev[0]).lower(), ev[1]) for ev, s in evs if s is None or s >= cut} - golds[i]
+                                  for i, evs in pending.items() if i in stripped})
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--teacher", required=True)
@@ -194,6 +240,9 @@ def main():
                     help="pair: anchor = (subject, object), for sentence-level CRE")
     ap.add_argument("--gen-backend", choices=["hf", "vllm"], default="hf",
                     help="vllm: the teacher's answers come from vLLM (gen_backend.py), same settings")
+    ap.add_argument("--oracle-dir", default="auto",
+                    help="unstripped split for PL precision/recall in the log: auto = the --oracle build "
+                         "next to --data-dir (data/ace_oracle_b10_perm<p>/<t>) when it exists, none = off")
     args = ap.parse_args()
 
     if args.conf_filter == "thresh" and args.conf_thresh is None:
@@ -219,6 +268,7 @@ def main():
         print(f"lexicon: {len(lexicon)} (trigger,type) pairs from tasks 0..{args.task_id-1}")
 
     rows = [json.loads(l) for l in open(os.path.join(args.data_dir, "train.jsonl"))]
+    gold_resp = [r["response"] for r in rows]  # before the merge below rewrites them
 
     tokenizer = AutoTokenizer.from_pretrained(args.teacher, padding_side="left")
 
@@ -366,6 +416,26 @@ def main():
               for q in (10, 30, 50, 70, 90) if len(all_scores) > 10}
         stats["score_dist"] = {"n": len(all_scores), "mean": st.mean(all_scores),
                                "min": all_scores[0], "max": all_scores[-1], **qs}
+    oracle_dir = oracle_dir_of(args.data_dir) if args.oracle_dir == "auto" else \
+        (None if args.oracle_dir == "none" else args.oracle_dir)
+    if oracle_dir and os.path.exists(os.path.join(oracle_dir, "train.jsonl")):
+        try:  # a log line only: never let it fail the pseudo-labeling
+            q = pl_quality(rows, gold_resp, [json.loads(l) for l in open(os.path.join(oracle_dir, "train.jsonl"))],
+                           old_types, pending, all_scores, cand_idx)
+            if q is None:
+                print(f"PL_QUALITY skipped: {oracle_dir} rows do not line up with {args.data_dir}")
+            else:
+                stats["pl_quality"] = q
+                print(f"PL_QUALITY task{args.task_id} vs {oracle_dir}: stripped {q['stripped']} "
+                      f"({q['stripped_in_candidates']} in candidate rows)")
+                for k in ["kept"] + [k for k in q if k.startswith("q")]:
+                    v = q[k]
+                    print(f"PL_QUALITY task{args.task_id} {k:>5s}: added {v['added']} hit {v['hit']} "
+                          f"P {v['precision']:.2f} R {v['recall']:.2f}")
+        except Exception as e:
+            print(f"PL_QUALITY failed: {e!r}")
+    elif oracle_dir:
+        print(f"PL_QUALITY skipped: no {oracle_dir}/train.jsonl")
     with open(os.path.join(args.out, "pl_stats.json"), "w") as f:
         json.dump(stats, f)
     print("STATS", json.dumps(stats))

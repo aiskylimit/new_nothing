@@ -30,7 +30,8 @@
 #                            (dist_queue.sh; amid as project_commands_10.sh ran GENEVA)
 #   cl|<ds>|<m>|<p>          CL-LoRA, as run_all_cllora.sh (32 x 1)
 #   sdftce|<ds>|<p>          SDFT + CE (project_commands_10.sh), own task0
-#   abl|<config>|<p>         ACE ablation config of project_commands_9.sh, own task0
+#   abl|<config>|<p>         ACE ablation config of project_commands_9.sh (or q30 q50 q70 q100 of
+#                            project_commands_19.sh), own task0
 #   bb|<llama|gemma>|<p>     Ours on GENEVA with Llama-3.2-1B / Gemma-3-1b, in the new_nothingnew_2
 #                            checkout (NEW2, its own older trainer: only it supports these models)
 #
@@ -191,6 +192,12 @@ abl_of () {
         g3_wsd30)    echo "1||--w-sd 3.0" ;;
         g3_wsd03)    echo "1||--w-sd 0.3" ;;
         g3_wsd01)    echo "1||--w-sd 0.1" ;;
+        # tab:sens_q (project_commands_19.sh): share q of PL candidates the confidence check keeps;
+        # the method itself is q 70, and q100 is the check off (dedup and lexicon stay)
+        q30)         echo "1|--pl-conf-pct 30|" ;;
+        q50)         echo "1|--pl-conf-pct 50|" ;;
+        q70)         echo "1||" ;;
+        q100)        echo "1|--pl-conf none|" ;;
         *) return 1 ;;
     esac
 }
