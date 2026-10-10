@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/pl_logs.tar.gz +a
+#2 -0-10
 #glog
 #v1
 
