@@ -49,6 +49,10 @@ evaluate_checkpoint() {
         if [[ -n "${checkpoint_path}" ]]; then
             checkpoint_args=(--checkpoint_dir "${checkpoint_path}")
         fi
+        local pass_args=()
+        if [[ "${EVAL_PASS_ONLY:-0}" == "1" ]]; then
+            pass_args=(--pass_only)
+        fi
 
         python "${PROJECT_ROOT}/eval/evaluate_math.py" \
             --base_model "${model_path}" \
@@ -65,6 +69,7 @@ evaluate_checkpoint() {
             --tensor_parallel_size "${EVAL_TENSOR_PARALLEL_SIZE}" \
             --gpu_memory_utilization "${GPU_MEMORY_UTILIZATION}" \
             --output_file "${output_file}" \
+            "${pass_args[@]}" \
             "${checkpoint_args[@]}"
     done
 }
@@ -118,6 +123,12 @@ for model_size in 4b 8b olmo7b; do
     done
 done
 
+summary_metric=average
+if [[ "${EVAL_PASS_ONLY:-0}" == "1" ]]; then
+    summary_metric=pass
+fi
 python "${PROJECT_ROOT}/eval/summarize_results.py" \
     --results_root "${RESULTS_ROOT}/raw" \
-    --output_dir "${RESULTS_ROOT}"
+    --output_dir "${RESULTS_ROOT}" \
+    --metric "${summary_metric}" \
+    --datasets "${EVAL_DATASETS:-aime24 aime25 aime26 hmmt25}"
