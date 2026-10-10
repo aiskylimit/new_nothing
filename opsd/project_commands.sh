@@ -11,7 +11,7 @@ export MODEL_ROOT="${BASE_DIR}/models"
 export RAW_DATA_ROOT="${BASE_DIR}/data/raw"
 export PREPARED_DATA_ROOT="${BASE_DIR}/data/processed"
 export OUTPUT_ROOT="${BASE_DIR}/outputs"
-export RESULTS_ROOT="${BASE_DIR}/results/seed42"
+export RESULTS_ROOT="${BASE_DIR}/results/seed42_pass12"
 export HF_HOME="${BASE_DIR}/.cache/huggingface"
 
 # Two-GPU training and evaluation allocation.
@@ -22,22 +22,25 @@ export VLLM_GPU_MEMORY_UTILIZATION=0.6
 export GPU_MEMORY_UTILIZATION=0.9
 export MAIN_PROCESS_PORT=auto
 
-# Download HuggingFaceH4/aime_2024 to RAW_DATA_ROOT/eval/aime24 first (see download.txt).
-if [[ ! -d "${PREPARED_DATA_ROOT}/eval/aime24" ]]; then
+# Prepare only datasets required by this run, without replacing existing data.
+if [[ ! -d "${PREPARED_DATA_ROOT}/train" ]]; then
     python "${PROJECT_ROOT}/data/prepare_data.py" \
-        --raw_root "${RAW_DATA_ROOT}" \
-        --output_root "${PREPARED_DATA_ROOT}" \
-        --only_eval aime24
+        --raw_root "${RAW_DATA_ROOT}" --output_root "${PREPARED_DATA_ROOT}" --only_train
 fi
+for dataset in aime25 aime26 hmmt25; do
+    if [[ ! -d "${PREPARED_DATA_ROOT}/eval/${dataset}" ]]; then
+        python "${PROJECT_ROOT}/data/prepare_data.py" \
+            --raw_root "${RAW_DATA_ROOT}" --output_root "${PREPARED_DATA_ROOT}" --only_eval "${dataset}"
+    fi
+done
 
 # Preserve completed evaluations from older runs without an explicit seed.
 export EVAL_SEED=42
+export EVAL_VAL_N=12
 export OVERWRITE_EVAL=0
+export EVAL_PASS_ONLY=1
+export EVAL_DATASETS="aime25 aime26 hmmt25"
 
-# Qwen3-4B: train OPSD, then evaluate configured checkpoints
-# on AIME24, AIME25, AIME26, and HMMT25.
-bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd 4b
-bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 4b opsd
-
-# Olmo-3-7B-Think was already trained: evaluate OPSD on AIME24 only.
-EVAL_DATASETS="aime24" bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" olmo7b opsd
+# Qwen3-8B: train OPSD, then evaluate pass@12 at the configured checkpoints.
+bash "${PROJECT_ROOT}/scripts/run_training.sh" opsd 8b
+bash "${PROJECT_ROOT}/eval/run_eval_matrix.sh" 8b opsd
