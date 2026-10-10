@@ -38,12 +38,32 @@ cd ./OpenED
 # bash gather_logs.sh all16
 # tar -czf collected_logs.tar.gz collected_logs/all16/
 # ls -lh collected_logs.tar.gz
-pstree -aps 2540717
-pstree -aps 2531869
-pstree -aps 2508757
-pstree -aps 2520995
-pstree -aps 2503744
-pstree -aps 2524654
+targets="2540717 2531869 2508757 2520995 2503744 2524654"
+declare -A seen
+
+for pid in $targets; do
+    p="$pid"
+
+    while [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -gt 1 ]; do
+        info=$(ps -o pid=,ppid=,user=,args= -p "$p")
+        [ -z "$info" ] && break
+
+        read -r cur parent user rest <<< "$info"
+
+        # Chỉ xét process cha, không kill PID ban đầu
+        if [ "$p" != "$pid" ] && [ -z "${seen[$p]+x}" ]; then
+            seen[$p]=1
+
+            case "$rest" in
+                *opened*|*commands.sh*|*bash*|*sh*)
+                    echo "Candidate parent: PID=$cur PPID=$parent CMD=$rest"
+                    ;;
+            esac
+        fi
+
+        p="$parent"
+    done
+done
 # bash ./project_commands.sh
 
 # cd ./opsd
