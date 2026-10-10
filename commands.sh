@@ -1,5 +1,5 @@
-#2 -14 +a
-#opsd
+#1 +10
+#log
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -34,10 +34,16 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./OpenED
-# bash gather_logs.sh all15
-# tar -czf collected_logs.tar.gz collected_logs/all15/
+cd ./OpenED
+# bash gather_logs.sh all16
+# tar -czf collected_logs.tar.gz collected_logs/all16/
 # ls -lh collected_logs.tar.gz
+pstree -aps 2540717
+pstree -aps 2531869
+pstree -aps 2508757
+pstree -aps 2520995
+pstree -aps 2503744
+pstree -aps 2524654
 # bash ./project_commands.sh
 
 # cd ./opsd
