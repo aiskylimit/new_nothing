@@ -37,6 +37,7 @@ from .distributed_indexed import DistributedMMapIndexedDataset
 
 from torch.distributed import get_rank, get_world_size, barrier
 from utils import print_rank
+from chat_format import CHAT_MODEL_TYPES
 from utils import save_rank
 
 
@@ -251,7 +252,7 @@ class LMTrainDataset(Dataset):
         source_len = 1
         
         prompt = None
-        if self.args.model_type in ["qwen"] and 4294967295 in input_ids:
+        if self.args.model_type in CHAT_MODEL_TYPES and 4294967295 in input_ids:
             source_len = np.where(input_ids==4294967295)[0][0]
             prompt = input_ids[:source_len]
             input_ids = np.concatenate([input_ids[:source_len], input_ids[source_len+1:]], axis=0)
@@ -299,7 +300,7 @@ class LMTrainDataset(Dataset):
         need = 1
         for sample in samples:
             ids = sample["input_ids"]
-            if self.args.model_type in ["qwen"] and 4294967295 in ids:
+            if self.args.model_type in CHAT_MODEL_TYPES and 4294967295 in ids:
                 n = len(ids) - 1
             elif 65535 in ids:
                 n = len(ids) - 1
@@ -405,7 +406,7 @@ class LMEvalDataset(Dataset):
         source_len = 1
         
         prompt = None
-        if self.args.model_type in ["qwen"] and 4294967295 in input_ids:
+        if self.args.model_type in CHAT_MODEL_TYPES and 4294967295 in input_ids:
             source_len = np.where(input_ids==4294967295)[0][0]
             prompt = input_ids[:source_len]
             input_ids = np.concatenate([input_ids[:source_len], input_ids[source_len+1:]], axis=0)

@@ -1,4 +1,8 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
+#d
+#models
+--hf meta-llama/Llama-3.2-1B-Instruct /mnt/local/@PROJECT@/OpenED/models/Llama-3.2-1B-Instruct
+--hf google/gemma-3-1b-it /mnt/local/@PROJECT@/OpenED/models/gemma-3-1b-it
+
 #glog
 #v2
 

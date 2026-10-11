@@ -46,6 +46,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # the runners start this file as `python tools/ced_pseudo_label.py`, so sys.path[0] is tools/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from chat_format import TEMPLATE_KWARGS, stop_ids  # noqa: E402
 from gen_backend import find_vllm_python, meta_model, resolve_generation_config, run_vllm, vllm_params  # noqa: E402
 
 
@@ -124,18 +125,19 @@ def chat_prompts(tokenizer, rows, idxs):
     """The teacher's prompt text for each candidate row."""
     return [tokenizer.apply_chat_template(
         [{"role": "system", "content": rows[i]["system_prompt"]}, {"role": "user", "content": rows[i]["user_prompt"]}],
-        add_generation_prompt=True, tokenize=False, enable_thinking=False) for i in idxs]
+        add_generation_prompt=True, tokenize=False, **TEMPLATE_KWARGS) for i in idxs]
 
 
 def strip_stop(ids, tokenizer):
-    """Generated ids without eos/pad: the view event_conf_score aligns with the text."""
-    return [t for t in ids if t != tokenizer.eos_token_id and t != tokenizer.pad_token_id]
+    """Generated ids without eos/pad/end of turn: the view event_conf_score aligns with the text."""
+    stops = {tokenizer.eos_token_id, tokenizer.pad_token_id, *stop_ids(tokenizer)}
+    return [t for t in ids if t not in stops]
 
 
 def generate_hf(model, tokenizer, prompts, max_new_tokens, need_scores, device):
     """[(text, gen_ids, token_logprobs)] from model.generate(); the ids and log-probabilities are
     None without the confidence filter."""
-    enc = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=1024).to(device)
+    enc = tokenizer(prompts, return_tensors="pt", padding=True, add_special_tokens=False, truncation=True, max_length=1024).to(device)
     with torch.no_grad():
         out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
                              pad_token_id=tokenizer.eos_token_id,
@@ -159,7 +161,7 @@ def generate_vllm(teacher, tokenizer, prompts, max_new_tokens, need_scores, work
         return []
     config = resolve_generation_config(meta_model(teacher), None, do_sample=False, pad_token_id=tokenizer.eos_token_id)
     requests = [{"prompt_token_ids": ids, "max_tokens": max_new_tokens, "seed": 0}
-                for ids in tokenizer(prompts, truncation=True, max_length=1024)["input_ids"]]
+                for ids in tokenizer(prompts, add_special_tokens=False, truncation=True, max_length=1024)["input_ids"]]
     outputs = run_vllm(work_dir, teacher, requests, vllm_params(config, logprobs=need_scores), vllm_py=vllm_py)
     shutil.rmtree(work_dir, ignore_errors=True)
     texts = tokenizer.batch_decode([output["token_ids"] for output in outputs], skip_special_tokens=True)
@@ -271,6 +273,8 @@ def main():
     gold_resp = [r["response"] for r in rows]  # before the merge below rewrites them
 
     tokenizer = AutoTokenizer.from_pretrained(args.teacher, padding_side="left")
+    if tokenizer.pad_token_id is None:   # Llama 3 ships none; Qwen's is <|endoftext|>
+        tokenizer.pad_token = tokenizer.convert_ids_to_tokens(stop_ids(tokenizer)[1])
 
     need_scores = args.conf_filter != "none"
 
