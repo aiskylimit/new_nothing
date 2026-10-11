@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/pl_logs.tar.gz +a
+#1 +10
 #glog
 #v2
 
@@ -35,8 +35,9 @@ export NCCL_DEBUG=WARN
 
 cd ./OpenED
 bash gather_pl_logs.sh 
-# tar -czf collected_logs.tar.gz collected_logs/all17/
-# ls -lh collected_logs.tar.gz
+bash gather_logs.sh all21
+tar -czf collected_logs.tar.gz collected_logs/all21/
+ls -lh collected_logs.tar.gz
 # bash ./project_commands.sh
 
 # cd ./opsd
