@@ -9,6 +9,7 @@ import numpy as np
 from data_utils.indexed_dataset import make_builder
 from transformers import AutoTokenizer
 from arguments import get_args
+from chat_format import CHAT_MODEL_TYPES, TEMPLATE_KWARGS, stop_ids
 
 
 # 1. Implement an Encoder, which gives it a line of input data and it returns you the tokenized result.
@@ -18,6 +19,7 @@ class Encoder(object):
 
     def initializer(self):
         Encoder.tokenizer = AutoTokenizer.from_pretrained(self.args.model_path, padding_side="right")
+        Encoder.turn_end = stop_ids(Encoder.tokenizer)[0]   # closes every target; = eos on Qwen
 
     def encode(self, line):
         line = json.loads(line)
@@ -30,7 +32,7 @@ class Encoder(object):
         prompt = Encoder.tokenizer.apply_chat_template(
             [{"role": "system", "content": system_prompt},
              {"role": "user", "content": user_prompt}],
-             add_generation_prompt=True, tokenize=False, enable_thinking=False 
+             add_generation_prompt=True, tokenize=False, **TEMPLATE_KWARGS
         )
 
         t_prompt = None
@@ -38,12 +40,12 @@ class Encoder(object):
             t_prompt = Encoder.tokenizer.apply_chat_template(
                 [{"role": "system", "content": t_system_prompt},
                  {"role": "user", "content": t_user_prompt}],
-                 add_generation_prompt=True, tokenize=False, enable_thinking=False 
+                 add_generation_prompt=True, tokenize=False, **TEMPLATE_KWARGS
             )
         
         
         prompt_tokens = Encoder.tokenizer.encode(prompt, add_special_tokens=False)
-        full_tokens = Encoder.tokenizer.encode(prompt + response, add_special_tokens=False) + [Encoder.tokenizer.eos_token_id]
+        full_tokens = Encoder.tokenizer.encode(prompt + response, add_special_tokens=False) + [Encoder.turn_end]
         response_tokens = full_tokens[len(prompt_tokens):]
 
         t_prompt_tokens = None
@@ -105,7 +107,7 @@ def main():
             t_bin_file = os.path.join(args.processed_data_dir, f"teacher_train_0.bin")
             t_idx_file = os.path.join(args.processed_data_dir, f"teacher_train_0.idx")
                     
-        if args.model_type!="qwen":
+        if args.model_type not in CHAT_MODEL_TYPES:
             binary_builder = make_builder(bin_file, impl="mmap", dtype=np.uint16)
         else:
             binary_builder = make_builder(bin_file, impl="mmap", dtype=np.uint32)
@@ -132,7 +134,7 @@ def main():
             else:
                 if t_prompt is not None and split == "train":
                     if t_binary_builder is None:
-                        if args.model_type!="qwen":
+                        if args.model_type not in CHAT_MODEL_TYPES:
                             t_binary_builder = make_builder(t_bin_file, impl="mmap", dtype=np.uint16)
                         else:
                             t_binary_builder = make_builder(t_bin_file, impl="mmap", dtype=np.uint32)

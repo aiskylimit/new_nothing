@@ -34,18 +34,17 @@
 #   sdftce|<ds>|<p>          SDFT + CE (project_commands_10.sh), own task0
 #   abl|<config>|<p>         ACE ablation config of project_commands_9.sh (or q30 q50 q70 q100 of
 #                            project_commands_19.sh), own task0
-#   bb|<llama|gemma>|<p>     Ours on GENEVA with Llama-3.2-1B / Gemma-3-1b, in the new_nothingnew_2
-#                            checkout (NEW2, its own older trainer: only it supports these models)
+#   bb|<llama|gemma>|<p>     Ours on GENEVA with Llama-3.2-1B / Gemma-3-1b (models/ from download.txt,
+#                            chat tokens from chat_format.py), 8 x 4 as their baselines, HF generation
 #
 # Knobs: DRY [0] (print the plan), NEED_MB free MiB a run waits for [60000], GEN_BACKEND [auto],
-# SEED [42], NEW2 [the new_nothingnew_2 OpenED checkout next to this one].
+# SEED [42].
 
 DRY=${DRY:-0}
 NEED_MB=${NEED_MB:-60000}
 SEED=${SEED:-42}
 PORT=$((31000 + 10 * GPU))
 HERE=$(pwd)
-NEW2=${NEW2:-$(dirname "${HERE}")new_2/OpenED}
 R=results/qwen3/ced
 LOCKS=logs/locks
 mkdir -p logs "${R}/_failed" "${LOCKS}"
@@ -282,7 +281,6 @@ run_job () {  # $1 = job -> 0 done or skipped, 1 failed
     run=$(run_of "${k}" "${a}" "${b}" "${c}"); jlog="logs/${Q}_${run}.log"
     [ -n "${run}" ] || { log "  FAILED unknown job '$1'"; return 1; }
     if [ "${k}" = "bb" ]; then
-        root=${NEW2}/${R}
         case ${a} in
             llama) mpath=models/Llama-3.2-1B-Instruct; layers="13 14 16" ;;
             gemma) mpath=models/gemma-3-1b-it;         layers="20 23 26" ;;
@@ -302,10 +300,9 @@ run_job () {  # $1 = job -> 0 done or skipped, 1 failed
                  ensure_tokenized . "${pre}" "${b}" qwen "${MODEL_PATH}" || { log "  FAILED ${run}: data ${pre}${b}"; return 1; } ;;
         abl)     ensure_tokenized . ace_b10_perm "${b}" qwen "${MODEL_PATH}" || { log "  FAILED ${run}: data ace_b10_perm${b}"; return 1; } ;;
         cl)      [ -s "data/${a}_b10_perm${c}/streams.json" ] || { log "  FAILED ${run}: missing data/${a}_b10_perm${c}"; return 1; } ;;
-        bb)      [ -f "${NEW2}/chat_format.py" ] || { log "  FAILED ${run}: no Llama/Gemma checkout at NEW2=${NEW2}"; return 1; }
-                 [ -f "${NEW2}/${mpath}/config.json" ] || [ "${DRY}" = "1" ] \
-                     || { log "  FAILED ${run}: no ${NEW2}/${mpath} (project_commands_7.sh / 8.sh download it)"; return 1; }
-                 ensure_tokenized "${NEW2}" geneva_b10_perm "${b}" "${a}" "${mpath}" \
+        bb)      [ -f "${mpath}/config.json" ] || [ "${DRY}" = "1" ] \
+                     || { log "  FAILED ${run}: no ${mpath} (download.txt fetches it)"; return 1; }
+                 ensure_tokenized . geneva_b10_perm "${b}" "${a}" "${mpath}" \
                      || { log "  FAILED ${run}: tokenising geneva_b10_perm${b} for ${a}"; return 1; } ;;
     esac
     [ -e "${root}/${run}" ] && park "${root}" "${run}"
@@ -367,11 +364,11 @@ run_job () {  # $1 = job -> 0 done or skipped, 1 failed
             else
                 PHYS_BS=32 GRAD_CKPT=1 MASTER_PORT="${PORT}" bash scripts/qwen/ced/run_ced_v2.sh "${args[@]}" > "${jlog}" 2>&1 || rc=$?
             fi ;;
-        bb)          # project_commands_11.sh: NEW2's runner reads MODEL_PATH / MODEL_TYPE
+        bb)          # run_ced_v2.sh reads MODEL_PATH / MODEL_TYPE; vLLM was never checked on these models
             args=(--run-name "${run}" --data-prefix geneva_b10_perm --perm "${b}" "${BASE[@]}" --gpus "${GPU}"
                   --layers "${layers}" --bs 8 --acc 4)   # last, so they win
-            ( cd "${NEW2}" && MODEL_PATH="${mpath}" MODEL_TYPE="${a}" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
-                MASTER_PORT="${PORT}" bash scripts/qwen/ced/run_ced_v2.sh "${args[@]}" ) > "${jlog}" 2>&1 || rc=$? ;;
+            MODEL_PATH="${mpath}" MODEL_TYPE="${a}" GEN_BACKEND=hf MASTER_PORT="${PORT}" \
+                bash scripts/qwen/ced/run_ced_v2.sh "${args[@]}" > "${jlog}" 2>&1 || rc=$? ;;
     esac
     if [ "${rc}" -eq 0 ] && [ -f "${root}/${run}/.complete" ]; then log "  done  ${run}"; return 0; fi
     log "  FAILED ${run} (exit ${rc}), see ${jlog} and ${root}/${run}/task*/train.log"

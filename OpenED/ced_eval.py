@@ -23,6 +23,7 @@ from tqdm import tqdm
 from transformers import GenerationConfig
 
 from ced_losses import label_window
+from chat_format import stop_ids
 from ed_eval import ed_evaluate
 from gen_backend import (export_for_vllm, find_vllm_python, resolve_generation_config, row_seed, run_vllm,
                          unpadded_prompts, vllm_params)
@@ -68,7 +69,7 @@ def eval_generation_config(args, tokenizer):
     return GenerationConfig(
         do_sample=args.do_sample, top_p=args.top_p, top_k=args.top_k, temperature=args.temperature,
         repetition_penalty=args.repetition_penalty, max_length=args.max_length, min_length=None,
-        eos_token_id=[tokenizer.eos_token_id, 151643], pad_token_id=tokenizer.eos_token_id,
+        eos_token_id=list(stop_ids(tokenizer)),   # [151645, 151643] on Qwen pad_token_id=tokenizer.eos_token_id,
         return_dict_in_generate=True, output_scores=False)
 
 

@@ -13,6 +13,7 @@ from accelerate import load_checkpoint_and_dispatch, init_empty_weights
 from peft import get_peft_model, LoraConfig, TaskType, PeftModel
 
 
+from chat_format import CHAT_MODEL_TYPES, stop_ids
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -216,8 +217,8 @@ def get_optimizer_params_peft(args, model: nn.Module):
 def get_tokenizer(args):
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, padding_side="right")
 
-    if args.model_type == "qwen":
-        tokenizer.eos_token_id = 151645 
+    if args.model_type in CHAT_MODEL_TYPES:
+        tokenizer.eos_token_id = stop_ids(tokenizer)[0]   # end of turn, 151645 <|im_end|> on Qwen
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.pad_token = tokenizer.eos_token
     # print(tokenizer.eos_token_id)

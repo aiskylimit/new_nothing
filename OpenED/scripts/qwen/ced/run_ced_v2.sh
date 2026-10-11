@@ -131,6 +131,8 @@ BASE_PATH=.
 # local copy from download.txt when present (see run.sh), else the hub name
 [ -f models/Qwen3-0.6B/config.json ] && MODEL_PATH=${MODEL_PATH:-models/Qwen3-0.6B}
 BASE_MODEL=${MODEL_PATH:-Qwen/Qwen3-0.6B}
+# qwen | llama | gemma (chat_format.py): the tokenizer's processed_data/<dir>/<MODEL_TYPE>/ subdir
+MODEL_TYPE=${MODEL_TYPE:-qwen}
 GPUS_PER_NODE=${#GPUS[@]}
 
 RUN_ROOT="${BASE_PATH}/results/qwen3/ced/${RUN_NAME}"
@@ -177,6 +179,7 @@ MANIFEST_ARGS=(
     --runtime-file "${BASE_PATH}/distillm/losses.py"
     --runtime-file "${BASE_PATH}/distillm/sampler.py"
     --runtime-file "${BASE_PATH}/utils.py"
+    --runtime-file "${BASE_PATH}/chat_format.py"
     --runtime-file "${BASE_PATH}/ed_eval.py"
     --runtime-file "${BASE_PATH}/configs/deepspeed/ds_config_bf16.json"
     --runtime-file "${BASE_PATH}/scripts/qwen/ced/run_ced_v2.sh"
@@ -203,13 +206,13 @@ tokenize () {  # $1=raw dir  $2=processed dir  [$3=teacher prompt cap, default 6
         --data-dir $1/ --processed-data-dir $2 \
         --model-path ${BASE_MODEL} --data-process-workers 4 \
         --max-prompt-length 460 --t-max-prompt-length ${3:-640} \
-        --dev-num 1000 --model-type qwen
+        --dev-num 1000 --model-type ${MODEL_TYPE}
 }
 
 train_once () {  # $1=engine $2=init $3=data_dir $4=save $5=lr $6=epochs $7=extra opts
     local MASTER_PORT=${MASTER_PORT:-66$(($RANDOM%90+10))}   # project_commands.sh pins one per GPU
     local OPTS=""
-    OPTS+=" --base-path ${BASE_PATH} --model-path $2 --ckpt-name qwen3-0.6B --model-type qwen --n-gpu ${GPUS_PER_NODE}"
+    OPTS+=" --base-path ${BASE_PATH} --model-path $2 --ckpt-name qwen3-0.6B --model-type ${MODEL_TYPE} --n-gpu ${GPUS_PER_NODE}"
     OPTS+=" --data-dir $3 --num-workers 0 --train-num ${TRAIN_NUM} --dev-num ${DEV_NUM} --ced-smoke-rows ${SMOKE_ROWS}"
     OPTS+=" --lr $5 --batch-size ${PBS} --eval-batch-size ${EVAL_BS} --gradient-accumulation-steps ${PACC}"
     OPTS+=" --loss-group-size ${BS} --eval-gen-mode ${EVAL_GEN_MODE} --eval-loss-batch-size 32"
@@ -260,7 +263,7 @@ fi
 for T in $(seq ${START_TASK} ${END_TASK})
 do
     RAW_DIR="${BASE_PATH}/data/${DATA_PREFIX}${PERM}/${T}"
-    DATA_DIR="${BASE_PATH}/processed_data/${DATA_PREFIX}${PERM}/${T}/qwen/"
+    DATA_DIR="${BASE_PATH}/processed_data/${DATA_PREFIX}${PERM}/${T}/${MODEL_TYPE}/"
     SAVE_PATH="${RUN_ROOT}/task${T}"
     TASK_LR=${LR}; [ ${T} -gt 0 ] && TASK_LR=${LR_LATER}
     STAGE=${RAW_DIR}
@@ -309,7 +312,7 @@ do
         if [ "${STAGE}" != "${RAW_DIR}" ]; then
             PROC="${BASE_PATH}/processed_data/stage_${RUN_NAME}/${T}"
             tokenize ${STAGE} ${PROC} ${T_CAP} >> ${RUN_ROOT}/pl_task${T}.log 2>&1
-            DATA_DIR="${PROC}/qwen/"
+            DATA_DIR="${PROC}/${MODEL_TYPE}/"
         fi
     fi
 
@@ -362,7 +365,7 @@ do
             --out ${POOL_RAW} > ${RUN_ROOT}/bal_task${T}.log 2>&1
         tokenize ${POOL_RAW} ${POOL_PROC} >> ${RUN_ROOT}/bal_task${T}.log 2>&1
         BAL_SAVE="${SAVE_PATH}_bal"
-        train_once finetune.py ${INIT_MODEL} ${POOL_PROC}/qwen/ ${BAL_SAVE} ${BAL_LR} 1 \
+        train_once finetune.py ${INIT_MODEL} ${POOL_PROC}/${MODEL_TYPE}/ ${BAL_SAVE} ${BAL_LR} 1 \
             " --type lm --peft-path ${LAST_CKPT}"
         BAL_CKPT=$(last_adapter ${BAL_SAVE})
         [ -n "${BAL_CKPT}" ] && LAST_CKPT=${BAL_CKPT}
