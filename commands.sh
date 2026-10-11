@@ -1,4 +1,4 @@
-#1 +60
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
 #oed20
 #v2
 
@@ -6,7 +6,7 @@
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/pl_logs/
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/pl_logs.tar.gz +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
