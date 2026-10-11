@@ -26,6 +26,8 @@
 #   sent_dist|<ds>|<m>|<p>   FKL RKL SFKL SRKL CSD DistiLLM AMiD (fkl rkl sfkl srkl csd distillm amid), same
 #   sent_cl|<ds>|<m>|<p>     CL-LoRA method <m>, sentence-level CRE
 #   ours|<ds>|<p>            Ours f12_pl with its own task0 (tacred/fewrel = the old <ds>_perm data)
+#   ours_b0|<ds>|<p>         the same with memory m = 0 (<ds>_b0_perm data, KD on pseudo-labels only:
+#                            --kd-scope pl, as d_full): tab:memory's Ours m = 0 row
 #   qdist|<ds>|<m>|<p>       a distillation baseline from dist_shared_task0_perm<p>_<ds>_v2_s42
 #                            (dist_queue.sh; amid as project_commands_10.sh ran GENEVA)
 #   cl|<ds>|<m>|<p>          CL-LoRA, as run_all_cllora.sh (32 x 1)
@@ -264,6 +266,7 @@ run_of () {  # kind a b c -> run name
         sent_dist) echo "cre_sent_$2_$3_perm$4" ;;
         sent_cl)   echo "cllora_$3_perm$4_$2_sent_s${SEED}" ;;
         ours)      echo "ours_h2_f12_pl_perm$3_$2_v2_s${SEED}" ;;
+        ours_b0)   echo "ours_h2_f12_pl_perm$3_$2_b0_v2_s${SEED}" ;;
         cl)        echo "cllora_$3_perm$4_$2_v2_s${SEED}" ;;
         sdftce)    echo "dist_sdftce_perm$3_$2_v2_s${SEED}" ;;
         abl)       local sd; sd=$(abl_of "$2" | cut -d'|' -f1); [ "${sd}" = "1" ] && echo "ours_h12_sd_$2_perm$3_ace_v2_s${SEED}" \
@@ -294,6 +297,8 @@ run_job () {  # $1 = job -> 0 done or skipped, 1 failed
                  fi ;;
         ours|sdftce)
                  pre=$(prefix_of "${a}")
+                 ensure_tokenized . "${pre}" "${b}" qwen "${MODEL_PATH}" || { log "  FAILED ${run}: data ${pre}${b}"; return 1; } ;;
+        ours_b0) pre="${a}_b0_perm"   # project_commands_9.sh ensure_b0 built ace_b0_perm<p> for d_full
                  ensure_tokenized . "${pre}" "${b}" qwen "${MODEL_PATH}" || { log "  FAILED ${run}: data ${pre}${b}"; return 1; } ;;
         abl)     ensure_tokenized . ace_b10_perm "${b}" qwen "${MODEL_PATH}" || { log "  FAILED ${run}: data ace_b10_perm${b}"; return 1; } ;;
         cl)      [ -s "data/${a}_b10_perm${c}/streams.json" ] || { log "  FAILED ${run}: missing data/${a}_b10_perm${c}"; return 1; } ;;
@@ -335,6 +340,8 @@ run_job () {  # $1 = job -> 0 done or skipped, 1 failed
         ours)        # project_commands_9/11.sh, task0 trained in the run
             PHYS_BS=32 GRAD_CKPT=1 MASTER_PORT="${PORT}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" \
                 --data-prefix "${pre}" --perm "${b}" "${BASE[@]}" --gpus "${GPU}" > "${jlog}" 2>&1 || rc=$? ;;
+        ours_b0)     # Ours with no memory: the old region of KD and span holds only pseudo-labels
+            PHYS_BS=32 GRAD_CKPT=1 MASTER_PORT="${PORT}" bash scripts/qwen/ced/run_ced_v2.sh --run-name "${run}" \n                --data-prefix "${pre}" --perm "${b}" "${BASE[@]}" --kd-scope pl --gpus "${GPU}" > "${jlog}" 2>&1 || rc=$? ;;
         cl)          # run_all_cllora.sh's flags (project_commands_11.sh's RAMS perm0)
             bash scripts/qwen/ced/run_cllora.sh --method "${b}" --data-root "data/${a}_b10_perm${c}" --num-tasks 5 \
                 --rank 16 --alpha 64 --lr 2e-4 --epochs 5 --batch-size 32 --grad-accum 1 --eval-batch-size 16 \
