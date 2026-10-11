@@ -1,9 +1,5 @@
-#d
-#models
---hf meta-llama/Llama-3.2-1B-Instruct /mnt/local/@PROJECT@/OpenED/models/Llama-3.2-1B-Instruct
---hf google/gemma-3-1b-it /mnt/local/@PROJECT@/OpenED/models/gemma-3-1b-it
-
-#glog
+#1 +60
+#oed20
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -39,10 +35,10 @@ export NCCL_DEBUG=WARN
 
 cd ./OpenED
 bash gather_pl_logs.sh 
-bash gather_logs.sh all22
-tar -czf collected_logs.tar.gz collected_logs/all22/
+bash gather_logs.sh all23
+tar -czf collected_logs.tar.gz collected_logs/all23/
 ls -lh collected_logs.tar.gz
-# bash ./project_commands.sh
+bash ./project_commands_20.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
