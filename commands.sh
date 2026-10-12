@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
-#oed20
+#1 +10
+#glog
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
