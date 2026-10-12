@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
+#1 +60
 #glog
 #v2
 
@@ -38,7 +38,7 @@ bash gather_pl_logs.sh
 bash gather_logs.sh all26
 tar -czf collected_logs.tar.gz collected_logs/all26/
 ls -lh collected_logs.tar.gz
-# bash ./project_commands_20.sh
+bash ./project_commands_19.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
