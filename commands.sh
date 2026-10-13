@@ -1,4 +1,4 @@
-#1 +60
+#1 +10
 #glog
 #v2
 
@@ -35,10 +35,10 @@ export NCCL_DEBUG=WARN
 
 cd ./OpenED
 bash gather_pl_logs.sh 
-bash gather_logs.sh all26
-tar -czf collected_logs.tar.gz collected_logs/all26/
+bash gather_logs.sh all27
+tar -czf collected_logs.tar.gz collected_logs/all27/
 ls -lh collected_logs.tar.gz
-bash ./project_commands_19.sh
+# bash ./project_commands_19.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
