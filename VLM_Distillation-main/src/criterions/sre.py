@@ -132,18 +132,12 @@ def _layer_attention(outputs, hidden_layer: int):
 
 
 def _causal_attention_weights(attention: Optional[torch.Tensor], attention_mask: Optional[torch.Tensor], seq_len: int):
-    if attention is None:
+    if attention is None or attention.ndim != 4:
         return None
-    if attention.ndim == 4:
-        weights = attention.sum(dim=1)[:, -1].detach().float()
-    elif attention.ndim == 2:
-        # Selective model capture already reduced [B,H,L,L] to the only row
-        # SRE consumes: sum(heads) at the final query.
-        weights = attention.detach().float()
-    else:
+    if attention.shape[-1] != seq_len:
         return None
-    if weights.shape[-1] != seq_len:
-        return None
+
+    weights = attention.sum(dim=1)[:, -1].detach().float()
     if attention_mask is not None and attention_mask.shape[-1] == seq_len:
         weights = weights * attention_mask.to(device=weights.device, dtype=weights.dtype)
     return weights / weights.sum(dim=-1, keepdim=True).clamp_min(1e-5)

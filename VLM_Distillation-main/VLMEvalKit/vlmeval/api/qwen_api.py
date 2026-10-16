@@ -58,14 +58,14 @@ class QwenAPI(BaseAPI):
         messages = self.build_msgs(msgs_raw=inputs, system_prompt=self.system_prompt)
 
         import dashscope
-        response = dashscope.Generation.call(
-            model=self.model,
-            messages=messages,
-            seed=self.seed,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            result_format='message',  # set the result to be "message" format.
-        )
+        # response = dashscope.Generation.call(
+        #     model=self.model,
+        #     messages=messages,
+        #     seed=self.seed,
+        #     temperature=self.temperature,
+        #     max_tokens=self.max_tokens,
+        #     result_format='message',  # set the result to be "message" format.
+        # )
         if response.status_code != HTTPStatus.OK:
             return -1, 'Error: Bad Response Statuse Code. ', f'The response status code is {response.status_code}. '
 

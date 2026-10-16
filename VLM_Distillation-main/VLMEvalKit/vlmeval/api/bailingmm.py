@@ -72,7 +72,7 @@ class bailingMMWrapper(BaseAPI):
             "model": self.model,
             "timeout": 180000
         }
-        response = requests.post(service_url, headers=self.headers, json=payload)
+        # response = requests.post(service_url, headers=self.headers, json=payload)
         if self.verbose:
             logger.info('Time for requesting is:')
             logger.info(time.time() - start)

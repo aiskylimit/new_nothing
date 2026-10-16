@@ -72,16 +72,16 @@ class AsciiArtGPT4OJudge(OpenAIVLMJudger):
 
         response_data = None
         while response_data is None:
-            try:
-                response = requests.post(
-                    self.url,
-                    headers=headers,
-                    json=query_payload,
-                )
-            except (requests.exceptions.JSONDecodeError, requests.exceptions.ConnectionError) as e:
-                print(f'Error in requests: {e}')
-                print('Retry...')
-                continue
+            # try:
+            #     response = requests.post(
+            #         self.url,
+            #         headers=headers,
+            #         json=query_payload,
+            #     )
+            # except (requests.exceptions.JSONDecodeError, requests.exceptions.ConnectionError) as e:
+            #     print(f'Error in requests: {e}')
+            #     print('Retry...')
+            #     continue
 
             response_ = response.json()
             if "error" in response_:

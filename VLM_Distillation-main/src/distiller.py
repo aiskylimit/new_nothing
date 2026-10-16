@@ -6,7 +6,8 @@ import torch.nn as nn
 
 from src.arguments import ModelArguments, TrainingArguments
 from src.model.model import VLMModel
-from src.model.processor import load_processor
+from src.model.processor import QWEN2_5_VL, QWEN3_VL, load_processor
+from src.model.scva_attention import resolve_layer_pairs
 from src.utils import print_master, print_rank
 
 
@@ -44,15 +45,24 @@ def _resolve_dskd_topk_vocab(args) -> int:
     return value
 
 
+def _wide_matrix_pinv(matrix: torch.Tensor) -> torch.Tensor:
+    """Compute a wide matrix pseudo-inverse without an SVD over vocabulary size."""
+    if matrix.shape[1] <= matrix.shape[0]:
+        return torch.linalg.pinv(matrix)
+    gram = matrix @ matrix.transpose(0, 1)
+    return matrix.transpose(0, 1) @ torch.linalg.pinv(gram, hermitian=True)
+
+
 class Distiller(nn.Module):
     def __init__(self, model_args: ModelArguments, training_args: TrainingArguments):
         super().__init__()
         self.model_args = model_args
         self.training_args = training_args
+        self.use_sparse_scva_attention = self._should_use_sparse_scva_attention()
 
         self.student = self._load_student()
         self.teacher = self._load_teacher()
-        self._configure_selective_sre_attentions()
+        self._configure_sparse_scva_attention()
 
         self.student_hidden_dim = self._infer_text_hidden_dim(self.student, model_args.student_hidden_dim)
         self.teacher_hidden_dim = self._infer_text_hidden_dim(self.teacher, model_args.teacher_hidden_dim)
@@ -83,7 +93,60 @@ class Distiller(nn.Module):
     # Model loading
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_sparse_scva_model(model_name: str, model_backbone: str | None) -> bool:
+        if model_backbone in {QWEN2_5_VL, QWEN3_VL}:
+            return True
+        normalized = (model_name or "").lower().replace("_", "-")
+        return "qwen2.5-vl" in normalized or "qwen3-vl" in normalized
+
+    def _should_use_sparse_scva_attention(self) -> bool:
+        kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
+        if kd_loss_type not in {"scva", "scva_cgkd", "draft"}:
+            return False
+        if not bool(getattr(self.training_args, "scva_sparse_attention", True)):
+            return False
+        student_ok = self._is_sparse_scva_model(
+            self.model_args.model_name,
+            self.model_args.model_backbone or self.model_args.model_type,
+        )
+        teacher_ok = self._is_sparse_scva_model(
+            self.model_args.teacher_model_name,
+            self.model_args.teacher_backbone,
+        )
+        return student_ok and teacher_ok
+
+    def _configure_sparse_scva_attention(self) -> None:
+        self.scva_layer_pairs = None
+        if not self.use_sparse_scva_attention:
+            return
+
+        student_layers = self.student.attention_layer_indices()
+        teacher_layers = self.teacher.attention_layer_indices()
+        if not student_layers or not teacher_layers:
+            raise RuntimeError("Sparse SCVA capture could not find Qwen decoder attention layers.")
+
+        pairs = resolve_layer_pairs(
+            len(student_layers),
+            len(teacher_layers),
+            n_pairs=int(getattr(self.training_args, "scva_n_layer_pairs", 4)),
+            low_pct=float(getattr(self.training_args, "scva_layer_low_pct", 0.4)),
+            high_pct=float(getattr(self.training_args, "scva_layer_high_pct", 0.7)),
+        )
+        if not pairs:
+            raise RuntimeError("Sparse SCVA resolved no student/teacher layer pairs.")
+
+        self.scva_layer_pairs = pairs
+        self.student.configure_scva_attention(s_idx for s_idx, _ in pairs)
+        self.teacher.configure_scva_attention(t_idx for _, t_idx in pairs)
+        print_master(
+            "Sparse SCVA attention enabled with SDPA backbone forward; "
+            f"selected layer pairs={pairs}."
+        )
+
     def _needs_attention_outputs(self) -> bool:
+        if getattr(self, "use_sparse_scva_attention", False):
+            return False
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
         attention_free_kd_losses = {
             "ce_only",
@@ -105,40 +168,9 @@ class Distiller(nn.Module):
         # SCVA, and their joint criteria consume attention matrices directly.
         return kd_loss_type not in attention_free_kd_losses
 
-    def _uses_selective_sre_attentions(self) -> bool:
-        kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
-        return kd_loss_type == "sre" and bool(
-            getattr(self.training_args, "sre_selective_attention", True)
-        )
-
-    def _standard_attention_outputs(self) -> bool:
-        return self._needs_attention_outputs() and not self._uses_selective_sre_attentions()
-
-    def _configure_selective_sre_attentions(self) -> None:
-        if not self._uses_selective_sre_attentions():
-            return
-
-        pairs = (
-            ("student", self.student, getattr(self.training_args, "student_layer_mapping", None)),
-            ("teacher", self.teacher, getattr(self.training_args, "teacher_layer_mapping", None)),
-        )
-        for name, model, mapping in pairs:
-            if model.configure_selective_attentions(mapping):
-                selected = model._selective_attention_layers[1]
-                print_master(
-                    f"SRE selective {name} attention enabled: decoder_layers={list(selected)}, "
-                    f"default_backend={model._selective_attention_backend}"
-                )
-            else:
-                # Never silently replace attention-derived SRE weights with
-                # uniform weights on an unsupported architecture.
-                model.enable_full_attention_outputs(vision_output_attentions=False)
-                print_master(
-                    f"WARNING: selective {name} attention is unsupported; "
-                    "falling back to full eager text attention."
-                )
-
     def _needs_vision_attention_outputs(self) -> bool:
+        if getattr(self, "use_sparse_scva_attention", False):
+            return False
         # SRE consumes text-decoder attention only.  Keeping the vision backend
         # on SDPA/Flash avoids eager vision attention without changing SRE.
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
@@ -170,8 +202,9 @@ class Distiller(nn.Module):
         )
         student = VLMModel.build(
             self.model_args,
-            output_attentions=self._standard_attention_outputs(),
+            output_attentions=self._needs_attention_outputs(),
             vision_output_attentions=self._needs_vision_attention_outputs(),
+            force_sdpa=self.use_sparse_scva_attention,
         )
         print_master("Student model built.")
         return student
@@ -185,8 +218,9 @@ class Distiller(nn.Module):
         teacher = VLMModel.load(
             teacher_model_args,
             is_trainable=False,
-            output_attentions=self._standard_attention_outputs(),
+            output_attentions=self._needs_attention_outputs(),
             vision_output_attentions=self._needs_vision_attention_outputs(),
+            force_sdpa=self.use_sparse_scva_attention,
         )
         for param in teacher.parameters():
             param.requires_grad = False
@@ -397,19 +431,26 @@ class Distiller(nn.Module):
                 self.student_overlap_token_ids = self.student_overlap_token_ids[:topk_vocab]
 
         if getattr(self.training_args, "init_t2s_projector", False):
-            part_student_head_pinv = torch.linalg.pinv(part_student_head)
+            part_student_head_pinv = _wide_matrix_pinv(part_student_head)
             init_t2s = (part_teacher_head @ part_student_head_pinv).transpose(0, 1)
             self._copy_linear_weight(self.projectors["t2s"], init_t2s)
             print_master("DSKDv2 initialized t2s projector with LM-head pseudo-inverse.")
 
         if getattr(self.training_args, "init_s2t_projector", False):
-            pinv_dtype = next(self.projectors["s2t"].parameters()).dtype
-            self.part_teacher_head_pinv = torch.linalg.pinv(part_teacher_head).to(dtype=pinv_dtype).detach()
-            # The dynamic branch derives s2t from the frozen LM heads on every
-            # forward and never calls this configured module.  Keeping it
-            # trainable would allocate optimizer state for unused parameters.
+            projection_dtype = next(self.projectors["s2t"].parameters()).dtype
+            teacher_head_pinv = _wide_matrix_pinv(part_teacher_head)
+            cached_s2t_projection = (part_student_head @ teacher_head_pinv).to(
+                dtype=projection_dtype
+            ).detach()
+            self.register_buffer(
+                "cached_s2t_projection",
+                cached_s2t_projection,
+                persistent=False,
+            )
+            # The cached mapping replaces this configured module. Keeping the
+            # latter frozen avoids optimizer state for unused parameters.
             self.projectors["s2t"].requires_grad_(False)
-            print_master("DSKDv2 cached teacher-head pseudo-inverse for dynamic s2t projection.")
+            print_master("DSKDv2 cached the invariant LM-head s2t projection.")
 
     @staticmethod
     def _output_head_weight(model: nn.Module) -> torch.Tensor:

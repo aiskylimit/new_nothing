@@ -120,14 +120,22 @@ class DSKDv2Criterion(VariousDivergence):
         if teacher_inputs is None:
             raise RuntimeError("teacher_inputs are missing while running DSKDv2.")
 
-        student_outputs = call_with_hidden_states(distiller.student, student_inputs)
+        # This criterion computes CE itself, so asking the model to compute the
+        # same loss from labels would duplicate a full-vocabulary reduction.
+        student_model_inputs = dict(student_inputs)
+        student_model_inputs.pop("labels", None)
+        student_outputs = call_with_hidden_states(distiller.student, student_model_inputs)
         labels = student_inputs["labels"].to(device=student_outputs.logits.device)
         supervised_loss_sum = self.compute_cross_entropy_loss(student_outputs.logits, labels)
         _shifted_logits, shifted_labels = self.shift_logits_and_labels(student_outputs.logits, labels)
         supervised_loss = supervised_loss_sum / shifted_labels.ne(self.padding_id).sum().float().clamp_min(1.0)
 
         with torch.no_grad():
-            teacher_outputs = call_with_hidden_states(distiller.teacher, teacher_inputs)
+            # Teacher labels are only used below to build masks/targets.  Do not
+            # make the frozen teacher compute an unused language-model CE loss.
+            teacher_model_inputs = dict(teacher_inputs)
+            teacher_model_inputs.pop("labels", None)
+            teacher_outputs = call_with_hidden_states(distiller.teacher, teacher_model_inputs)
 
         teacher_labels, _teacher_mask = self.teacher_targets(teacher_inputs, student_outputs.logits.device)
         kd_loss, extra = self._compute_dual_space_kd_loss(
@@ -246,20 +254,14 @@ class DSKDv2Criterion(VariousDivergence):
         }
 
     def _student_to_teacher_value(self, distiller: Any, student_hidden: torch.Tensor) -> torch.Tensor:
-        if self.init_s2t_projector and hasattr(distiller, "part_teacher_head_pinv"):
-            student_head = get_output_head(distiller.student).weight.detach().transpose(0, 1)
-            overlap_ids = getattr(distiller, "student_overlap_token_ids", None)
-            if overlap_ids is not None:
-                student_head = student_head[:, overlap_ids.to(device=student_head.device)]
-            topk_vocab = resolve_topk_vocab(self.args)
-            if topk_vocab != -1:
-                student_head = student_head[:, :topk_vocab]
-            part_teacher_head_pinv = distiller.part_teacher_head_pinv.to(
-                device=student_head.device,
-                dtype=student_head.dtype,
+        if self.init_s2t_projector and hasattr(distiller, "cached_s2t_projection"):
+            # Both LM heads are frozen, so this mapping is invariant throughout
+            # training and is prepared once during Distiller initialization.
+            s2t_projector = distiller.cached_s2t_projection.to(
+                device=student_hidden.device,
+                dtype=student_hidden.dtype,
             )
-            s2t_projector = student_head @ part_teacher_head_pinv
-            return student_hidden @ s2t_projector.to(device=student_hidden.device, dtype=student_hidden.dtype)
+            return student_hidden @ s2t_projector
         return project(require_projector(distiller.projectors, "s2t"), student_hidden)
 
     def _shifted_text_mask(self, outputs, target_len: int, device: torch.device) -> torch.Tensor:

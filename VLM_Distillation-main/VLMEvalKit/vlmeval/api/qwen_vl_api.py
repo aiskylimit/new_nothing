@@ -104,11 +104,11 @@ class Qwen2VLAPI(Qwen2VLPromptMixin, BaseAPI):
         kwargs.pop('dataset', None)
         generation_kwargs.update(kwargs)
         try:
-            response = dashscope.MultiModalConversation.call(
-                model=self.model,
-                messages=messages,
-                **generation_kwargs,
-            )
+            # response = dashscope.MultiModalConversation.call(
+            #     model=self.model,
+            #     messages=messages,
+            #     **generation_kwargs,
+            # )
             if self.verbose:
                 print(response)
             answer = response.output.choices[0]['message']['content'][0]['text']
@@ -203,7 +203,7 @@ class QwenVLWrapper(BaseAPI):
         gen_config = dict(max_output_tokens=self.max_tokens, temperature=self.temperature)
         gen_config.update(kwargs)
         try:
-            response = MultiModalConversation.call(model=self.model, messages=messages)
+            # response = MultiModalConversation.call(model=self.model, messages=messages)
             if self.verbose:
                 print(response)
             answer = response.output.choices[0]['message']['content'][0]['text']

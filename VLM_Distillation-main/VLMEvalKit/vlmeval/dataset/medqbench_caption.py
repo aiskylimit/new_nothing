@@ -306,7 +306,7 @@ class MedqbenchCaptionDataset(ImageBaseDataset):
                         "max_tokens": 100
                     }
 
-                    response = requests.post(api_base, headers=headers, json=payload, timeout=30)
+                    # response = requests.post(api_base, headers=headers, json=payload, timeout=30)
 
                     if response.status_code == 200:
                         return True, "Judge model API is available"

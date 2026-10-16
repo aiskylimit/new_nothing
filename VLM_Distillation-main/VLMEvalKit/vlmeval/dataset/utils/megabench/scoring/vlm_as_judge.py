@@ -153,11 +153,11 @@ class OpenAIVLMJudger(abc.ABC):
         response_data = None
         while response_data is None:
             try:
-                response = requests.post(
-                    self.url,
-                    headers=headers,
-                    json=query_payload,
-                )
+                # response = requests.post(
+                #     self.url,
+                #     headers=headers,
+                #     json=query_payload,
+                # )
                 response_ = response.json()
             except (requests.exceptions.JSONDecodeError, requests.exceptions.ConnectionError) as e:
                 print(f'Error in requests: {e}')

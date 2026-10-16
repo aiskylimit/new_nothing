@@ -46,7 +46,13 @@ class SCVACGKDCriterion(nn.Module):
         if ce is None:
             raise RuntimeError("Student model did not return CE loss; labels may be missing.")
 
-        scva_kd = self.scva._scva_loss(student_outputs, teacher_outputs, student_inputs, teacher_inputs)
+        scva_kd = self.scva._scva_loss(
+            student_outputs,
+            teacher_outputs,
+            student_inputs,
+            teacher_inputs,
+            layer_pairs=getattr(distiller, "scva_layer_pairs", None),
+        )
         cgkd_kd = self.cgkd._cgkd_loss(student_outputs, teacher_outputs, student_inputs)
 
         total = self.ce_weight * ce + self.lambda_v * scva_kd + self.lambda_g * cgkd_kd

@@ -258,11 +258,11 @@ class SenseChatVisionWrapper(BaseAPI):
             "Authorization": self.api_key,
         }
 
-        response = requests.post(
-            self.base_url,
-            headers=headers,
-            json=data,
-        )
+        # response = requests.post(
+        #     self.base_url,
+        #     headers=headers,
+        #     json=data,
+        # )
         request_id = response.headers.get("x-request-id", "")
         logger.info(f"Request-id: {request_id}")
 
@@ -390,13 +390,13 @@ class SenseChatVisionV2API(BaseAPI):
             proxies['https'] = os.getenv('https_proxy')
         proxies = proxies or None
 
-        response = requests.post(
-            self.api_base,
-            headers=headers,
-            data=json.dumps(payload),
-            proxies=proxies,
-            timeout=self.timeout * 1.1,
-        )
+        # response = requests.post(
+        #     self.api_base,
+        #     headers=headers,
+        #     data=json.dumps(payload),
+        #     proxies=proxies,
+        #     timeout=self.timeout * 1.1,
+        # )
         ret_code = response.status_code
         ret_code = 0 if (200 <= int(ret_code) < 300) else ret_code
         answer = self.fail_msg

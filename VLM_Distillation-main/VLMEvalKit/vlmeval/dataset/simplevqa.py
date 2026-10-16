@@ -147,10 +147,10 @@ class SimpleVQA(ImageBaseDataset):
         # so a user supplied judge model was silently ignored.
         judge_model = judge_kwargs.get('model') or 'gpt-4o'
 
-        client = OpenAI(
-            api_key=gpt4_key,
-            base_url=base_url
-        )
+        # client = OpenAI(
+        #     api_key=gpt4_key,
+        #     base_url=base_url
+        # )
 
         def process_one(idx):
             question = data['question'][idx]
@@ -161,11 +161,11 @@ class SimpleVQA(ImageBaseDataset):
             candidates = "\n[预测答案0]：{}".format(model_response)
             prompt = COMPARE_ANSWER_PROMPT.format(question=question, answer=answer, candidates=candidates)
             try:
-                response = client.chat.completions.create(
-                    model=judge_model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=1
-                )
+                # response = client.chat.completions.create(
+                #     model=judge_model,
+                #     messages=[{"role": "user", "content": prompt}],
+                #     temperature=1
+                # )
                 res = response.choices[0].message.content
                 res = res.replace("```json", "").replace("```python", "").replace("```", "").strip()
                 if res[-1] != "}":

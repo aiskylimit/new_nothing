@@ -18,11 +18,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from transformers.configuration_utils import PreTrainedConfig
+from transformers.configuration_utils import PretrainedConfig
 from transformers.models.auto import CONFIG_MAPPING, AutoConfig
 
 
-class FastVlmConfig(PreTrainedConfig):
+class FastVlmConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`FastVlmForConditionalGeneration`]. It is used to instantiate a
     FastVLM model according to the specified arguments, defining the model architecture. Instantiating a configuration

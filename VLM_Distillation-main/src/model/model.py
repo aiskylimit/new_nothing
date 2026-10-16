@@ -1,5 +1,4 @@
 import os
-from types import MethodType
 
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
@@ -46,9 +45,8 @@ class VLMModel(nn.Module):
         self.encoder = encoder
         self.config = encoder.config
         self.output_attentions = output_attentions
-        self._selective_attention_layers = None
-        self._selective_attention_modules = {}
-        self._selective_attention_backend = None
+        self._scva_module_cache = None
+        self._scva_capture_active = False
 
     @staticmethod
     def _distributed_context():
@@ -70,24 +68,28 @@ class VLMModel(nn.Module):
             setattr(config, name, value)
 
     @classmethod
-    def _force_eager_attention(cls, config, vision_output_attentions=True, output_attentions=True):
+    def _configure_attention_backend(
+        cls,
+        config,
+        vision_output_attentions=True,
+        output_attentions=True,
+        force_eager=False,
+    ):
         sub_configs = {
             name: getattr(config, name, None)
             for name in ("text_config", "vision_config", "vision_config_2", "audio_config")
         }
-        original_backends = {
-            name: getattr(sub_config, "_attn_implementation", None)
-            for name, sub_config in sub_configs.items()
-            if sub_config is not None
-        }
         config.use_cache = False
-        if output_attentions:
+        if force_eager or output_attentions:
             # Transformers generally needs eager attention when callers request
-            # the full attention matrices.  Keep that behaviour for criteria
-            # such as SCVA/SRE, but leave the configured efficient backend alone
-            # when a criterion (for example DWA-KD) does not consume attentions.
+            # the full attention matrices. FastVLM also stays on eager because
+            # its current implementation does not support the SDPA backend.
             config._attn_implementation = "eager"
             config.attn_implementation = "eager"
+        else:
+            # Attention-free criteria use SDPA for every non-FastVLM backbone.
+            config._attn_implementation = "sdpa"
+            config.attn_implementation = "sdpa"
         config.output_attentions = output_attentions
         config.output_hidden_states = True
 
@@ -97,23 +99,12 @@ class VLMModel(nn.Module):
             sub_output_attentions = (
                 vision_output_attentions if sub_config_name.startswith("vision_config") else output_attentions
             )
-            if sub_output_attentions:
+            if force_eager or sub_output_attentions:
                 sub_config._attn_implementation = "eager"
                 sub_config.attn_implementation = "eager"
-            elif sub_config_name.startswith("vision_config"):
-                # Setting the composite config to eager recursively mutates all
-                # sub-configs in Transformers.  Restore a fast backend for the
-                # vision tower when the criterion only consumes text attention.
-                backend = original_backends.get(sub_config_name)
-                # FastVLM's vision_config is a TimmWrapperConfig.  Transformers
-                # treats its attention backend as eager-only even though timm
-                # internally owns the actual optimized vision implementation.
-                if getattr(sub_config, "model_type", None) == "timm_wrapper":
-                    backend = "eager"
-                elif backend in (None, "eager"):
-                    backend = "sdpa"
-                sub_config._attn_implementation = backend
-                sub_config.attn_implementation = backend
+            else:
+                sub_config._attn_implementation = "sdpa"
+                sub_config.attn_implementation = "sdpa"
             cls._set_config_attr_if_present(
                 sub_config,
                 "output_attentions",
@@ -130,6 +121,32 @@ class VLMModel(nn.Module):
     @staticmethod
     def _model_path(model_args: ModelArguments):
         return model_args.checkpoint_path if model_args.checkpoint_path else model_args.model_name
+
+    @staticmethod
+    def _verify_attention_backend(model, expected_backend: str, model_backbone: str):
+        config = model.config
+        configs = {"config": config}
+        configs.update(
+            {
+                name: sub_config
+                for name in ("text_config", "vision_config", "vision_config_2", "audio_config")
+                if (sub_config := getattr(config, name, None)) is not None
+            }
+        )
+        mismatches = {
+            name: getattr(candidate, "_attn_implementation", None)
+            for name, candidate in configs.items()
+            if getattr(candidate, "_attn_implementation", None) != expected_backend
+        }
+        if mismatches:
+            raise RuntimeError(
+                f"Attention backend verification failed for {model_backbone}: "
+                f"expected {expected_backend}, got {mismatches}."
+            )
+        print_master(
+            f"Verified attention backend [{expected_backend}] for [{model_backbone}] "
+            f"across {', '.join(configs)}."
+        )
 
     @staticmethod
     def _clean_model_inputs(model_inputs):
@@ -196,105 +213,6 @@ class VLMModel(nn.Module):
             "use_cache": False,
         }
 
-    @staticmethod
-    def _text_decoder_layers(encoder):
-        """Find the decoder ModuleList without depending on one VLM layout."""
-        candidates = []
-        for name, module in encoder.named_modules():
-            if not isinstance(module, nn.ModuleList) or len(module) == 0:
-                continue
-            if not all(hasattr(layer, "self_attn") for layer in module):
-                continue
-            lowered = name.lower()
-            if "vision" in lowered or "visual" in lowered:
-                continue
-            priority = 2 if "language_model.layers" in lowered else 1
-            candidates.append((priority, len(module), name, module))
-        if not candidates:
-            return None
-        return max(candidates, key=lambda item: (item[0], item[1]))[3]
-
-    @staticmethod
-    def _hidden_to_attention_layer(layer: int, num_layers: int) -> int:
-        hidden_index = int(layer)
-        if hidden_index < 0:
-            hidden_index += num_layers + 1
-        return max(hidden_index - 1, 0)
-
-    @staticmethod
-    def _selective_attention_forward(module, *args, **kwargs):
-        config = module.config
-        previous_backend = getattr(config, "_attn_implementation", None)
-        config._attn_implementation = module._sre_attention_backend
-        try:
-            outputs = module._sre_original_forward(*args, **kwargs)
-        finally:
-            config._attn_implementation = previous_backend
-
-        sink = module._sre_attention_sink
-        if sink is not None and isinstance(outputs, tuple) and len(outputs) > 1:
-            attention = outputs[1]
-            if torch.is_tensor(attention) and attention.ndim == 4:
-                # SRE only consumes sum(heads) for the final query. Compress it
-                # immediately instead of retaining [B, H, L, L] in outputs.
-                sink[module._sre_attention_index] = attention.sum(dim=1)[:, -1].detach()
-        return outputs
-
-    def configure_selective_attentions(self, hidden_layers) -> bool:
-        """Capture SRE attention only at mapped text-decoder layers.
-
-        Selected layers temporarily use eager attention; all other layers use
-        SDPA. The wrapper is persistent
-        so gradient-checkpoint recomputation uses the same selected backend.
-        """
-        decoder_layers = self._text_decoder_layers(self.encoder)
-        if decoder_layers is None:
-            return False
-
-        requested = list(hidden_layers or [-1])
-        selected = {
-            self._hidden_to_attention_layer(layer, len(decoder_layers))
-            for layer in requested
-        }
-        if any(index < 0 or index >= len(decoder_layers) for index in selected):
-            return False
-
-        text_config = getattr(self.config, "text_config", None) or getattr(
-            decoder_layers[0].self_attn, "config", None
-        )
-        # Build one explicit 4D causal mask using eager semantics. It is valid
-        # for both eager and SDPA, while an SDPA-optimized `None` mask would be
-        # incorrect if temporarily consumed by a selected eager layer.
-        text_config._attn_implementation = "eager"
-
-        modules = {}
-        for index, decoder_layer in enumerate(decoder_layers):
-            attention = decoder_layer.self_attn
-            is_selected = index in selected
-            if not hasattr(attention, "_sre_original_forward"):
-                attention._sre_original_forward = attention.forward
-                attention.forward = MethodType(self._selective_attention_forward, attention)
-            attention._sre_attention_sink = None
-            attention._sre_attention_index = index
-            attention._sre_attention_backend = "eager" if is_selected else "sdpa"
-            if is_selected:
-                modules[index] = attention
-
-        self._selective_attention_backend = "sdpa"
-        self._selective_attention_layers = (len(decoder_layers), tuple(sorted(selected)))
-        self._selective_attention_modules = modules
-        self.output_attentions = False
-        return True
-
-    def enable_full_attention_outputs(self, vision_output_attentions: bool = False) -> None:
-        """Conservative fallback when selective decoder discovery is unsupported."""
-        self._force_eager_attention(
-            self.config,
-            vision_output_attentions=vision_output_attentions,
-            output_attentions=True,
-        )
-        self.output_attentions = True
-
     def forward(self, **model_inputs):
         model_inputs = self._clean_model_inputs(model_inputs)
         if "input_ids" in model_inputs and torch.is_tensor(model_inputs["input_ids"]):
@@ -308,31 +226,89 @@ class VLMModel(nn.Module):
         forward_kwargs["output_attentions"] = self.output_attentions
         forward_kwargs["use_cache"] = False
 
-        attention_sink = None
-        if self._selective_attention_layers is not None:
-            attention_sink = {}
-            for module in self._selective_attention_modules.values():
-                module._sre_attention_sink = attention_sink
+        # Baseline criteria do not use SCVA. Skip all capture bookkeeping and
+        # module-tree walks on their hot forward path.
+        if not self._scva_capture_active:
+            return self.encoder(**forward_kwargs)
 
+        self._prepare_scva_capture(model_inputs)
         try:
             outputs = self.encoder(**forward_kwargs)
+            scva_attentions = self._collect_scva_captures()
         finally:
-            for module in self._selective_attention_modules.values():
-                module._sre_attention_sink = None
+            self._clear_scva_capture_context()
 
-        if attention_sink is not None:
-            num_layers, selected = self._selective_attention_layers
-            missing = [index for index in selected if index not in attention_sink]
-            if missing:
-                raise RuntimeError(
-                    "Selective SRE attention capture failed for decoder layer(s): "
-                    + ", ".join(map(str, missing))
-                )
-            attentions = [None] * num_layers
-            for index, attention in attention_sink.items():
-                attentions[index] = attention
-            outputs.attentions = tuple(attentions)
+        if scva_attentions:
+            setattr(outputs, "scva_attentions", scva_attentions)
         return outputs
+
+    def _scva_attention_modules(self):
+        if self._scva_module_cache is None:
+            self._scva_module_cache = tuple(
+                module for module in self.encoder.modules()
+                if getattr(module, "supports_scva_sparse_capture", False)
+                and getattr(module, "layer_idx", None) is not None
+            )
+        return self._scva_module_cache
+
+    def attention_layer_indices(self) -> list[int]:
+        return sorted({int(module.layer_idx) for module in self._scva_attention_modules()})
+
+    def configure_scva_attention(self, layer_indices) -> None:
+        selected = {int(index) for index in layer_indices}
+        available = set(self.attention_layer_indices())
+        missing = selected - available
+        if missing:
+            raise ValueError(f"SCVA requested unavailable decoder layers: {sorted(missing)}")
+        for module in self._scva_attention_modules():
+            module._scva_capture_enabled = int(module.layer_idx) in selected
+        self._scva_capture_active = bool(selected)
+
+    def _prepare_scva_capture(self, model_inputs) -> None:
+        selected = [
+            module for module in self._scva_attention_modules()
+            if getattr(module, "_scva_capture_enabled", False)
+        ]
+        if not selected:
+            return
+
+        input_ids = model_inputs.get("input_ids")
+        labels = model_inputs.get("labels")
+        if not torch.is_tensor(input_ids) or not torch.is_tensor(labels):
+            return
+
+        vision_mask = torch.zeros_like(input_ids, dtype=torch.bool)
+        for token_attr in ("image_token_id", "video_token_id"):
+            token_id = getattr(self.config, token_attr, None)
+            if token_id is not None:
+                vision_mask |= input_ids.eq(int(token_id))
+        response_mask = labels.ne(-100)
+        attention_mask = model_inputs.get("attention_mask")
+        if torch.is_tensor(attention_mask) and attention_mask.ndim == 2:
+            valid = attention_mask.to(dtype=torch.bool, device=response_mask.device)
+            response_mask &= valid
+            vision_mask &= valid.to(vision_mask.device)
+
+        for module in selected:
+            module._scva_response_mask = response_mask
+            module._scva_vision_mask = vision_mask
+            module._scva_attention = None
+
+    def _collect_scva_captures(self):
+        captures = {}
+        for module in self._scva_attention_modules():
+            if not getattr(module, "_scva_capture_enabled", False):
+                continue
+            attention = getattr(module, "_scva_attention", None)
+            if attention is not None:
+                captures[int(module.layer_idx)] = attention
+        return captures
+
+    def _clear_scva_capture_context(self) -> None:
+        for module in self._scva_attention_modules():
+            module._scva_response_mask = None
+            module._scva_vision_mask = None
+            module._scva_attention = None
 
     def generate(self, **model_inputs):
         generation_kwargs = self._clean_model_inputs(model_inputs)
@@ -389,6 +365,7 @@ class VLMModel(nn.Module):
         model_name_or_path: str,
         output_attentions: bool = True,
         vision_output_attentions: bool | None = None,
+        force_sdpa: bool = False,
         **kwargs,
     ):
         config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
@@ -413,10 +390,11 @@ class VLMModel(nn.Module):
 
         if vision_output_attentions is None:
             vision_output_attentions = output_attentions and model_backbone != FAST_VLM
-        config = cls._force_eager_attention(
+        config = cls._configure_attention_backend(
             config,
             vision_output_attentions=vision_output_attentions,
             output_attentions=output_attentions,
+            force_eager=model_backbone == FAST_VLM,
         )
         config.padding_side = "left"
 
@@ -430,25 +408,26 @@ class VLMModel(nn.Module):
             **kwargs,
         }
         
+        expected_attention_backend = "eager" if model_backbone == FAST_VLM or output_attentions else "sdpa"
         if model_backbone == LLAVA_NEXT:
-            return LlavaNextForConditionalGeneration.from_pretrained(model_name_or_path, **load_kwargs), model_backbone
-
-        if model_backbone == LLAVA_ONEVISION:
-            return LlavaOnevisionForConditionalGeneration.from_pretrained(model_name_or_path, **load_kwargs), model_backbone
-
-        if model_backbone in {FAST_VLM, QWEN2_VL, QWEN2_5_VL, QWEN3_VL}:
+            model = LlavaNextForConditionalGeneration.from_pretrained(model_name_or_path, **load_kwargs)
+        elif model_backbone == LLAVA_ONEVISION:
+            model = LlavaOnevisionForConditionalGeneration.from_pretrained(model_name_or_path, **load_kwargs)
+        elif model_backbone in {FAST_VLM, QWEN2_VL, QWEN2_5_VL, QWEN3_VL}:
             # print(f"Using custom loading for backbone {model_backbone} with config {config}")
             model = backbone2model[model_backbone].from_pretrained(model_name_or_path, **load_kwargs)
             if model_backbone == FAST_VLM:
                 normalize_fast_vlm_model(model, fast_vlm_tokenizer)
-            return model, model_backbone
+        else:
+            model = cls.TRANSFORMER_CLS.from_pretrained(
+                model_name_or_path,
+                attn_implementation=expected_attention_backend,
+                trust_remote_code=True,
+                **load_kwargs,
+            )
 
-        return cls.TRANSFORMER_CLS.from_pretrained(
-            model_name_or_path,
-            attn_implementation="eager",
-            trust_remote_code=True,
-            **load_kwargs,
-        ), model_backbone
+        cls._verify_attention_backend(model, expected_attention_backend, model_backbone)
+        return model, model_backbone
 
     @staticmethod
     def _find_lora_targets(base_model, model_args):
@@ -497,6 +476,7 @@ class VLMModel(nn.Module):
         model_args: ModelArguments,
         output_attentions: bool = True,
         vision_output_attentions: bool | None = None,
+        force_sdpa: bool = False,
         **kwargs,
     ):
         base_model, model_backbone = cls._load_base_model(
@@ -504,6 +484,7 @@ class VLMModel(nn.Module):
             model_args.model_name,
             output_attentions=output_attentions,
             vision_output_attentions=vision_output_attentions,
+            force_sdpa=force_sdpa,
             **kwargs,
         )
         encoder = cls._wrap_lora_if_needed(base_model, model_args, cls._model_path(model_args), is_trainable=True)
@@ -518,6 +499,7 @@ class VLMModel(nn.Module):
         is_trainable=True,
         output_attentions: bool = True,
         vision_output_attentions: bool | None = None,
+        force_sdpa: bool = False,
         **kwargs,
     ):
         model_name_or_path = cls._model_path(model_args)
@@ -529,6 +511,7 @@ class VLMModel(nn.Module):
             base_load_path,
             output_attentions=output_attentions,
             vision_output_attentions=vision_output_attentions,
+            force_sdpa=force_sdpa,
             **kwargs,
         )
         encoder = cls._wrap_lora_if_needed(base_model, model_args, model_name_or_path, is_trainable=is_trainable)

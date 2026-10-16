@@ -168,7 +168,7 @@ def evaluate_with_judge(eval_file, ground_truth_data, **judge_kwargs):
     load_env()
     api_key = os.environ.get("OPENAI_API_KEY", None)
     base_url = os.environ.get("OPENAI_API_BASE", None)
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    # client = OpenAI(api_key=api_key, base_url=base_url)
 
     tasks = []
     gt_map = {row['index']: row for _, row in ground_truth_data.iterrows()}

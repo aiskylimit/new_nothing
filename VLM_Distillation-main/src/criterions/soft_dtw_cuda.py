@@ -369,7 +369,7 @@ class SoftDTW(torch.nn.Module):
         assert bx == by  # Equal batch sizes
         assert dx == dy  # Equal feature dimensions
 
-        use_cuda = self.use_cuda
+        use_cuda = self.use_cuda and x.is_cuda and y.is_cuda and torch.cuda.is_available()
         if use_cuda and not _NUMBA_AVAILABLE:
             print("SoftDTW: Cannot use CUDA because numba is not installed")
             use_cuda = False
@@ -409,7 +409,7 @@ class SoftDTW(torch.nn.Module):
         
         # The library's CUDA kernel has a thread limit. We need to check sequence lengths.
         max_len = max(C.shape[1], C.shape[2])
-        use_cuda = self.use_cuda
+        use_cuda = self.use_cuda and C.is_cuda and torch.cuda.is_available()
         if use_cuda and not _NUMBA_AVAILABLE:
             print("SoftDTW: Cannot use CUDA because numba is not installed")
             use_cuda = False

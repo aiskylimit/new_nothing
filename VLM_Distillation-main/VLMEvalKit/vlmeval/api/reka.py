@@ -41,11 +41,11 @@ class Reka_Wrapper(BaseAPI):
         prompt, image_path = self.message_to_promptimg(inputs, dataset=dataset)
         image_b64 = encode_image_file_to_base64(image_path)
 
-        response = reka.chat(
-            model_name=self.model,
-            human=prompt,
-            media_url=f'data:image/jpeg;base64,{image_b64}',
-            **self.kwargs)
+        # response = reka.chat(
+        #     model_name=self.model,
+        #     human=prompt,
+        #     media_url=f'data:image/jpeg;base64,{image_b64}',
+        #     **self.kwargs)
 
         try:
             return 0, response['text'], response

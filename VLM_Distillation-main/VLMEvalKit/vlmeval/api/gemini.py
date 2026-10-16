@@ -69,7 +69,7 @@ class GeminiWrapper(BaseAPI):
                 'high': types.MediaResolution.MEDIA_RESOLUTION_HIGH
             }
             self.genai = genai
-            self.client = genai.Client(api_key=key)
+            # self.client = genai.Client(api_key=key)
 
         self.backend = backend
         self.project_id = project_id
@@ -79,25 +79,24 @@ class GeminiWrapper(BaseAPI):
             proxy_set(proxy)
         super().__init__(retry=retry, system_prompt=system_prompt, verbose=verbose, **kwargs)
 
-    def upload_video_genai(self, video_path):
-        # from google.genai import types
-        # myfile = self.client.files.upload(file=video_path)
-
-        # video_part = types.Part.from_uri(
-        #     file_uri=myfile.uri,
-        #     mime_type="video/mp4"
-        # )
-
-        # video_part.video_metadata = types.VideoMetadata(fps=self.fps)
-
-        # while True:
-        #     myfile = self.client.files.get(name=myfile.name)
-        #     if myfile.state == "ACTIVE":
-        #         break
-        #     time.sleep(2)
-
-        # return video_part
-        pass
+    # def upload_video_genai(self, video_path):
+    #     from google.genai import types
+    #     myfile = self.client.files.upload(file=video_path)
+    #
+    #     video_part = types.Part.from_uri(
+    #         file_uri=myfile.uri,
+    #         mime_type="video/mp4"
+    #     )
+    #
+    #     video_part.video_metadata = types.VideoMetadata(fps=self.fps)
+    #
+    #     while True:
+    #         myfile = self.client.files.get(name=myfile.name)
+    #         if myfile.state == "ACTIVE":
+    #             break
+    #         time.sleep(2)
+    #
+    #     return video_part
 
     def build_msgs_genai(self, inputs):
         video_in_msg = False
@@ -109,10 +108,10 @@ class GeminiWrapper(BaseAPI):
                 text_and_images.append(inp['value'])
             elif inp['type'] == 'image':
                 text_and_images.append(Image.open(inp['value']))
-            elif inp['type'] == 'video':
-                # video_file = self.upload_video_genai(inp['value'])
-                # video_parts.append(video_file)
-                video_in_msg = True
+            # elif inp['type'] == 'video':
+            #     video_file = self.upload_video_genai(inp['value'])
+            #     video_parts.append(video_file)
+            #     video_in_msg = True
 
         messages = video_parts + text_and_images
         return messages, video_in_msg
@@ -155,11 +154,11 @@ class GeminiWrapper(BaseAPI):
             config_args.update(kwargs)
 
             try:
-                resp = self.client.models.generate_content(
-                    model=model,
-                    contents=messages,
-                    config=types.GenerateContentConfig(**config_args)
-                )
+                # resp = self.client.models.generate_content(
+                #     model=model,
+                #     contents=messages,
+                #     config=types.GenerateContentConfig(**config_args)
+                # )
                 answer = resp.text
                 return 0, answer, 'Succeeded! '
             except Exception as err:
@@ -176,7 +175,7 @@ class GeminiWrapper(BaseAPI):
             model = GenerativeModel(model_name=model_name)
             messages = self.build_msgs_vertex(inputs)
             try:
-                resp = model.generate_content(messages)
+                # resp = model.generate_content(messages)
                 answer = resp.text
                 return 0, answer, 'Succeeded! '
             except Exception as err:

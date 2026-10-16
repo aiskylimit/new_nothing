@@ -108,7 +108,7 @@ def multimodal(images, text, url, key, temperature=0.6, max_tokens=32768, top_k=
             'text': text, 'key': key, 'temperature': temperature,
             'max_tokens': max_tokens, 'top_k': top_k, 'top_p': top_p, 'stream': stream
         }
-    response = requests.post(url, json=data, headers={"Content-Type": "application/json"}, timeout=timeout)
+    # response = requests.post(url, json=data, headers={"Content-Type": "application/json"}, timeout=timeout)
     if stream:
         final_text = ''
         for h in get_streaming_response(response):
