@@ -52,6 +52,8 @@ export NCCL_DEBUG=WARN
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
 
+cd ./GRIT
+bash ./project_commands.sh
 # cd ./cypher-extract
 # bash ./project_command.sh
 

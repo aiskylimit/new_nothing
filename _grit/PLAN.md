@@ -1,7 +1,7 @@
 # GRIT on the offline B200 server — project plan
 
 Scope: **Qwen2.5-3B-Instruct on 4 × B200 (180 GB, GPUs 4,5,6,7)**, packaged for the offline
-submit-and-wait framework of this repo (`aiskylimit/new_nothingnew_2`, branch `GRIT`).
+submit-and-wait framework of this repo (`aiskylimit/new_nothing`, branch `GRIT`).
 Everything for this project lives in `GRIT/`. Files outside `GRIT/` are only touched
 when explicitly approved (see §6).
 
@@ -92,7 +92,7 @@ server.
 
 | Original assumption | In this framework |
 |---|---|
-| Repo `aiskylimit/new_nothing`, branch `grit-3b`, folder `grit/` | Repo `aiskylimit/new_nothingnew_2`, branch **`GRIT`**, folder **`GRIT/`**. Push only this branch; the maintainer merges. |
+| Repo `aiskylimit/new_nothing`, branch `grit-3b`, folder `grit/` | Repo `aiskylimit/new_nothing`, branch **`GRIT`**, folder **`GRIT/`**. Push only this branch; the maintainer merges. |
 | `run_all.sh` creates the venv and installs packages | The server builds the env from a root file **`grit.txt`** (uv, Python 3.11) into `/mnt/local/uvenvs/grit/`. The run script only `source`s it and never runs `pip install` (no internet). |
 | Models/datasets downloaded at run time from HF | Server is **offline** (`HF_HUB_OFFLINE=1`, `HF_DATASETS_OFFLINE=1`). Everything is pre-fetched through **`GRIT/download.txt`** (`#d` job), and code loads from local paths only. |
 | One file for the full flow | **`GRIT/project_commands.sh`**, launched from root `commands.sh` (`#1 +N` job): `cd ./GRIT && bash ./project_commands.sh`. |
@@ -104,7 +104,7 @@ server.
 
 ### 4.1 Server paths
 
-`@PROJECT@` = `aiskylimit_new_nothingnew_2`. Base dir: `/mnt/local/@PROJECT@/grit/`.
+`@PROJECT@` = `aiskylimit_new_nothing`. Base dir: `/mnt/local/@PROJECT@/grit/`.
 
 ```
 /mnt/local/@PROJECT@/grit/

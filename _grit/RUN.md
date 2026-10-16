@@ -23,7 +23,7 @@ with `#d` and fetches:
 - the pre-built GRIT artifacts (`fushinguyenex/GRIT-artifacts`),
 - the eval benchmarks.
 
-Everything goes under `/mnt/local/aiskylimit_new_nothingnew_2/grit/`. Two repos are gated on HF and
+Everything goes under `/mnt/local/aiskylimit_new_nothing/grit/`. Two repos are gated on HF and
 need their terms accepted (once) by the account that downloads: `allenai/wildguard` (short form) and
 `sorry-bench/sorry-bench-202406`.
 
@@ -58,7 +58,7 @@ shows the real seconds per step (`step_seconds`).
 ## Job 4: fetch results
 
 ```
-#2 -f-/mnt/local/aiskylimit_new_nothingnew_2/grit/results_grit_3b_lam1/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/GRIT/results_grit_3b_lam1/ +a
 #grit
 #v1
 ```
@@ -68,7 +68,9 @@ To only peek at progress, use `#2 -0-3` (last 3 run logs).
 ## What to look at
 
 All small outputs are in `results_grit_3b_lam1/` next to `project_commands.sh` (on the server:
-`/mnt/local/aiskylimit_new_nothingnew_2/grit/results_grit_3b_lam1/`, the path printed at the end of every job):
+`/mnt/local/aiskylimit_new_nothing/GRIT/results_grit_3b_lam1/` (the repo's `GRIT/` folder, uppercase), the
+path printed at the end of every job; models, data and checkpoints are under the lowercase
+`/mnt/local/aiskylimit_new_nothing/grit/`):
 
 | File | Content |
 |---|---|
