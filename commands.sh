@@ -35,8 +35,8 @@ export NCCL_DEBUG=WARN
 
 cd ./OpenED
 bash gather_pl_logs.sh 
-bash gather_logs.sh all34
-tar -czf collected_logs.tar.gz collected_logs/all34/
+bash gather_logs.sh all35
+tar -czf collected_logs.tar.gz collected_logs/all35/
 ls -lh collected_logs.tar.gz
 # bash ./project_commands_19.sh
 
