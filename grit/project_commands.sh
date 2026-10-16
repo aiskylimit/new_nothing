@@ -23,7 +23,7 @@ fi
 source "${VENV}/bin/activate"
 
 # Paths - must match download.txt.
-PROJECT_NAME="aiskylimit_new_nothingnew_2"
+PROJECT_NAME="aiskylimit_new_nothing"
 BASE_DIR="/mnt/local/${PROJECT_NAME}/grit"
 MODEL="${BASE_DIR}/models/Qwen2.5-3B-Instruct"
 GUARD="${BASE_DIR}/models/Qwen3Guard-Gen-4B"   # training reward
