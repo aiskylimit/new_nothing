@@ -1,5 +1,5 @@
-#i grit.txt
-#glog
+#1 +10
+#grit
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -30,8 +30,9 @@ export NCCL_DEBUG=WARN
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
 
-cd ./GRIT
+cd ./grit
 bash ./project_commands.sh
+
 # cd ./cypher-extract
 # bash ./project_command.sh
 
@@ -45,5 +46,3 @@ bash ./project_commands.sh
 # cd ./opsd
 # bash ./project_commands.sh
 
-# cd ./offline_olmo7b_b200
-# bash ./project_commands.sh
