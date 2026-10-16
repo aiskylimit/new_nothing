@@ -1,4 +1,26 @@
-#1 +10
+#d
+#models
+--hf Qwen/Qwen2.5-3B-Instruct /mnt/local/@PROJECT@/grit/models/Qwen2.5-3B-Instruct
+--hf Qwen/Qwen3Guard-Gen-4B /mnt/local/@PROJECT@/grit/models/Qwen3Guard-Gen-4B
+--hf allenai/wildguard /mnt/local/@PROJECT@/grit/models/wildguard
+#datasets
+--hf-dataset fushinguyenex/GRIT-artifacts /mnt/local/@PROJECT@/grit/prepared
+--hf-dataset cais/mmlu /mnt/local/@PROJECT@/grit/data/raw/mmlu
+--hf-dataset m-a-p/SuperGPQA /mnt/local/@PROJECT@/grit/data/raw/SuperGPQA
+--hf-dataset openai/gsm8k /mnt/local/@PROJECT@/grit/data/raw/gsm8k
+--hf-dataset HuggingFaceH4/MATH-500 /mnt/local/@PROJECT@/grit/data/raw/MATH-500
+--hf-dataset Hothan/OlympiadBench /mnt/local/@PROJECT@/grit/data/raw/OlympiadBench
+--url https://huggingface.co/datasets/livecodebench/code_generation_lite/resolve/main/test.jsonl /mnt/local/@PROJECT@/grit/data/raw/livecodebench
+--url https://huggingface.co/datasets/tatsu-lab/alpaca_eval/resolve/main/alpaca_eval.json /mnt/local/@PROJECT@/grit/data/raw/alpaca_eval
+--hf-dataset Paul/XSTest /mnt/local/@PROJECT@/grit/data/raw/XSTest
+--url https://huggingface.co/datasets/bench-llm/or-bench/resolve/main/or-bench-hard-1k.csv /mnt/local/@PROJECT@/grit/data/raw/or-bench
+--url https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/data/advbench/harmful_behaviors.csv /mnt/local/@PROJECT@/grit/data/raw/advbench
+--url https://raw.githubusercontent.com/centerforaisafety/HarmBench/main/data/behavior_datasets/harmbench_behaviors_text_test.csv /mnt/local/@PROJECT@/grit/data/raw/harmbench
+--url https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors/resolve/main/data/harmful-behaviors.csv /mnt/local/@PROJECT@/grit/data/raw/JBB-Behaviors
+--hf-dataset sorry-bench/sorry-bench-202406 /mnt/local/@PROJECT@/grit/data/raw/sorry-bench-202406
+--url https://huggingface.co/datasets/declare-lab/HarmfulQA/resolve/main/data_for_hub.json /mnt/local/@PROJECT@/grit/data/raw/HarmfulQA
+--url https://huggingface.co/datasets/Babelscape/ALERT/resolve/main/alert.jsonl /mnt/local/@PROJECT@/grit/data/raw/ALERT
+
 #glog
 #v2
 
@@ -10,7 +32,6 @@
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-pgrep -f 'project_commands.*\.sh' | xargs -r kill -9
 # sleep 2
 nvidia-smi
 
