@@ -45,9 +45,9 @@ env vars.
 
 ## Outputs
 
-- `/mnt/local/aiskylimit_new_nothingnew_2/grit/outputs/<RUN_ID>/step_XXXXXX`:
+- `/mnt/local/aiskylimit_new_nothing/grit/outputs/<RUN_ID>/step_XXXXXX`:
   checkpoints (weights for every saved step; optimizer state only in the latest).
-- `/mnt/local/aiskylimit_new_nothingnew_2/grit/eval/<RUN_ID>/`: raw generations and WildGuard labels.
+- `/mnt/local/aiskylimit_new_nothing/grit/eval/<RUN_ID>/`: raw generations and WildGuard labels.
 - `GRIT/results_<RUN_ID>/`: small files to fetch with a `#2` job: `logs/`,
   `train/metrics.jsonl`, `train/diagnostics_summary.json`, `train/validation/`,
   `eval/eval_results.json`, `summary.md`, `summary.json`.
