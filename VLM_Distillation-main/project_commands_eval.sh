@@ -25,7 +25,7 @@ cd "${PROJECT_DIR}"
 
 # Eval must see exactly one physical GPU. Inside the process, GPU 4 becomes
 # logical cuda:0, which is what device_map=auto will use.
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=0
 export LMUData="${LMUData:-${PROJECT_DIR}/eval_data/LMUData}"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1
 export LITELLM_LOCAL_MODEL_COST_MAP=true

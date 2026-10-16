@@ -13,7 +13,6 @@ __pycache__/
 *.pth
 *.ckpt
 *.bin
-*.zip
 *.gif
 *.tar.gz
 *.tar

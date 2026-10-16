@@ -6,7 +6,7 @@ PROJECT_DIR="${SCRIPT_DIR}"
 DOWNLOAD_ROOT=/mnt/local/aiskylimit_new_nothingnew_2/VLM_Distillation-main
 DOWNLOAD_DATA_DIR="${DOWNLOAD_ROOT}/train_data"
 DATA_DIR="${PROJECT_DIR}/train_data"
-TRAIN_ENV=/mnt/local/uvenvs/vlm-distill/bin/activate
+TRAIN_ENV=/mnt/local/uvenvs/vlm-distill-train/bin/activate
 TRAIN_DIR="${PROJECT_DIR}/script_train/qwen2_teacher_7b_fastvlm_student_05b"
 EVAL_SCRIPT="${PROJECT_DIR}/project_commands_eval.sh"
 BASE_MODEL="${BASE_MODEL:-${DOWNLOAD_ROOT}/models/KamilaMila/FastVLM-0.5B}"
@@ -26,12 +26,13 @@ fi
 
 # Training uses IMAGE_DIR=train_data. The archives are expected to have
 # already been extracted under this directory.
-# unzip -q -o "${DOWNLOAD_DATA_DIR}/coco/train2017.zip" -d "${DATA_DIR}/coco"
-# unzip -q -o "${DOWNLOAD_DATA_DIR}/gqa/images.zip" -d "${DATA_DIR}/gqa"
-# unzip -q -o "${DOWNLOAD_DATA_DIR}/textvqa/train_val_images.zip" -d "${DATA_DIR}/textvqa"
-# unzip -q -o "${DOWNLOAD_DATA_DIR}/ocr_vqa/ocr_vqa_images.zip" -d "${DATA_DIR}/ocr_vqa"
-# unzip -q -o "${DOWNLOAD_DATA_DIR}/vg/images.zip" -d "${DATA_DIR}/vg"
-# unzip -q -o "${DOWNLOAD_DATA_DIR}/vg/images2.zip" -d "${DATA_DIR}/vg"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/coco/train2017.zip" -d "${DATA_DIR}/coco"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/gqa/images.zip" -d "${DATA_DIR}/gqa"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/textvqa/train_val_images.zip" -d "${DATA_DIR}/textvqa"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/ocr_vqa/ocr_vqa_images.zip" -d "${DATA_DIR}/ocr_vqa"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/vg/images.zip" -d "${DATA_DIR}/vg"
+unzip -q -o "${DOWNLOAD_DATA_DIR}/vg/images2.zip" -d "${DATA_DIR}/vg"
+unzip -q -o "${DOWNLOAD_ROOT}/VLMEvalKit.zip" -d "${DOWNLOAD_ROOT}"
 
 # bash download_datatrain.sh
 
@@ -43,13 +44,13 @@ CE_OUTPUT_DIR="${PROJECT_DIR}/outputs/${CE_RUN_NAME}"
 
 printf '\n=== [%s] RESUME WITH EVAL %s on GPU 4 ===\n' \
   "$(date '+%Y-%m-%d %H:%M:%S')" "${CE_RUN_NAME}"
-CUDA_VISIBLE_DEVICES=4 bash "${EVAL_SCRIPT}" "${CE_OUTPUT_DIR}" "${BASE_MODEL}"
+# CUDA_VISIBLE_DEVICES=4 bash "${EVAL_SCRIPT}" "${CE_OUTPUT_DIR}" "${BASE_MODEL}"
 printf '=== [%s] COMPLETED eval: %s ===\n' \
   "$(date '+%Y-%m-%d %H:%M:%S')" "${CE_RUN_NAME}"
 
 JOBS=(
-  "train_qwen2_teacher_7b_fastvlm_student_05b_dskd_v2_with_eta.sh|qwen2_teacher_7b_fastvlm_student_05b_dskd_v2_with_eta"
-  "train_qwen2_teacher_7b_fastvlm_student_05b_dwa_kd.sh|qwen2_teacher_7b_fastvlm_student_05b_dwa_kd"
+  # "train_qwen2_teacher_7b_fastvlm_student_05b_dskd_v2_with_eta.sh|qwen2_teacher_7b_fastvlm_student_05b_dskd_v2_with_eta"
+  # "train_qwen2_teacher_7b_fastvlm_student_05b_dwa_kd.sh|qwen2_teacher_7b_fastvlm_student_05b_dwa_kd"
   "train_qwen2_teacher_7b_fastvlm_student_05b_emkd.sh|qwen2_teacher_7b_fastvlm_student_05b_emkd"
   "train_qwen2_teacher_7b_fastvlm_student_05b_mcw_kd.sh|qwen2_teacher_7b_fastvlm_student_05b_mcw_kd"
   "train_qwen2_teacher_7b_fastvlm_student_05b_sre.sh|qwen2_teacher_7b_fastvlm_student_05b_sre"
@@ -64,11 +65,11 @@ for job in "${JOBS[@]}"; do
 
   printf '\n=== [%s] TRAIN %s on GPUs 4,5,6,7 ===\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
-  CUDA_VISIBLE_DEVICES=4,5,6,7 bash "${train_path}"
+  CUDA_VISIBLE_DEVICES=0,1,2,3 bash "${train_path}"
 
   printf '\n=== [%s] EVAL %s on GPU 4 ===\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
-  CUDA_VISIBLE_DEVICES=4 bash "${EVAL_SCRIPT}" "${output_dir}" "${BASE_MODEL}"
+  CUDA_VISIBLE_DEVICES=0 bash "${EVAL_SCRIPT}" "${output_dir}" "${BASE_MODEL}"
 
   printf '=== [%s] COMPLETED train + eval: %s ===\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
