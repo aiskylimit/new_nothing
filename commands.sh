@@ -1,4 +1,7 @@
-#i grit.txt
+#d
+#datasets
+--hf-dataset sorry-bench/sorry-bench-202406 /mnt/local/@PROJECT@/grit/data/raw/sorry-bench-202406
+
 #glog
 #v2
 
