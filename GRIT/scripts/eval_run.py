@@ -178,9 +178,12 @@ def main():
     # 2. generate --------------------------------------------------------------
     tick(f"[2/5] generate for {list(models)}")
     jobs = []
+    uids = {row["id"] for rows in data.values() for row in rows}
     for label, path in models.items():
         out = work / "generations" / f"{safe(label)}.jsonl"
-        if len(by_uid(out)) < n_items:
+        # Count only current items: generations of items no longer evaluated (e.g. an earlier protocol's ids)
+        # must not make an incomplete file look complete.
+        if not uids <= by_uid(out).keys():
             jobs.append({"role": "generate", "model": path, "label": label, "items": items_path, "out": out})
     run_parallel(args, jobs)
     gens = {}

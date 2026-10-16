@@ -33,7 +33,9 @@ LETTERS = "ABCDEFGHIJKLMNOP"
 
 # Local snapshot layout under --raw-root (see download.txt). "glob" must match exactly one file.
 SOURCES = {
-    "mmlu": {"dir": "mmlu", "glob": "all/test-*.parquet", "expected_n": 14042},
+    # Official 5-shot: the 5 dev questions of the same subject (all/dev, 57 subjects x 5) precede each test question.
+    "mmlu": {"dir": "mmlu", "glob": "all/test-*.parquet", "expected_n": 14042,
+             "fewshot_glob": "all/dev-*.parquet", "fewshot_n": 285},
     "supergpqa": {"dir": "SuperGPQA", "glob": "**/SuperGPQA-all.jsonl", "expected_n": 26529},
     "gsm8k": {"dir": "gsm8k", "glob": "main/test-*.parquet", "expected_n": 1319},
     "math": {"dir": "MATH-500", "glob": "**/test.jsonl", "expected_n": 500},
@@ -72,7 +74,11 @@ GUARDED = [*HARMFUL, *BENIGN]  # responses judged by WildGuard (harmful response
 
 # Generous budgets so answers are not cut off (truncated_% in the results shows how often the cap is hit);
 # the generate engine sizes its context to the longest prompt + budget.
-MAX_NEW_TOKENS = {"gsm8k": 4096, "math": 8192, "olympiadbench": 8192, "livecodebench": 8192,
+# Prompt/scoring protocol of a benchmark whose prepared rows changed format; a prepared file built under another
+# protocol is rebuilt instead of reused.
+PROTOCOLS = {"mmlu": "5-shot-chat", "supergpqa": "zero-shot-cot"}
+
+MAX_NEW_TOKENS = {"supergpqa": 4096, "gsm8k": 4096, "math": 8192, "olympiadbench": 8192, "livecodebench": 8192,
                   "alpacaeval": 4096, "xstest_safe": 2048, "orbench_hard": 2048,
                   **{bench: 2048 for bench in HARMFUL}}
 
@@ -106,6 +112,12 @@ LCB_FORMATTING_WITHOUT_STARTER_CODE = (
     "reads the inputs, runs the algorithm and writes output to STDOUT."
 )
 
+# SuperGPQA official zero-shot prompt (config/prompt/zero-shot.yaml @ e31e8bf, as yaml.safe_load reads it); the
+# model reasons freely and its last line is "Answer: X".
+SUPERGPQA_ZERO_SHOT = ("Answer the following multiple choice question. There is only one correct answer. The last "
+                       "line of your response should be in the format 'Answer: $LETTER' (without quotes), where "
+                       "LETTER is one of A, B, C, D, E, F, G, H, I, or J.\n\n{}\n")
+
 # OlympiadBench official English prompt for open-ended math (inference/code/evaluators/evaluator.py @ ba5b26a).
 OB_ANSWER_TYPE_TEXT = {"Numerical": "a numerical value", "Expression": "an expression",
                        "Equation": "an equation", "Interval": "an interval"}
@@ -123,14 +135,20 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
-def source_file(raw_root, bench):
+def source_file(raw_root, bench, key="glob"):
     src = SOURCES[bench]
     root = Path(raw_root) / src["dir"]
-    matches = sorted(path for path in root.glob(src["glob"]) if path.is_file())
+    matches = sorted(path for path in root.glob(src[key]) if path.is_file())
     if len(matches) != 1:
-        raise FileNotFoundError(f"{bench}: expected one {src['glob']} under {root}, found {len(matches)}; "
+        raise FileNotFoundError(f"{bench}: expected one {src[key]} under {root}, found {len(matches)}; "
                                 "check download.txt")
     return matches[0]
+
+
+def required_files(raw_root):
+    """Every local file the general benchmarks read (raises FileNotFoundError if one is missing)."""
+    return [source_file(raw_root, bench, key) for bench, src in SOURCES.items()
+            for key in ("glob", "fewshot_glob") if key in src]
 
 
 def read_rows(path):
@@ -156,11 +174,45 @@ def _require(row, keys, bench):
         raise KeyError(f"{bench}: upstream schema changed, missing {missing}; got {sorted(row)}")
 
 
-def mc_prompt(question, options, subject=None):
-    head = f"The following is a multiple choice question about {subject}.\n\n" if subject else ""
-    opts = "\n".join(f"{LETTERS[i]}. {option}" for i, option in enumerate(options))
-    letters = ", ".join(LETTERS[: len(options)])
-    return f"{head}{question}\n\n{opts}\n\nAnswer with only the letter ({letters}) of the correct option."
+# MMLU official few-shot prompt (github.com/hendrycks/test evaluate.py @ 4450500), verbatim; its `choices` list is
+# MMLU_CHOICES here. Its format_subject yields a double space ("about  abstract algebra."), kept as is. The whole 5-shot text is sent as
+# one user turn of the chat template and the answer is the first assistant token, restricted to A-D. The
+# official crop() to GPT-3's 2048 tokens is not needed: the longest prompt fits Qwen2.5's context.
+MMLU_CHOICES = ["A", "B", "C", "D"]
+
+
+def format_subject(subject):
+    l = subject.split("_")
+    s = ""
+    for entry in l:
+        s += " " + entry
+    return s
+
+
+def mmlu_format_example(row, include_answer=True):
+    """format_example on one MMLU row (question, choices, answer index) instead of a CSV row."""
+    prompt = row["question"]
+    k = len(row["choices"])
+    for j in range(k):
+        prompt += "\n{}. {}".format(MMLU_CHOICES[j], row["choices"][j])
+    prompt += "\nAnswer:"
+    if include_answer:
+        prompt += " {}\n\n".format(MMLU_CHOICES[int(row["answer"])])
+    return prompt
+
+
+def mmlu_prompt(dev_rows, subject, row, k=5):
+    """gen_prompt(dev_df, subject, k) + format_example(test_df, i, include_answer=False)."""
+    prompt = "The following are multiple choice questions (with answers) about {}.\n\n".format(format_subject(subject))
+    for i in range(k):
+        prompt += mmlu_format_example(dev_rows[i])
+    return prompt + mmlu_format_example(row, include_answer=False)
+
+
+def supergpqa_prompt(question, options):
+    """infer/data_loader.py load_data(mode='zero-shot'), verbatim."""
+    prompt_format = [question+'\n'+'\n'.join([f'{chr(65+i)}) {option}' for i, option in enumerate(options)])]
+    return SUPERGPQA_ZERO_SHOT.format(*prompt_format)
 
 
 class _NoGlobalsUnpickler(pickle.Unpickler):
@@ -256,15 +308,21 @@ def alert_instruction(prompt):
     return match.group(1)
 
 
-def build_benchmark(bench, rows):
-    """Return a list of normalized records for one general benchmark."""
+def build_benchmark(bench, rows, fewshot=None):
+    """Return a list of normalized records for one general benchmark (fewshot: rows of its fewshot_glob file)."""
     out = []
     if bench == "mmlu":
+        dev = {}
+        for r in fewshot:
+            dev.setdefault(r["subject"], []).append(r)
+        if any(len(shots) != 5 for shots in dev.values()):
+            raise ValueError(f"mmlu: expected 5 dev questions per subject, got {sorted(map(len, dev.values()))}")
         for i, r in enumerate(rows):
             if i == 0:
                 _require(r, ["question", "choices", "answer", "subject"], bench)
-            out.append({"id": f"mmlu-{i}", "mode": "mc", "n_options": len(r["choices"]),
-                        "prompt": mc_prompt(r["question"], r["choices"], r["subject"].replace("_", " ")),
+            # "5shot" id: generations of the earlier zero-shot protocol are not reused on resume.
+            out.append({"id": f"mmlu-5shot-{i}", "mode": "mc", "n_options": len(r["choices"]),
+                        "prompt": mmlu_prompt(dev[r["subject"]], r["subject"], r),
                         "gold": LETTERS[int(r["answer"])], "category": r["subject"]})
     elif bench == "supergpqa":
         for i, r in enumerate(rows):
@@ -273,8 +331,10 @@ def build_benchmark(bench, rows):
             gold = str(r["answer_letter"]).strip().upper()
             if gold not in LETTERS[: len(r["options"])]:
                 raise ValueError(f"supergpqa {r['uuid']}: answer_letter {gold!r} outside options")
-            out.append({"id": f"supergpqa-{r['uuid']}", "mode": "mc", "n_options": len(r["options"]),
-                        "prompt": mc_prompt(r["question"], r["options"]),
+            # Official zero-shot CoT: free generation, answer read from the "Answer: X" line. The "cot" id keeps
+            # generations of the earlier one-letter protocol from being reused on resume.
+            out.append({"id": f"supergpqa-cot-{r['uuid']}", "mode": "gen", "n_options": len(r["options"]),
+                        "prompt": supergpqa_prompt(r["question"], r["options"]), "options": list(r["options"]),
                         "gold": gold, "category": r.get("discipline", "unknown")})
     elif bench == "gsm8k":
         for i, r in enumerate(rows):
@@ -401,13 +461,22 @@ def prepare_all(benchmarks, out_dir, *, raw_root, safety_file, max_samples=None,
     for bench in benchmarks:
         path = out_dir / f"{bench}.jsonl"
         source = Path(safety_file) if bench == SAFETY_BENCH else source_file(raw_root, bench)
+        fewshot = source_file(raw_root, bench, "fewshot_glob") if "fewshot_glob" in SOURCES.get(bench, {}) else None
         entry = manifest.get(bench)
         if (entry and path.exists() and entry.get("max_samples") == max_samples
+                and entry.get("protocol") == PROTOCOLS.get(bench)
+                and entry.get("fewshot_source") == (str(fewshot) if fewshot else None)
                 and entry.get("source") == str(source) and entry.get("sha256") == file_sha256(path)):
             log(f"{bench}: reuse prepared ({entry['n']} rows)")
             continue
         raw = read_rows(source)
-        rows = build_safety_benchmark(raw) if bench == SAFETY_BENCH else build_benchmark(bench, raw)
+        if bench == SAFETY_BENCH:
+            rows = build_safety_benchmark(raw)
+        else:
+            shots = read_rows(fewshot) if fewshot else None
+            if shots is not None and len(shots) != SOURCES[bench]["fewshot_n"]:
+                log(f"WARNING {bench}: few-shot file has {len(shots)} rows, expected {SOURCES[bench]['fewshot_n']}")
+            rows = build_benchmark(bench, raw, fewshot=shots)
         ids = [row["id"] for row in rows]
         if len(set(ids)) != len(ids):
             raise ValueError(f"{bench}: duplicate ids")
@@ -422,7 +491,10 @@ def prepare_all(benchmarks, out_dir, *, raw_root, safety_file, max_samples=None,
         with open(path, "w", encoding="utf-8") as handle:
             for row in rows:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-        manifest[bench] = {"source": str(source), "source_sha256": file_sha256(source), "upstream_n": full_n,
+        manifest[bench] = {"source": str(source), "protocol": PROTOCOLS.get(bench),
+                           "fewshot_source": str(fewshot) if fewshot else None,
+                           "fewshot_sha256": file_sha256(fewshot) if fewshot else None,
+                           "source_sha256": file_sha256(source), "upstream_n": full_n,
                            "n": len(rows), "max_samples": max_samples, "seed": seed, "sha256": file_sha256(path)}
         manifest_path.write_text(json.dumps(manifest, indent=2))
         log(f"{bench}: {len(rows)}/{full_n} rows from {source}")
@@ -631,6 +703,17 @@ def score_olympiad(item, response, timeout_seconds=30):
     return int(bool(correct)), extracted
 
 
+def score_supergpqa(item, response):
+    """eval/eval.py calculate_accuracy(mode='zero-shot'): option label from the last line (then the whole
+    response), falling back to matching an option's text; correct when it equals answer_letter."""
+    from third_party.supergpqa.eval_extract import extract_option_content, extract_option_labels
+    predict = extract_option_labels(response, 'ABCDEFGHIJ')
+    if predict == None:  # noqa: E711 - official code
+        predict = extract_option_content(response, item["options"])
+        predict = chr(item["options"].index(predict) + 65) if predict else None
+    return int(bool(predict) and item["gold"] == predict), predict not in (None, "", "error")
+
+
 # ---------------------------------------------------------------------------
 # Per-item scoring and statistics
 # ---------------------------------------------------------------------------
@@ -638,8 +721,10 @@ def score_olympiad(item, response, timeout_seconds=30):
 def score_item(item, gen):
     """Return dict(score, extracted) for one item; LiveCodeBench is scored in bulk (score_livecodebench)."""
     bench = item["benchmark"]
-    if bench in ("mmlu", "supergpqa"):
+    if bench == "mmlu":
         s, ok = score_mc(gen.get("choice"), item["gold"])
+    elif bench == "supergpqa":
+        s, ok = score_supergpqa(item, gen["response"])
     elif bench == "gsm8k":
         s, ok = score_gsm8k(gen["response"], item["gold"])
     elif bench == "math":

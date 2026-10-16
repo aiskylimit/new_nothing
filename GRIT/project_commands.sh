@@ -98,7 +98,7 @@ done
 # Eval inputs are checked now, not after hours of training.
 if [[ ",${STAGES}," == *",eval,"* ]]; then
   [ -f "${JUDGE}/config.json" ] || { echo "ERROR: missing ${JUDGE}/config.json (allenai/wildguard, see download.txt)"; exit 1; }
-  python -c 'import sys; from scripts import eval_lib as E; [E.source_file(sys.argv[1], b) for b in E.SOURCES]' "${RAW}" \
+  python -c 'import sys; from scripts import eval_lib as E; E.required_files(sys.argv[1])' "${RAW}" \
     || { echo "ERROR: eval benchmark files missing under ${RAW}. Run the download job first: GRIT/download.txt"; exit 1; }
 fi
 
