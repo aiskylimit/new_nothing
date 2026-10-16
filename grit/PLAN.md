@@ -267,9 +267,16 @@ evaluable but not resumable.
      - LiveCodeBench uses the CodeQwenInstruct prompt, official `extract_code` and
        `codegen_metrics` (6 s per test, pass@1).
      - Requires ANTLR 4.11 (`grit.txt`).
-     - MMLU and SuperGPQA are scored exactly (zero-shot, one constrained answer letter) but do
-       not follow the official protocols (MMLU 5-shot, SuperGPQA zero-shot CoT). Decided on
-       2026-10-13 to keep this: it is cheaper and sufficient for base-vs-checkpoint deltas.
+     - SuperGPQA follows the official zero-shot CoT protocol (changed 2026-10-16): the authors'
+       `zero-shot.yaml` prompt, greedy, up to 4,096 new tokens, answer read from the `Answer: X`
+       line by the official `extract_option_labels` / `extract_option_content`
+       (`third_party/supergpqa/`). Cost: ~26,500 long generations per model.
+     - MMLU follows the official 5-shot prompt (changed 2026-10-16): Hendrycks et al.'s
+       `gen_prompt` + `format_example`, the 5 `dev` questions of the same subject, ending in
+       `Answer:`. The whole text is one user turn of the chat template (better suited to an
+       Instruct model than raw text) and the answer is the first assistant token, restricted
+       to A-D. The `dev` split on HF equals the authors' CSVs; the only prompt difference from
+       their pandas code is 10 options that read "None" (pandas turns them into "nan").
    - Paired bootstrap deltas compare every checkpoint with base.
    - Loaders and scorers were tested locally on the real snapshots: all row counts match.
 7. **Reward fix: deferred to the second run (decided 2026-10-13).** The first 3B run keeps the
