@@ -1,4 +1,4 @@
-#1 +10
+#2
 #grit
 #v2
 
@@ -30,8 +30,8 @@ export NCCL_DEBUG=WARN
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
 
-cd ./grit
-bash ./project_commands.sh
+# cd ./grit
+# bash ./project_commands.sh
 
 # cd ./cypher-extract
 # bash ./project_command.sh
