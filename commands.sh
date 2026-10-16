@@ -1,4 +1,4 @@
-#2 +a
+#i grit.txt
 #grit
 #v1
 
