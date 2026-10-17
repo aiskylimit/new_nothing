@@ -1,0 +1,4 @@
+# Optional dependency used by execution-based Cypher evaluation.
+neo4j>=5.20
+python-dotenv>=1.0
+tqdm>=4.66

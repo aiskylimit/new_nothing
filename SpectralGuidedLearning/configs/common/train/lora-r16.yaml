@@ -1,0 +1,13 @@
+# P-ALIGN's LoRA recipe (r16 / alpha 16 / dropout 0.05 / all linear layers), otherwise identical
+# to full-ds-z2: bf16 weights, fp32 LoRA master weights in DeepSpeed ZeRO-2, adapter-only output.
+defaults: [full-ds-z2.yaml]
+stages:
+  train:
+    args:
+      model-dtype: bfloat16
+      use-lora: true
+      lora-r: 16
+      lora-alpha: 16
+      lora-dropout: 0.05
+      lora-target-modules: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
+      lora-merge: false

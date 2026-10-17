@@ -1,0 +1,23 @@
+# manager: uv
+# python: 3.11
+# From this repo's own scripts/tropic (RLSD/SDPO/TROPIC-G on allenai/Olmo-3-7B-Think)
+# - audited imports only. Same package set as offline_rlsd_sdpo_b200/tropic.txt
+# and offline_tropic_g_b200/tropic.txt (both proven working on this B200 server),
+# EXCEPT transformers is bumped 4.56.1 -> 4.57.6: verified live (inspected the
+# real PyPI wheels of both versions) that OLMo-3 support (models/olmo3/) does
+# NOT exist in 4.56.1 and was added by 4.57.1 (4.57.0 itself is yanked from
+# PyPI for a packaging bug - avoid it). 4.57.6 is the latest 4.57.x as of
+# writing. This bump is UNTESTED on this server for the Qwen3 scripts in the
+# sibling offline_tropic_g_b200/ and offline_rlsd_sdpo_b200/ folders - that is
+# exactly why OLMo was split into its OWN folder/tropic.txt instead of
+# bumping the shared one, per the user's explicit choice.
+math-verify[antlr4_13_2]
+torch==2.9.0
+transformers==4.57.6
+datasets==4.1.1
+accelerate==1.10.1
+peft==0.17.1
+vllm==0.18.0
+huggingface-hub
+numpy==1.26.4
+sentencepiece

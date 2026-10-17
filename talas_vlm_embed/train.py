@@ -65,6 +65,15 @@ def main():
         resume_checkpoint_dir = None
         logger.info("No checkpoint found. Starting fresh training.")
 
+    # Initialize WandB if enabled
+    # if 'wandb' in training_args.report_to:
+    if training_args.report_to == "wandb":
+        if (torch.distributed.is_initialized() and torch.distributed.get_rank() == 0) or (not torch.distributed.is_initialized()):
+            print_rank('init wandb')
+            wandb.init(project=training_args.project_name, name=training_args.run_name, mode="online")
+            wandb.config.update(model_args)
+            wandb.config.update(data_args)
+            wandb.config.update(training_args)
             
     hf_config = AutoConfig.from_pretrained(model_args.model_name, trust_remote_code=True)
     model = MMEBModel.build(model_args)
@@ -95,7 +104,7 @@ def main():
     
     train_dataset.trainer = trainer 
     trainer.train(resume_from_checkpoint=resume_checkpoint_dir)
-    trainer.save_model(training_args.output_dir)
+    trainer.save_model(training_args.output_dir)  # Saves the tokenizer too for easy upload
     
     if trainer.is_world_process_zero(): 
         processor.save_pretrained(training_args.output_dir)

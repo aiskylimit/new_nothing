@@ -1,0 +1,24 @@
+# manager: uv
+# python: 3.12
+# From SpectralGuidedLearning pyproject [project].dependencies (requires-python >=3.12,<3.13; torch/torchvision/torchaudio tu index cu130). Version chua pin trong pyproject lay theo uv.lock.
+torch==2.13.0
+torchvision==0.28.0
+torchaudio==2.11.0
+vllm==0.27.1
+transformers==5.5.3
+peft==0.20.0
+deepspeed==0.19.6
+datasets==5.0.1
+accelerate==1.14.0
+numpy==2.3.5
+pandas==3.0.5
+pyarrow==25.0.1
+matplotlib
+pyyaml==6.0.3
+tqdm==4.70.0
+math-verify==0.8.0
+json-repair==0.63.4
+pytest==9.1.1
+# unsloth KHONG cai o day (can torch<2.13, xung dot vllm 0.27.1) -> xem spectral_guided_learning_train.txt
+# pylatexenc: oat_math_grader can; thieu thi palign_grader am tham bo nhanh oat khi cham diem.
+pylatexenc

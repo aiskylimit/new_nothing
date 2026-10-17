@@ -1,0 +1,2 @@
+defaults: [../tracks/qwen3-8b-palign.yaml, ../methods/region-gain.yaml]
+name: region-gain-g1-lora

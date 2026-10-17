@@ -1,0 +1,54 @@
+[
+  {
+    "benchmark": "math500",
+    "accuracy": 0.6206666666666667,
+    "pass@1": 0.6206666666666667,
+    "samples_per_problem": 3,
+    "length": 2313.7066666666665,
+    "n_problems": 500,
+    "n_generations": 1500,
+    "truncation_rate": 0.394,
+    "no_boxed_answer_rate": 0.286,
+    "pass@3": 0.796,
+    "model": "iwc-gain-l03-lora-qwen25-7b-palign"
+  },
+  {
+    "benchmark": "aime24",
+    "accuracy": 0.07777777777777778,
+    "pass@1": 0.07777777777777778,
+    "samples_per_problem": 3,
+    "length": 3448.311111111111,
+    "n_problems": 30,
+    "n_generations": 90,
+    "truncation_rate": 0.7333333333333333,
+    "no_boxed_answer_rate": 0.6444444444444445,
+    "pass@3": 0.16666666666666666,
+    "model": "iwc-gain-l03-lora-qwen25-7b-palign"
+  },
+  {
+    "benchmark": "aime25",
+    "accuracy": 0.12222222222222222,
+    "pass@1": 0.12222222222222222,
+    "samples_per_problem": 3,
+    "length": 3461.3444444444444,
+    "n_problems": 30,
+    "n_generations": 90,
+    "truncation_rate": 0.7444444444444445,
+    "no_boxed_answer_rate": 0.7111111111111111,
+    "pass@3": 0.2,
+    "model": "iwc-gain-l03-lora-qwen25-7b-palign"
+  },
+  {
+    "benchmark": "amc12",
+    "accuracy": 0.30120481927710846,
+    "pass@1": 0.30120481927710846,
+    "samples_per_problem": 3,
+    "length": 3093.3333333333335,
+    "n_problems": 83,
+    "n_generations": 249,
+    "truncation_rate": 0.606425702811245,
+    "no_boxed_answer_rate": 0.46586345381526106,
+    "pass@3": 0.5301204819277109,
+    "model": "iwc-gain-l03-lora-qwen25-7b-palign"
+  }
+]

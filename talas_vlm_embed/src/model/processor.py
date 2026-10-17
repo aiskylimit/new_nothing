@@ -24,7 +24,7 @@ from src.model.vlm_backbone.qwen2_vl_tokenselection import \
     Qwen2VLForConditionalGeneration as Qwen2VLTokenSelectionForConditionalGeneration, \
     Qwen2VLProcessor as Qwen2VLTokenSelectionProcessor
 from src.model.vlm_backbone.internvideo2.modeling_internvideo2 import InternVideo2_Stage2
-
+from src.model.vlm_backbone.qwen3_vl_embedding.modeling_qwen3_vl_embedding import Qwen3VLForEmbedding
 from src.model.llava.model.language_model.llava_qwen import LlavaQwen2ForCausalLM
 from src.model.llava.processing_fastvlm import FastVLMProcessor, FastVLMProcessor2
 from transformers import AutoTokenizer, AutoModel
@@ -35,6 +35,7 @@ from peft import PeftConfig
 PHI_IMAGE_TOKEN_MAX_INPUT_ID = int(1e9)
 LLAVA_IMAGE_TOKEN_ID = 32000
 LLAVA_ONEVISION_IMAGE_TOKEN_ID = 151646
+QWEN3_VL_IMAGE_TOKEN_ID = 151655
 
 PHI3V = 'phi3_v'
 LLAVA_NEXT = 'llava_next'
@@ -50,6 +51,11 @@ GME = 'gme'  # QWEN2-VL
 LamRA = 'lamra'  # QWEN2-VL
 COLPALI = 'colpali'  # PaliGemma-3B
 LLAVA_QWEN2 = 'llava_qwen2'
+QWEN3_VL= 'qwen3_vl'
+
+LLAVA_QWEN2_OLD = 'llava_qwen2_old'
+LLAVA_ONEVISION_OLD = 'llava_onevision_old'
+
 MODEL2BACKBONE = {  # keys are from hf_config.model_type or manually added if not provided
     'phi3_v': PHI3V,
     'llava_next': LLAVA_NEXT,
@@ -64,7 +70,8 @@ MODEL2BACKBONE = {  # keys are from hf_config.model_type or manually added if no
     'gme': GME, 
     'lamra': LamRA,
     'colpali': COLPALI,
-    'llava_qwen2': LLAVA_QWEN2
+    'llava_qwen2': LLAVA_QWEN2,
+    'qwen3_vl': QWEN3_VL
 }
 SUPPORTED_MODELS = set(MODEL2BACKBONE.keys())
 
@@ -82,6 +89,9 @@ VLM_IMAGE_TOKENS = {
     INTERNVIDEO2: "",
     COLPALI: "",
     LLAVA_QWEN2: "<image>",
+    QWEN3_VL: "<|image_pad|>",
+    LLAVA_QWEN2_OLD: "<image>",
+    LLAVA_ONEVISION_OLD: "<image>",
 }
 
 VLM_VIDEO_TOKENS = {
@@ -95,7 +105,9 @@ VLM_VIDEO_TOKENS = {
     GME: "<|video_pad|>",
     LamRA: "<|video_pad|>",
     INTERNVIDEO2: "",
-    LLAVA_QWEN2: ""
+    LLAVA_QWEN2: "",
+    QWEN3_VL: "<|video_pad|>",
+
 }
 
 backbone2model = {
@@ -108,7 +120,10 @@ backbone2model = {
     QWEN2_VL_TOKENSELECTION: Qwen2VLTokenSelectionForConditionalGeneration,
     QWEN2_5_VL_TOKENSELECTION: Qwen2_5_VL_TokenSelectionForConditionalGeneration,
     INTERNVIDEO2: InternVideo2_Stage2,
-    LLAVA_QWEN2: LlavaQwen2ForCausalLM
+    LLAVA_QWEN2: LlavaQwen2ForCausalLM,
+    QWEN3_VL: Qwen3VLForEmbedding,
+    LLAVA_QWEN2_OLD: LlavaQwen2ForCausalLM,
+    LLAVA_ONEVISION_OLD: LlavaOnevisionForConditionalGeneration
 }
 
 def expand2square(pil_img, background_color):
@@ -162,7 +177,7 @@ def load_processor(model_args, data_args=None):
             trust_remote_code=True,
             tokenizer=tokenizer
         )
-    elif model_args.model_backbone == LLAVA_ONEVISION:
+    elif model_args.model_backbone == LLAVA_ONEVISION or model_args.model_backbone == LLAVA_ONEVISION_OLD:
         from src.model.vlm_backbone.llava_onevision.processing_llava_onevision import LlavaOnevisionProcessor
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
@@ -269,7 +284,7 @@ def load_processor(model_args, data_args=None):
     elif model_args.model_backbone == COLPALI:
         from transformers import AutoProcessor
         processor = ColPaliProcessor.from_pretrained(model_args.model_name)
-    elif model_args.model_backbone == LLAVA_QWEN2:
+    elif model_args.model_backbone == LLAVA_QWEN2 or model_args.model_backbone == LLAVA_QWEN2_OLD:
         print("Processor load here for LLAVA-QWEN2")
         from transformers import CLIPImageProcessor, AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
@@ -281,6 +296,10 @@ def load_processor(model_args, data_args=None):
             image_processor=image_processor,
             tokenizer=tokenizer
         )
+    elif model_args.model_backbone == QWEN3_VL:
+        print("Processor load here for QWEN3-VL")
+        from src.model.vlm_backbone.qwen3_vl_embedding.processing_qwen3_vl import Qwen3VLProcessor
+        processor = Qwen3VLProcessor.from_pretrained(model_name_or_path, trust_remote_code=True, padding_side="right")
     else:
         from transformers import AutoProcessor
         processor = AutoProcessor.from_pretrained(
@@ -832,6 +851,214 @@ def Intern_VL3_process_fn(model_inputs: dict, processor, max_length=None, IMG_ST
     # import ipdb; ipdb.set_trace()
     return model_inputs
 
+def FastVLM_old_process_fn(model_inputs: dict, processor: FastVLMProcessor | FastVLMProcessor2 , max_length=None, square_padding=False):
+    texts, visual_inputs = model_inputs['text'], model_inputs['images']
+    # print(f'This process_fn is for FastVLM_old, which is deprecated. Please use FastVLM_process_fn instead.')
+    inputs = processor(
+        images=visual_inputs,
+        texts=texts,
+    )
+    return inputs
+
+
+def Llava_ONEVISION_old_process_fn(model_inputs: dict, processor, max_length=None):
+    texts = model_inputs["text"]
+    images = model_inputs["images"]
+
+    # Trường hợp không có ảnh nào
+    if all(img is None or (isinstance(img, list) and all(i is None for i in img)) for img in images):
+        inputs = processor(
+            images=None,
+            text=texts,
+            return_tensors="pt",
+            max_length=max_length,
+            truncation=True,
+            padding=True,
+        )
+        batch_encoding = {
+            "input_ids": inputs["input_ids"].long(),
+            "attention_mask": inputs["attention_mask"].long(),
+            "texts": texts,
+            "images": images,
+        }
+        return batch_encoding
+
+    inputs = processor(
+        images=images,
+        text=texts,
+        return_tensors="pt",
+        max_length=max_length,
+        truncation=True,
+        padding=True,
+        input_data_format=ChannelDimension.LAST,  # giữ format chuẩn (H, W, C)
+    )
+
+    image_sizes = []
+    for img_size in inputs["image_sizes"]:
+        if isinstance(img_size, (list, tuple)):
+            if len(img_size) == 2:
+                image_sizes.append(img_size)
+            elif len(img_size) == 1 and len(img_size[0]) == 2:
+                image_sizes.append(img_size[0])
+            else:
+                raise ValueError(f"Unexpected image_sizes format: {img_size}")
+        elif hasattr(img_size, "shape"):
+            if img_size.shape == (1, 2):
+                image_sizes.append(img_size[0])
+            elif img_size.shape == (2,):
+                image_sizes.append(img_size)
+            else:
+                raise ValueError(f"Unexpected image_sizes shape: {img_size.shape}")
+        else:
+            raise ValueError(f"Unknown image_sizes type: {type(img_size)}")
+
+    batch_encoding = {
+        "input_ids": inputs["input_ids"].long(),
+        "attention_mask": inputs["attention_mask"].long(),
+        "texts": texts,
+        "images": images,
+        "pixel_values": inputs["pixel_values"],   # đã được pad (batch_size, max_patches, C, H, W)
+        # "image_sizes": image_sizes,
+        "image_sizes": torch.tensor(np.array(image_sizes)).long(),
+    }
+    # print("Last 10 input_ids:", batch_encoding["input_ids"][:, -10:])
+    return batch_encoding
+
+def Qwen3_VL_process_fn(model_inputs: dict, processor, max_length=None, instruction=None):
+    from qwen_vl_utils.vision_process import process_vision_info
+    
+    texts = model_inputs['text']
+    visual_inputs = model_inputs['images']
+    
+    vlm_image_token = VLM_IMAGE_TOKENS[QWEN3_VL]
+    vlm_video_token = VLM_VIDEO_TOKENS[QWEN3_VL]
+    
+    default_instruction = instruction or "Represent the user's input."
+    
+    # Step 1: Build conversations in Qwen3-VL chat format
+    conversations = []
+    for text, images in zip(texts, visual_inputs):
+        has_image = vlm_image_token in text
+        has_video = vlm_video_token in text
+        no_visual = images is None or (isinstance(images, list) and any(i is None for i in images))
+        
+        content = []
+        
+        if no_visual or (not has_image and not has_video):
+            # Text-only: strip visual tokens, keep text
+            clean_text = text.replace(vlm_image_token, '').replace(vlm_video_token, '').strip()
+            if not clean_text:
+                clean_text = "NULL"
+            content.append({"type": "text", "text": clean_text})
+        elif has_image:
+            # Image input
+            if isinstance(images, PIL.Image.Image):
+                images = [images]
+            
+            # Resize small images
+            for iid, image in enumerate(images):
+                if image.size[0] < 28 or image.size[1] < 28:
+                    images[iid] = image.resize((56, 56))
+            
+            # Add image entries
+            for img in images:
+                if isinstance(img, PIL.Image.Image):
+                    content.append({"type": "image", "image": img})
+                elif isinstance(img, str):
+                    img_path = img if img.startswith(('http://', 'https://')) else 'file://' + img
+                    content.append({"type": "image", "image": img_path})
+            
+            # Add text (strip the image token placeholder)
+            clean_text = text.replace(vlm_image_token, '').strip()
+            if clean_text:
+                content.append({"type": "text", "text": clean_text})
+        
+        elif has_video:
+            # Video input (frames as list of images)
+            if isinstance(images, list):
+                video_frames = images
+            else:
+                video_frames = [images]
+            
+            # Convert frames to proper format
+            video_content = [
+                ('file://' + f if isinstance(f, str) and not f.startswith(('http://', 'https://')) else f)
+                for f in video_frames
+            ]
+            
+            content.append({"type": "video", "video": video_content})
+            
+            # Add text (strip the video token placeholder)
+            clean_text = text.replace(vlm_video_token, '').strip()
+            if clean_text:
+                content.append({"type": "text", "text": clean_text})
+        
+        conversation = [
+            {"role": "system", "content": [{"type": "text", "text": default_instruction}]},
+            {"role": "user", "content": content}
+        ]
+        conversations.append(conversation)
+    
+    # Step 2: Apply chat template to get formatted text
+    chat_texts = processor.apply_chat_template(
+        conversations, add_generation_prompt=True, tokenize=False
+    )
+    
+    # Step 3: Extract vision info using qwen_vl_utils
+    try:
+        all_images, video_inputs, video_kwargs = process_vision_info(
+            conversations, image_patch_size=16,
+            return_video_metadata=True, return_video_kwargs=True
+        )
+    except Exception as e:
+        logger.error(f"Error in processing vision info: {e}")
+        all_images = None
+        video_inputs = None
+        video_kwargs = {'do_sample_frames': False}
+        # Fallback to text-only
+        fallback_conv = [[{'role': 'user', 'content': [{'type': 'text', 'text': 'NULL'}]}]] * len(texts)
+        chat_texts = processor.apply_chat_template(
+            fallback_conv, add_generation_prompt=True, tokenize=False
+        )
+    
+    if video_inputs is not None:
+        videos, video_metadata = zip(*video_inputs)
+        videos = list(videos)
+        video_metadata = list(video_metadata)
+    else:
+        videos, video_metadata = None, None
+    
+    # Step 4: Process through processor (tokenize + vision encoding)
+    inputs = processor(
+        text=chat_texts,
+        images=all_images,
+        videos=videos,
+        video_metadata=video_metadata,
+        truncation=True,
+        max_length=max_length or 8192,
+        padding=True,
+        do_resize=False,
+        return_tensors='pt',
+        **video_kwargs
+    )
+    
+    # Step 5: Build final output dict
+    result = {
+        'input_ids': inputs['input_ids'].long(),
+        'attention_mask': inputs['attention_mask'].long(),
+    }
+    
+    if 'pixel_values' in inputs and inputs['pixel_values'] is not None:
+        result['pixel_values'] = inputs['pixel_values']
+    if 'image_grid_thw' in inputs and inputs['image_grid_thw'] is not None:
+        result['image_grid_thw'] = inputs['image_grid_thw']
+    if 'pixel_values_videos' in inputs and inputs['pixel_values_videos'] is not None:
+        result['pixel_values_videos'] = inputs['pixel_values_videos']
+    if 'video_grid_thw' in inputs and inputs['video_grid_thw'] is not None:
+        result['video_grid_thw'] = inputs['video_grid_thw']
+    
+    return result
+
 
 process_vlm_inputs_fns = {
     PHI3V: Phi3V_process_fn,
@@ -846,5 +1073,8 @@ process_vlm_inputs_fns = {
     LamRA: Gme_process_fn,
     COLPALI: ColPali_process_fn,
     LLAVA_ONEVISION: Llava_ONEVISION_process_fn,
+    LLAVA_ONEVISION_OLD: Llava_ONEVISION_old_process_fn,
     LLAVA_QWEN2: FastVLM_process_fn,
+    LLAVA_QWEN2_OLD: FastVLM_old_process_fn,
+    QWEN3_VL: Qwen3_VL_process_fn,
 }

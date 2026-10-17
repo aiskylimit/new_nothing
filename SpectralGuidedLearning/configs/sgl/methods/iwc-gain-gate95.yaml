@@ -1,0 +1,7 @@
+# Answer-gain allocation behind SGL's spectral gate (p=0.95, lambda 0.5): the gate keeps the strongest steps
+# holding 95% of the spectral energy (the strengths the gain parquet carries over from the capture), and the
+# answer-gain weights are computed over the kept steps only. Own dataset name, so it never reuses the ungated one.
+defaults: [iwc-gain.yaml]
+train_variant: iwc-stable-gain-gate95-l05
+iwc:
+  energy_threshold_p: 0.95

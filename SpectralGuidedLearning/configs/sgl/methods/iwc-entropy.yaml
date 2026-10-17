@@ -1,0 +1,5 @@
+# IWC-Stable allocation by step ENTROPY, no gate, lambda 0.5 (arm iwc-nogate-l05).
+defaults: [_capture.yaml, _iwc.yaml]
+signal_parquet: ${data_dir}/spectral-strengths.parquet
+train_variant: iwc-stable-nogate-l05
+pipeline: [prepare, capture, weights, train, eval]

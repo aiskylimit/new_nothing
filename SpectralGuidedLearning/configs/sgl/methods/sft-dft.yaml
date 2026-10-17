@@ -1,0 +1,6 @@
+# DFT on every response token: -sg(p) log p (arXiv 2508.05629).
+defaults: [sft.yaml]
+stages:
+  train:
+    args:
+      objective: dft

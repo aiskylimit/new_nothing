@@ -1,0 +1,7 @@
+QUESTION:
+{question}
+
+SCHEMA UNIT:
+{schema_unit}
+
+Classify the schema unit and return only the required JSON object.

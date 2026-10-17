@@ -1,0 +1,20 @@
+# simplescaling/s1K-1.1: DeepSeek-R1 thinking trajectory + final attempt, supervised inside the
+# <think> block R1-Distill's template opens (thinking ON).
+dataset: simplescaling/s1K-1.1
+stages:
+  prepare:
+    module: sgl.data.prepare
+    creates: ${data_dir}/train-segmented.jsonl
+    args:
+      dataset-name: ${dataset}
+      tokenizer: ${model.name}
+      max-tokens: 32768
+      chat-template: true
+      enable-thinking: true
+      output-path: ${data_dir}/train-segmented.jsonl
+  vanilla:
+    module: sgl.selection.build_masks
+    creates: ${data_dir}/train-vanilla.jsonl
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      vanilla-only: true

@@ -22,7 +22,7 @@ USE_SIGREG_LOSS=${4:-True}
 KD_WEIGHT=${5:-1.0}
 SIGREG_WEIGHT=${6:-0.05}
 NUM_LAYER=${7:-1}
-USE_MEAN=${8:-True}
+D_TAU=${8:-0.02}
 
 # ============================================================
 # Convert True/False -> 1/0 cho tên folder
@@ -64,21 +64,19 @@ DISTILL_LOSS_BOOL=$(bool_to_python "$USE_DISTILL_LOSS")
 DISTILL_CSE_BOOL=$(bool_to_python "$USE_DISTILL_CSE_LOSS")
 DISTILL_VISION_BOOL=$(bool_to_python "$USE_DISTILL_VISON_LOSS")
 SIGREG_BOOL=$(bool_to_python "$USE_SIGREG_LOSS")
-MEAN_BOOL=$(bool_to_python "$USE_MEAN")
 
 # Folder values
 D_DISTILL=$(bool_to_int "$USE_DISTILL_LOSS")
 D_CSE=$(bool_to_int "$USE_DISTILL_CSE_LOSS")
 D_VISION=$(bool_to_int "$USE_DISTILL_VISON_LOSS")
 D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
-D_MEAN=$(bool_to_int "$USE_MEAN")
 
 
 # ============================================================
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
+EXP_NAME="talas_jepa_v2_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
 
 OUTPUT_DIR="training/llava_ov-0.5B_cls_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"
@@ -106,7 +104,7 @@ TRAIN_SCRIPT="train_ddp.py"
 
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name models/llava-onevision-qwen2-0.5b-ov-hf \
+    --model_name llava-hf/llava-onevision-qwen2-0.5b-ov-hf \
     --teacher_model_name "raghavlite/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
@@ -117,7 +115,7 @@ torchrun --standalone \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_onevision" \
     --pooling "eos" \
-    --dataset_name "vlm2vec_train/MMEB-train" \
+    --dataset_name "TIGER-Lab/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -135,8 +133,8 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --teacher_normalize True \
-    --lr_scheduler_type "cosine" \
-    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --warmup_ratio 0.05 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \
@@ -151,7 +149,7 @@ torchrun --standalone \
     --kd_weight "$KD_WEIGHT" \
     --sigreg_weight "$SIGREG_WEIGHT" \
     --num_layers "$NUM_LAYER" \
-    --use_mean_anchor "$MEAN_BOOL"
+    --d_cse_temperature "$D_TAU"
 
 
 # ============================================================
@@ -184,14 +182,14 @@ SUBSETS=(
     "HatefulMemes"
     "VOC2007"
     "SUN397"
-    "Place365"
-    "ImageNet-A"
-    "ImageNet-R"
-    "ObjectNet"
-    "Country211"
+    # "Place365"
+    # "ImageNet-A"
+    # "ImageNet-R"
+    # "ObjectNet"
+    # "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs_v3/llava_ov-0.5B_cls_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_cls_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -203,33 +201,14 @@ python eval_mmeb.py \
     --model_backbone llava_onevision \
     --normalize True \
     --bf16 \
-    --dataset_name vlm2vec_eval/MMEB-eval \
+    --dataset_name TIGER-Lab/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 8 \
+    --per_device_eval_batch_size 2 \
     --image_dir eval_images/ \
     --image_resolution "low" \
     --tgt_prefix_mod \
     --load_pretrained_lora True \
     --report_to none
 
-echo ""
-echo "============================================================"
-echo "DONE"
-echo "Experiment:"
-echo "  $EXP_NAME"
-echo ""
-echo "Train:"
-echo "  $OUTPUT_DIR"
-echo ""
-echo "Eval:"
-echo "  $EVAL_OUTPUT"
-echo "============================================================"
 
-
-# ============================================================
-# 4. Collect result
-# ============================================================
-
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v3}"
-python json_filter.py ./MMEB-eval_outputs_v3 "${JSON_FILTER_DESTINATION}" --overwrite

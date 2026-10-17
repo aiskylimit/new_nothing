@@ -1,0 +1,11 @@
+# Region-Gain (gamma 1) with the response tail (last 128 supervised tokens) weighted x3.
+defaults: [../tracks/qwen25-7b-palign.yaml, ../methods/region-gain.yaml, ../methods/_tail.yaml]
+name: region-gain-g1-tail128-lora
+tail_base: region-gain-g1
+train_variant: region-gain-g1-tail128
+pipeline: [prepare, capture, answer_gain, gain_signal, weights, tail, train, eval]
+stages:
+  weights:  # keep writing the untouched region-gain dataset; `tail` derives this arm's from it
+    creates: ${data_dir}/train-${tail_base}.jsonl
+    args:
+      output-name: ${tail_base}

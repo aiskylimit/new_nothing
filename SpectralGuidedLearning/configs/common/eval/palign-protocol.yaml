@@ -1,0 +1,37 @@
+# P-ALIGN's evaluation (src/test.py + src/evaluation.py): thinking OFF, AIME24/AIME25/AMC12/MATH500,
+# n=3, T=0.6, top_p 0.9, repetition penalty 1.05, 4096 tokens, graded by math_verify only.
+# Other sampling seeds: sgl run CONFIG --stages eval eval_seed=43 eval_suffix=-e43 results_dir=results_evalseed
+eval_seed: 42
+eval_suffix: ""
+results_dir: results
+lora_adapter: false
+stages:
+  eval:
+    module: sgl.eval.evaluate
+    creates: ${results_dir}/${run_name}${eval_suffix}/summary.json
+    args:
+      model: ${checkpoint}
+      tag: ${run_name}${eval_suffix}
+      benchmarks: math500,aime24,aime25,amc12
+      temperature: 0.6
+      top-p: 0.9
+      repetition-penalty: 1.05
+      n-samples: 3
+      max-tokens: 4096
+      max-model-len: 4096
+      batch-size: 64
+      gpu-memory-utilization: 0.8
+      enforce-eager: true
+      seed: ${eval_seed}
+      chat-template: true
+      enable-thinking: false
+      palign-prompt: true
+      grader: math_verify
+      base-model: ${model.name}
+      lora-adapter: ${lora_adapter}
+      lora-r: 16
+      results-dir: ${results_dir}
+  compare:
+    module: sgl.eval.compare
+    args:
+      results-dir: ${results_dir}

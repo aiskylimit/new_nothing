@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU dependencies
+        # The project pins CUDA wheels (torch cu130, vLLM, DeepSpeed); CI only needs the CPU stack.
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install "transformers==5.5.3" peft accelerate datasets pandas pyarrow pyyaml tqdm \
+            matplotlib "math-verify==0.8.0" sympy pytest ruff hatchling
+          pip install --no-deps -e .
+      - name: Lint
+        run: ruff check src tests scripts
+      - name: Unit and equivalence tests
+        run: pytest -m "not regression"
+      - name: Regression and end-to-end tests
+        run: pytest -m regression

@@ -1,0 +1,26 @@
+# Full fine-tuning, the recipe of every R1-Distill-Qwen-1.5B arm: 3 epochs, effective batch 32,
+# lr 5e-5 cosine to 1e-5, warmup 0.1, 32k context, DeepSpeed ZeRO-2 offload (fp32 master weights).
+train_variant: vanilla
+stages:
+  train:
+    module: sgl.training.train
+    launcher: torchrun
+    effective_batch: 32
+    creates: ${checkpoint}/run-summary.json
+    args:
+      model-name: ${model.name}
+      data-path: ${data_dir}/train-${train_variant}.jsonl
+      output-dir: ${checkpoint}
+      epochs: 3
+      learning-rate: 5.0e-5
+      min-learning-rate: 1.0e-5
+      warmup-ratio: 0.1
+      per-device-batch-size: 1
+      attn-implementation: sdpa
+      logging-steps: 5
+      save-strategy: epoch
+      save-total-limit: 2
+      seed: ${train_seed}
+      max-seq-len: 32768
+      use-lora: false
+      deepspeed-config: configs/deepspeed/ds_config_zero2_offload.json

@@ -1,0 +1,26 @@
+# IWC-Stable allocation by ANSWER-INFORMATION GAIN (arm iwc-gain-l05): gain_k = change in the frozen
+# student's log p(gold answer) when step k is appended, read in one vLLM prompt-logprobs pass.
+# The gain parquet carries the spectral strengths over (as the published runs were built, after the
+# entropy arm's capture): at p=1.0 they gate nothing except, in rare floating-point ties, a last
+# near-zero step, so they are kept for bit-identical datasets.
+defaults: [_capture.yaml, _iwc.yaml]
+signal_parquet: ${data_dir}/signals/signal-answer-gain.parquet
+train_variant: iwc-stable-gain-nogate-l05
+pipeline: [prepare, capture, answer_gain, gain_signal, weights, train, eval]
+stages:
+  answer_gain:
+    module: sgl.signals.answer_gain
+    creates: ${data_dir}/signals/step_answer_gain.json
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      model: ${model.name}
+      output: ${data_dir}/signals/step_answer_gain.json
+      gpu-memory-utilization: 0.4
+  gain_signal:
+    module: sgl.signals.gain_parquet
+    creates: ${signal_parquet}
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      gains: ${data_dir}/signals/step_answer_gain.json
+      strengths: ${data_dir}/spectral-strengths.parquet
+      output: ${signal_parquet}

@@ -48,6 +48,24 @@ def process_image(image, resolution, max_dim=1344):
     return image
 
 
+# def process_image(image, resolution, max_dim=1344):
+#     if image is None:
+#         return None
+#     if resolution == "high":
+#         image = image.resize((1344, 1344))
+#     elif resolution == "mid":
+#         image = image.resize((672, 672))
+#     elif resolution == "low":
+#         image = image.resize((448, 448))
+#     elif resolution == "tiny":
+#         image = image.resize((336, 336))
+#     else:
+#         cur_max_dim = max(image.size)
+#         if cur_max_dim > max_dim:
+#             image = image.resize((max_dim, max_dim))
+#     return image
+
+
 def get_image_bytes_and_path(img_path, image_dir, model_backbone, image_resolution):
     '''
     caveat: datasets will convert PIL.Image.Image objects into Arrow-compatible types (aka bytes) behind the scene and only image.filename is reserved (datasets/features/image.py L311)

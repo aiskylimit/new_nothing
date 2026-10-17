@@ -31,6 +31,7 @@ def make_delta(base_model_path, target_model_path, delta_path, hub_repo_id):
             bparam = base.state_dict()[name]
             param.data[:bparam.shape[0], :bparam.shape[1]] -= bparam
 
+    print("Saving delta")
     kwargs = {}
     target.save_pretrained(delta_path, **kwargs)
     target_tokenizer = AutoTokenizer.from_pretrained(target_model_path)

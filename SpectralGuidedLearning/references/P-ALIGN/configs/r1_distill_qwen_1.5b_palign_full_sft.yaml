@@ -1,0 +1,49 @@
+### DeepSeek-R1-Distill-Qwen-1.5B P-ALIGN SFT, full finetuning (LLaMA-Factory)
+### Same data / schedule as configs/qwen3_8b_palign_sft.yaml; see HYPERPARAMETERS.md.
+
+model_name_or_path: /mnt/local/_models/aiskylimit_new_nothingnew_2/DeepSeek-R1-Distill-Qwen-1.5B
+trust_remote_code: true
+flash_attn: auto
+
+stage: sft
+do_train: true
+finetuning_type: full
+
+dataset: palign_qwen25_7b_sft
+dataset_dir: data
+template: deepseekr1
+# non-thinking mode: prompt ends with "<｜Assistant｜><think>\n\n</think>\n\n" (no loss on it),
+# matching --force_empty_think in src/test.py
+enable_thinking: false
+cutoff_len: 32768
+overwrite_cache: true
+preprocessing_num_workers: 4
+train_on_prompt: false
+
+output_dir: output/palign-r1-distill-qwen-1.5b-full
+logging_steps: 1
+save_strategy: epoch
+# weights only; full optimizer state would be ~3x the model per checkpoint
+save_only_model: true
+plot_loss: false
+overwrite_output_dir: true
+report_to: none
+disable_tqdm: false
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 32
+num_train_epochs: 3.0
+learning_rate: 5.0e-5
+lr_scheduler_type: cosine
+# transformers 5.x removed warmup_ratio; warmup_steps < 1 is read as a ratio (10% of steps)
+warmup_steps: 0.1
+optim: adamw_torch
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_epsilon: 1.0e-8
+weight_decay: 0.0
+max_grad_norm: 1.0
+label_smoothing_factor: 0.0
+bf16: true
+gradient_checkpointing: true
+ddp_timeout: 180000000

@@ -1,0 +1,16 @@
+# Spectral capture: per-step spectral strength (SGL, Eq. 2-7) and mean predictive entropy of the
+# frozen student, one teacher-forced pass. Single process here; for one shard per GPU run
+# `sgl run ... --stages capture stages.capture.args.num-shards=N stages.capture.args.shard-index=i`
+# on each GPU, then once more with the defaults to merge.
+stages:
+  capture:
+    module: sgl.signals.capture
+    creates: ${data_dir}/spectral-strengths.parquet
+    args:
+      model-name: ${model.name}
+      data-path: ${data_dir}/train-segmented.jsonl
+      output-dir: ${data_dir}/spectral
+      strengths-path: ${data_dir}/spectral-strengths.parquet
+      energy-cutoff: 0.95
+      chunk-size: 1024
+      verify: true

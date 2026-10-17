@@ -1,0 +1,24 @@
+# Step allocation with IWC weights (sgl.allocation.iwc). Arms set `iwc.*`, `signal_parquet` and
+# `train_variant` (= the output dataset name).
+iwc:
+  variant: iwc-stable
+  energy_threshold_p: 1.0     # 1.0 = no spectral gate: every response token stays supervised
+  temperature: 2.0
+  interpolation: 0.5
+  clip: 2.0
+  seed: 42
+stages:
+  weights:
+    module: sgl.allocation.build
+    creates: ${data_dir}/train-${train_variant}.jsonl
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      strengths: ${signal_parquet}
+      variants: ${iwc.variant}
+      energy-threshold-p: ${iwc.energy_threshold_p}
+      temperature: ${iwc.temperature}
+      interpolation: ${iwc.interpolation}
+      clip: ${iwc.clip}
+      seed: ${iwc.seed}
+      output-name: ${train_variant}
+      check-mass: true

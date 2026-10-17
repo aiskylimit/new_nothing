@@ -47,10 +47,16 @@ class Talas(nn.Module):
         encoded_dirs = input_data['encoded_dir'] # list
         encoded_dirs = [os.path.join(caching_dir, encoded_dir) for encoded_dir in encoded_dirs]
 
-        teacher_qry_reps = torch.stack([torch.load(os.path.join(encoded_dir, 'qry.pt')) for encoded_dir in encoded_dirs])
-        teacher_pos_reps = torch.stack([torch.load(os.path.join(encoded_dir, 'pos.pt')) for encoded_dir in encoded_dirs])
+        teacher_qry_reps = torch.stack([self.load_cache_rep(os.path.join(encoded_dir, 'qry.pt')) for encoded_dir in encoded_dirs])
+        teacher_pos_reps = torch.stack([self.load_cache_rep(os.path.join(encoded_dir, 'pos.pt')) for encoded_dir in encoded_dirs])
 
         return teacher_qry_reps, teacher_pos_reps
+
+    def load_cache_rep(self, path):
+        cache = torch.load(path, map_location="cpu")
+        if isinstance(cache, dict):
+            return cache["rep"]
+        return cache
 
     def relation_matrix(
         self,
@@ -110,21 +116,6 @@ class Talas(nn.Module):
 
         return F.relu(student_violation)[valid].mean()
 
-    def get_score_diff(self, embedding):
-        scores = torch.matmul(embedding, embedding.T)
-        scores = scores[torch.triu(torch.ones_like(scores), diagonal=1).bool()]
-        score_diff = scores.reshape((1, -1)) - scores.reshape((-1, 1))
-        score_diff = score_diff[torch.triu(torch.ones_like(score_diff), diagonal=1).bool()]
-        return score_diff
-
-    def compute_triplet_loss(self, student_embeddings, teacher_embeddings, triplet_margin=0.015):
-        teacher_embeddings = F.normalize(teacher_embeddings, p=2, dim=-1)
-        student_embeddings = F.normalize(student_embeddings, p=2, dim=-1)
-        triplet_label = torch.where(self.get_score_diff(teacher_embeddings) < 0, 1, -1)
-        loss = F.relu(self.get_score_diff(student_embeddings) * triplet_label + triplet_margin).mean()
-        return loss
-
-
     def forward(self, model_wrapper, input_data):
         student_model = model_wrapper.model
         projectors = model_wrapper.projectors        
@@ -141,7 +132,9 @@ class Talas(nn.Module):
 
         device = student_qry_reps.device
 
-        teacher_qry_reps, teacher_pos_reps = input_data["teacher_qry_rep"], input_data["teacher_pos_rep"]
+        teacher_qry_reps, teacher_pos_reps = input_data["teacher_qry_caches"], input_data["teacher_pos_caches"] # list of objects, each object is a tensor of shape [batch_size, hidden_dim]
+        teacher_qry_reps = torch.stack([rep['rep'] for rep in teacher_qry_reps], dim=0)
+        teacher_pos_reps = torch.stack([rep['rep'] for rep in teacher_pos_reps], dim=0)
 
         teacher_qry_reps = teacher_qry_reps.to(device)
         teacher_pos_reps = teacher_pos_reps.to(device)
@@ -174,62 +167,49 @@ class Talas(nn.Module):
                                                 mode='eos',
                                                 normalize=True)
             student_qry_proj = projectors[proj_idx](last_stu_qry_hidden_state)
-            tamd += self.cosine_loss(student_qry_proj, teacher_qry_reps)
+            # tamd += self.cosine_loss(student_qry_proj, teacher_qry_reps)
 
             last_stu_pos_hidden_state = pooling(student_pos_hidden_states[i], 
                                                 student_pos_input['attention_mask'], 
                                                 mode='eos',
                                                 normalize=True)
             student_pos_proj = projectors[proj_idx](last_stu_pos_hidden_state)
-            tamd += self.cosine_loss(student_pos_proj, teacher_pos_reps)
-
-            # tamd += self.relative_qp_self_kd(
-            #     student_qry_proj, student_pos_proj,
-            #     teacher_qry_reps, teacher_pos_reps,
-            # )
-
-            # tamd += self.structure_loss(
-            #     torch.cat([last_stu_qry_hidden_state, last_stu_pos_hidden_state], dim=0),
-            #     torch.cat([teacher_qry_reps, teacher_pos_reps], dim=0),
-            # ) / self.args.num_projectors
+            # tamd += self.cosine_loss(student_pos_proj, teacher_pos_reps)
+            
+            tamd += self.relative_qp_self_kd(student_qry_proj, student_pos_proj, teacher_qry_reps, teacher_pos_reps)
 
         tamd /= (2 * self.args.num_projectors)
 
         lasd = 0.0
-        for i in range(num_stu_layer - 1 - self.args.num_self_kd_layers,
-                       num_stu_layer - 1):
+        # for i in range(num_stu_layer - 1 - self.args.num_self_kd_layers,
+        #                num_stu_layer - 1):
             
-            last_stu_qry_hidden_state_i = pooling(student_qry_hidden_states[i],
-                                                student_qry_input['attention_mask'],
-                                                mode='eos',
-                                                normalize=False)
-            last_stu_qry_hidden_state_i1 = pooling(student_qry_hidden_states[i+1],
-                                                student_qry_input['attention_mask'],
-                                                mode='eos',
-                                                normalize=False)
-            # lasd += self.structure_loss(last_stu_qry_hidden_state_i, last_stu_qry_hidden_state_i1)
+        #     last_stu_qry_hidden_state_i = pooling(student_qry_hidden_states[i],
+        #                                         student_qry_input['attention_mask'],
+        #                                         mode='eos',
+        #                                         normalize=False)
+        #     last_stu_qry_hidden_state_i1 = pooling(student_qry_hidden_states[i+1],
+        #                                         student_qry_input['attention_mask'],
+        #                                         mode='eos',
+        #                                         normalize=False)
+        #     lasd += self.structure_loss(last_stu_qry_hidden_state_i, last_stu_qry_hidden_state_i1)
 
 
-            last_stu_pos_hidden_state_i = pooling(student_pos_hidden_states[i],
-                                                student_pos_input['attention_mask'],
-                                                mode='eos',
-                                                normalize=False)
-            last_stu_pos_hidden_state_i1 = pooling(student_pos_hidden_states[i+1],
-                                                student_pos_input['attention_mask'],
-                                                mode='eos',
-                                                normalize=False)
-            # lasd += self.structure_loss(last_stu_pos_hidden_state_i, last_stu_pos_hidden_state_i1)
-
-            lasd += self.compute_triplet_loss(
-                torch.cat([last_stu_qry_hidden_state_i, last_stu_pos_hidden_state_i], dim=0),
-                torch.cat([last_stu_qry_hidden_state_i1, last_stu_pos_hidden_state_i1], dim=0),
-            ) / self.args.num_self_kd_layers
+        #     last_stu_pos_hidden_state_i = pooling(student_pos_hidden_states[i],
+        #                                         student_pos_input['attention_mask'],
+        #                                         mode='eos',
+        #                                         normalize=False)
+        #     last_stu_pos_hidden_state_i1 = pooling(student_pos_hidden_states[i+1],
+        #                                         student_pos_input['attention_mask'],
+        #                                         mode='eos',
+        #                                         normalize=False)
+        #     lasd += self.structure_loss(last_stu_pos_hidden_state_i, last_stu_pos_hidden_state_i1)
 
         # lasd /= (2 * self.args.num_self_kd_layers)
         
         loss_distill = tamd + lasd
 
-        loss = (1 - self.kd_weight) * contrastive_loss + self.kd_weight * loss_distill
+        loss = contrastive_loss + self.kd_weight * loss_distill
 
         return {
             'loss': loss,

@@ -153,6 +153,42 @@ def mean_or_none(hidden_tokens):
         return None
     return hidden_tokens.float().mean(dim=0).cpu()
 
+def exact_participation_ratio(tokens, eps=1e-12, dtype=torch.float64):
+    """
+    PR chính xác của các token: PR = tr(C)^2 / tr(C^2), tokens: [n, D].
+    Dùng Gram matrix G = Xc Xc^T [n, n] (n = số token ảnh, thường << D):
+        tr(C)   = tr(G)   / (n-1)
+        tr(C^2) = ||G||_F^2 / (n-1)^2
+    => PR = tr(G)^2 / ||G||_F^2  (hệ số n-1 triệt tiêu).
+    Trả về tensor scalar (NaN nếu n < 2 hoặc các token trùng nhau hoàn toàn).
+    """
+    n = tokens.size(0)
+    if n < 2:
+        return torch.tensor(float("nan"), device=tokens.device)
+    x = tokens.to(dtype)
+    x = x - x.mean(dim=0, keepdim=True)
+    gram = x @ x.T                                   # [n, n]
+    tr1 = torch.diagonal(gram).sum()
+    tr2 = (gram ** 2).sum()
+    if tr2 <= eps:
+        return torch.tensor(float("nan"), device=tokens.device)
+    return (tr1 ** 2 / tr2).float()
+
+
+def compute_image_pr_all_layers(hidden_states, token_slice, num_image_tokens, idx):
+    """
+    PR chính xác giữa các token ảnh của sample `idx`, tại mọi layer
+    (hidden_states là tuple độ dài L+1 gồm embedding + các layer, mỗi phần tử [B, N, D]).
+    Trả về tensor [num_layers] trên CPU, hoặc None nếu sample không có token ảnh.
+    """
+    if num_image_tokens <= 0:
+        return None
+    prs = []
+    for layer_hs in hidden_states:
+        clean_hidden = layer_hs[idx][token_slice, :]
+        image_hidden = clean_hidden[:num_image_tokens, :]
+        prs.append(exact_participation_ratio(image_hidden))
+    return torch.stack(prs).cpu()
 
 def build_cache_obj(rep, inputs, hidden_states, image_features, special_ids_tensor, idx):
     num_image_tokens = count_image_tokens(image_features, idx)
@@ -175,6 +211,9 @@ def build_cache_obj(rep, inputs, hidden_states, image_features, special_ids_tens
         "rep": rep[idx].float(),
         "mean_last_img_token": mean_or_none(image_hidden),
         "mean_last_text_token": mean_or_none(text_hidden),
+        "pr_img_layers": compute_image_pr_all_layers(          # <-- thêm dòng này
+            hidden_states, token_slice, num_image_tokens, idx
+        ),
     }, 'cpu')
 
 
@@ -215,6 +254,23 @@ class TeacherCacheRunner:
         special_ids_tensor = torch.tensor(sorted(special_ids), device=device, dtype=torch.long)
 
         for batch in self.train_data:
+            encoded_dirs = batch.get("encoded_dir")
+            if encoded_dirs is None:
+                raise KeyError("Batch is missing encoded_dir. Make sure SingleDataset.__getitem__ and SingleCollator return it.")
+            
+            skip_batch = True
+            for encoded_dir in encoded_dirs:
+                output_qry_dir = os.path.join(self.training_args.output_dir, encoded_dir, "qry.pt")
+                output_pos_dir = os.path.join(self.training_args.output_dir, encoded_dir, "pos.pt")
+                
+                if not (os.path.exists(output_qry_dir) and os.path.exists(output_pos_dir)):
+                    skip_batch = False
+                    break
+            
+            if skip_batch:
+                progress_bar.update(1)
+                continue
+
             batch = to_device(batch, self.device)
 
             with torch.no_grad():
@@ -224,9 +280,6 @@ class TeacherCacheRunner:
             qry_reps, qry_image_features, _, qry_hidden_states = qry_output
             pos_reps, pos_image_features, _, pos_hidden_states = pos_output
 
-            encoded_dirs = batch.get("encoded_dir")
-            if encoded_dirs is None:
-                raise KeyError("Batch is missing encoded_dir. Make sure SingleDataset.__getitem__ and SingleCollator return it.")
             if len(encoded_dirs) != qry_reps.size(0) or len(encoded_dirs) != pos_reps.size(0):
                 raise ValueError(
                     f"encoded_dir count ({len(encoded_dirs)}) does not match encoded batch size "
@@ -236,6 +289,9 @@ class TeacherCacheRunner:
             for i, encoded_dir in enumerate(encoded_dirs):
                 output_qry_dir = os.path.join(self.training_args.output_dir, encoded_dir, "qry.pt")
                 output_pos_dir = os.path.join(self.training_args.output_dir, encoded_dir, "pos.pt")
+
+                if os.path.exists(output_qry_dir) and os.path.exists(output_pos_dir):
+                    continue
 
                 os.makedirs(os.path.dirname(output_qry_dir), exist_ok=True)
                 os.makedirs(os.path.dirname(output_pos_dir), exist_ok=True)
@@ -270,7 +326,6 @@ class TeacherCacheRunner:
 
         progress_bar.close()
         return
-
 
 def build_dataloader(model_args, data_args, training_args):
     train_dataset = prepare_dataset(data_args, model_args)

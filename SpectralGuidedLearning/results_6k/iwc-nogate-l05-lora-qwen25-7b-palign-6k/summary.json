@@ -1,0 +1,15 @@
+[
+  {
+    "benchmark": "math500",
+    "accuracy": 0.566,
+    "pass@1": 0.566,
+    "samples_per_problem": 3,
+    "length": 3571.86,
+    "n_problems": 500,
+    "n_generations": 1500,
+    "truncation_rate": 0.47733333333333333,
+    "no_boxed_answer_rate": 0.42733333333333334,
+    "pass@3": 0.768,
+    "model": "iwc-nogate-l05-lora-qwen25-7b-palign-6k"
+  }
+]

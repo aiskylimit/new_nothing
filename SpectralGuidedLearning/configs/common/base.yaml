@@ -1,0 +1,11 @@
+family: sgl
+# Shared defaults for every experiment. All paths are relative to the repo root (`sgl run --cwd`).
+#   name      arm name, e.g. sft-nll           track   data/model namespace, e.g. r1-qwen-1.5b-palign
+#   run_name  checkpoint dir name and eval tag ("<arm>-<track>", as the shell drivers named them)
+run:
+  gpus: [0]
+  log_dir: logs
+data_dir: data/${track}
+run_name: ${name}-${track}
+checkpoint: checkpoints/${run_name}
+train_seed: 42

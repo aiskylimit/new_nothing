@@ -1,0 +1,26 @@
+# Segment-Selective SFT, Qwen2.5-7B-Instruct, LoRA r64 / alpha 64 / dropout 0.05 / all linear
+# (the fork's train.sh defaults). prompt_style is P-ALIGN's (fork default: "default") so that the
+# P-ALIGN evaluation protocol sees the training prompt; set prompt_style=default to train as the fork.
+defaults:
+  - ../common/base.yaml
+  - ../common/models/qwen25-7b.yaml
+  - ../common/train/lora-r16.yaml
+  - ../common/eval/palign-protocol.yaml
+  - _ssft.yaml
+run_suffix: -lora
+prompt_style: palign
+stages:
+  train:
+    args:
+      deepspeed-config: null
+      lora-r: 64
+      lora-alpha: 64
+      lora-merge: true            # the fork merges (SelectiveSFT/merge_lora.py) and evaluates the merged model
+  eval:
+    args:
+      gpu-memory-utilization: 0.5
+  train_reference:
+    args:
+      lora_r: 64
+      lora_alpha: 64
+      lora_dropout: 0.05

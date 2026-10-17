@@ -23,6 +23,19 @@ from .grad_aggregation import GradPoolingLoss
 from .talas import Talas
 from .talas_jepa import TalasJepa
 from .similarity_matrix_distillation import SimilarityMatrixDistillationLoss
+from .simcse_cka_kd_loss import SimcseCKA
+from .span_propose_attn_llava_ov import SpanProposeCriterionWeightedLLavaOV
+from .mse_kd_loss import MSEKDLoss
+
+from .mse_sigreg_kd_loss import MSESigRegLoss
+from .rkd_sigreg_kd_loss import RKDSigRegLoss
+from .ckd_sigreg_kd_loss import CKDSigRegLoss
+from .emo_sigreg_kd_loss import EMOSigRegLoss
+from .em_sigreg_kd_loss import EMSigRegKDLoss
+from .span_attn_sigreg import SpanSigregCriterionWeighted
+from .pga import PGA
+from .qwen3_pga import Qwen3PGA
+from .vis_cosine_reg import VisCosineReg
 
 criterion_list = {
     "contrastive": ContrastiveLoss,
@@ -51,6 +64,19 @@ criterion_list = {
     "talas": Talas,
     "talas_jepa": TalasJepa,
     "similarity_matrix_distillation": SimilarityMatrixDistillationLoss,
+    "simcse_cka_loss": SimcseCKA,
+    "span_propose_attn_llava_ov": SpanProposeCriterionWeightedLLavaOV,
+
+    "mse_kd": MSEKDLoss, 
+    "mse_sigreg_kd": MSESigRegLoss,
+    "rkd_sigreg_kd": RKDSigRegLoss,
+    "ckd_sigreg_kd": CKDSigRegLoss,
+    "emo_sigreg_kd": EMOSigRegLoss,
+    "em_sigreg_kd": EMSigRegKDLoss,
+    "span_attn_sigreg_kd": SpanSigregCriterionWeighted,
+    "pga": PGA,
+    "qwen3_pga": Qwen3PGA,
+    "vis_cosine_reg": VisCosineReg,
 }
 
 def build_criterion(args):

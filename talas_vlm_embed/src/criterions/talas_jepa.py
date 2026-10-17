@@ -6,7 +6,9 @@ from src.criterions.utils import count_clean_text_tokens, get_hidden_text_vision
 import random
 import math
 from torch.nn.utils.rnn import pad_sequence
-
+from torch.distributed.nn.functional import all_reduce as grad_all_reduce
+from scipy.optimize import linear_sum_assignment
+import joblib
 
 class TalasJepa(nn.Module):
     def __init__(self, args):
@@ -22,7 +24,36 @@ class TalasJepa(nn.Module):
 
         self.counter = 0
         self.warm_up_sigreg = 0
-    
+        gmm_model = joblib.load(args.gmm_ckpt)["gmm"]
+        if gmm_model.covariance_type != "diag":
+            raise ValueError("kd_sigreg dưới đây yêu cầu GMM covariance_type='diag'")
+
+        # Không phải tham số học; Module.to(device) sẽ chuyển các buffer theo model.
+        self.register_buffer(
+            "gmm_weights",
+            torch.as_tensor(gmm_model.weights_, dtype=torch.float32),
+            persistent=False,
+        )
+        self.register_buffer(
+            "gmm_means",
+            torch.as_tensor(gmm_model.means_, dtype=torch.float32),
+            persistent=False,
+        )
+        self.register_buffer(
+            "gmm_variances",
+            torch.as_tensor(gmm_model.covariances_, dtype=torch.float32),
+            persistent=False,
+        )
+
+        Dt = gmm_model.means_.shape[1]
+        g_fixed = torch.Generator(device="cpu").manual_seed(42)
+        self.register_buffer(
+            "gmm_G",
+            torch.randn(Dt, args.Ds, 
+                generator=g_fixed, 
+                dtype=torch.float32) / math.sqrt(Dt),
+        )
+
     def _dist_gather_tensor(self, t: torch.Tensor):
         t = t.contiguous()
         all_tensors = [torch.empty_like(t) for _ in range(self.world_size)]
@@ -47,7 +78,7 @@ class TalasJepa(nn.Module):
 
         return loss
 
-    def distillcse_kd_loss(self, S1, S2, T1, T2, tau=0.04):
+    def distillcse_kd_loss(self, S1, S2, T1, T2, tau=0.02):
         """
         Distill teacher similarity distribution over in-batch negatives.
 
@@ -80,7 +111,7 @@ class TalasJepa(nn.Module):
 
         return F.kl_div(student_log_probs, teacher_probs, reduction="batchmean",)
     
-    def sigreg(self, x: torch.Tensor, num_slices: int = 128) -> torch.Tensor:
+    def sigreg(self, x: torch.Tensor, num_slices: int = 256) -> torch.Tensor:
         device = x.device
         # =====================================================
         # 1. Random projection seed
@@ -142,156 +173,343 @@ class TalasJepa(nn.Module):
 
         return sigreg_per_slice.mean()
 
-    def sigreg_sinkhorn(self, z_list: list[torch.Tensor], 
-                        concept_queries: torch.Tensor, num_slices=128,
-                        tau: float = 0.05, n_iters: int = 3, alpha: float = 0.8):
-        B = len(z_list)
-        if B == 0: return 0.0
-        
-        device, dtype = z_list[0].device, z_list[0].dtype
-        D = z_list[0].shape[-1]
-        
-        # ==========================================
-        # 0. PADDING & MASKING (Chuẩn bị Tensor vuông)
-        # ==========================================
-        # Lấy độ dài thực tế của từng ảnh
-        lengths = torch.tensor([x.size(0) for x in z_list], device=device)
-        N_max = lengths.max().item()
-        
-        # Pad các tensor bằng 0 để gom thành khối [B, N_max, D]
-        z_padded = pad_sequence(z_list, batch_first=True, padding_value=0.0) 
-        
-        # Tạo Mask boolean [B, 1, N_max]: True là token thật, False là token rác (padding)
-        idx = torch.arange(N_max, device=device).unsqueeze(0).unsqueeze(0) # [1, 1, N_max]
-        mask = idx < lengths.view(B, 1, 1) # [B, 1, N_max]
-        
-        # ==========================================
-        # 1. BATCH-WISE MASKED SINKHORN
-        # ==========================================
-        queries_norm = F.normalize(concept_queries, p=2, dim=-1) # [K, D]
-        z_norm = F.normalize(z_padded, p=2, dim=-1)              # [B, N_max, D]
-        
-        # [B, K, N_max]
-        cost_matrix = 1.0 - torch.einsum('kd,bnd->bkn', queries_norm, z_norm)
-        log_Q = -cost_matrix / tau
-        
-        log_Q = log_Q.masked_fill(~mask, -float('inf'))
-        
-        with torch.no_grad():
-            for _ in range(n_iters - 1):
-                # Cân bằng K (dim=1)
-                log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True)
-                log_Q = log_Q.masked_fill(~mask, -float('inf'))
-                
-                # Cân bằng N (dim=2)
-                log_Q = log_Q - torch.logsumexp(log_Q, dim=2, keepdim=True)
-                log_Q = log_Q.masked_fill(~mask, -float('inf'))
-                
-        # Vòng cuối (Mở gradient)
-        log_Q = log_Q - torch.logsumexp(log_Q, dim=1, keepdim=True)
-        log_Q = log_Q.masked_fill(~mask, -float('inf'))
-        log_Q = log_Q - torch.logsumexp(log_Q, dim=2, keepdim=True)
-        log_Q = log_Q.masked_fill(~mask, -float('inf'))
-        
-        # Chuyển về không gian xác suất
-        affinity = torch.exp(log_Q) # [B, K, N_max]
-        
-        # Rút ra K centroids
-        z_centroids = torch.bmm(affinity, z_padded) 
-        
-        # ==========================================
-        # 2. CHUẨN BỊ KHÔNG GIAN BẰNG RMSNorm & THÊM NOISE
-        # ==========================================
-        z_k_concepts = z_centroids.transpose(0, 1) # [K, B, D]
-        z_normed = z_k_concepts / z_k_concepts.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-12) * math.sqrt(D)
-        
-        if alpha < 1.0:
-            noise = torch.randn_like(z_normed)
-            z_mixed = math.sqrt(alpha) * z_normed + math.sqrt(1.0 - alpha) * noise
-        else:
-            z_mixed = z_normed
-            
-        # ==========================================
-        # 3. SIGREG TRÊN KHÔNG GIAN ĐÃ MIX NOISE
-        # ==========================================
-        A = torch.randn(D, num_slices, device=device, dtype=dtype)
-        A = A / A.norm(p=2, dim=0, keepdim=True).clamp_min(1e-12)
-        t = torch.linspace(-5, 5, 17, device=device, dtype=dtype)
-        exp_f = torch.exp(-0.5 * t.square())
-        
-        x_proj = z_mixed @ A                   # [K, B, num_slices]
-        x_t = x_proj.unsqueeze(-1) * t         # [K, B, num_slices, 17]
-        ecf = torch.exp(1j * x_t).mean(dim=1)  # [K, num_slices, 17]
-        
-        err = (ecf - exp_f).abs().square().mul(exp_f)
-        loss_sigreg = torch.trapezoid(err, t, dim=-1).mean(dim=-1) * B 
-        
-        return loss_sigreg.mean()
+    def kd_sigreg(
+        self,
+        student_x: torch.Tensor,
+        num_slices: int = 256,
+        num_t: int = 17,
+        t_max: float = 5.0,
+        num_sw_slices: int = 64,
+    ) -> torch.Tensor:
+        if student_x.ndim != 2 or student_x.size(0) == 0:
+            raise ValueError("student_x phải có shape [N, D] và N > 0")
+        if num_slices < 1 or num_t < 2 or t_max <= 0 or num_sw_slices < 1:
+            raise ValueError("num_slices, num_sw_slices >= 1; num_t >= 2; t_max > 0")
 
-    def _compute_modality_distill(self, student_hidden_states, image_features, 
-                                  text_token_counts, attention_mask, concept_queries):
-        """
-        Hàm này chỉ còn nhiệm vụ trích xuất text và vision representations 
-        của student, cùng với việc tính toán SIGReg loss.
-        """
-        k_layers = self.args.num_layers
-        batch_size = attention_mask.size(0)
-        last_layer_idx = len(student_hidden_states) - 1
-        layers = [1, int(last_layer_idx / 4), int(last_layer_idx / 2), last_layer_idx]
-        
-        stu_img_tokens = {l: [] for l in layers}
-        stu_text_reps = []
-        
-        cur_idx_img = 0
-        for i in range(batch_size):
-            num_vision_token = 0
-            if image_features is not None and cur_idx_img < len(image_features):
-                num_vision_token = image_features[cur_idx_img].size(0)
-                cur_idx_img += 1
-            
-            text_last_hidden, img_last_hidden = get_hidden_text_vision(
-                student_hidden_states[last_layer_idx][i],
-                text_token_counts[i].item(),
-                num_vision_token,
-                attention_mask[i]
+        device = student_x.device
+        distributed = self.world_size > 1
+        seed = random.randint(0, 2**63 - 1) if self.process_rank == 0 else 0
+
+        if distributed:
+            seed_tensor = torch.tensor(seed, device=device, dtype=torch.int64)
+            dist.broadcast(seed_tensor, src=0)
+            seed = int(seed_tensor.item())
+
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+
+        with torch.autocast(device_type=device.type, enabled=False):
+            means = self.gmm_means.to(device=device, dtype=torch.float32)
+            variances = self.gmm_variances.to(device=device, dtype=torch.float32)
+            weights = self.gmm_weights.to(device=device, dtype=torch.float32)
+
+            A = torch.randn(student_x.size(1), num_slices, generator=generator, device=device)
+            B = torch.randn(means.size(1), num_slices, generator=generator, device=device)
+            A = F.normalize(A, dim=0)
+            B = F.normalize(B, dim=0)
+
+            t = torch.linspace(-t_max, t_max, num_t, device=device)
+            student_phase = (student_x.float() @ A).unsqueeze(-1) * t
+            student_sum = torch.stack(
+                [student_phase.cos().sum(dim=0), student_phase.sin().sum(dim=0)], dim=-1
             )
-            stu_text_reps.append(text_last_hidden.mean(dim=0))
-            
-            if num_vision_token > 0:
-                for l in layers:
-                    _, img_hidden = get_hidden_text_vision(
-                        student_hidden_states[l][i],
-                        text_token_counts[i].item(),
-                        num_vision_token,
-                        attention_mask[i]
-                    )
-                    stu_img_tokens[l].append(img_hidden)
 
-        # 1. Gom representations của Text
-        stacked_stu_text_reps = torch.stack(stu_text_reps, dim=0)
+            count = torch.tensor(student_x.size(0), device=device, dtype=torch.float32)
+            if distributed:
+                student_sum = grad_all_reduce(student_sum, op=dist.ReduceOp.SUM)
+                dist.all_reduce(count, op=dist.ReduceOp.SUM)
+            student_ecf = student_sum / count  # [M, T, 2]
 
-        # 2. Gom representations của Vision và tính SIGReg
-        stu_img_final_reps = None
-        sigreg_final = 0.0
-        
-        if len(stu_img_tokens[last_layer_idx]) > 0:
-            stu_img_final_reps = torch.stack([x.mean(dim=0) for x in stu_img_tokens[last_layer_idx]], dim=0) 
+            with torch.no_grad():
+                projected_means = means @ B
+                projected_vars = variances @ B.square()
+                phase = projected_means.unsqueeze(-1) * t
+                decay = torch.exp(-0.5 * projected_vars.unsqueeze(-1) * t.square())
+                weighted_decay = weights[:, None, None] * decay
+                teacher_cf = torch.stack(
+                    [(weighted_decay * phase.cos()).sum(dim=0),
+                    (weighted_decay * phase.sin()).sum(dim=0)],
+                    dim=-1,
+                )  # [M, T, 2]
 
-            warmup_factor = min(1.0, self.counter / max(1, self.warm_up_sigreg))
-            total_sigreg = 0.0
-            
-            for l in layers[:-1]:  # Chỉ tính SIGReg cho các layer trừ layer cuối cùng
-                total_sigreg += self.sigreg_sinkhorn(stu_img_tokens[l], concept_queries)
-                
-            sigreg_final = warmup_factor * (total_sigreg / max(1, k_layers))
+            # Đưa trọng số tích phân theo t vào từng tọa độ của vector CF.
+            dt = t[1] - t[0]
+            quad_weight = torch.exp(-0.5 * t.square()) * dt
+            quad_weight = quad_weight.clone()
+            quad_weight[0] *= 0.5
+            quad_weight[-1] *= 0.5
+            scale = quad_weight.sqrt()[None, :, None]
 
-        return stacked_stu_text_reps, stu_img_final_reps, sigreg_final
+            student_feat = (student_ecf * scale).reshape(num_slices, 2 * num_t)
+            teacher_feat = (teacher_cf * scale).reshape(num_slices, 2 * num_t)
+
+            # Sliced Wasserstein giữa hai tập gồm M vector CF.
+            R = torch.randn(2 * num_t, num_sw_slices, generator=generator, device=device)
+            R = F.normalize(R, dim=0)
+            student_sorted = (student_feat @ R).sort(dim=0).values
+            teacher_sorted = (teacher_feat @ R).sort(dim=0).values
+
+            return count * (student_sorted - teacher_sorted).square().mean()
+
+    def kd_sigreg_old(
+        self,
+        student_x: torch.Tensor,
+        num_slices: int = 256,
+        num_t: int = 17,
+        t_max: float = 5.0,
+        normalize_b: bool = True,
+    ) -> torch.Tensor:
+        """SIGReg với đích là MoG của teacher.
+
+        Hướng a (không gian student, Ds) -> b = G a (không gian teacher, Dt),
+        với G cố định [Dt, Ds] (rút offline, lưu cùng checkpoint).
+        """
+        if student_x.ndim != 2 or student_x.size(0) == 0:
+            raise ValueError("student_x phải có shape [N, D] và N > 0")
+        if num_slices < 1 or num_t < 2 or t_max <= 0:
+            raise ValueError("num_slices >= 1; num_t >= 2; t_max > 0")
+
+        device = student_x.device
+        distributed = self.world_size > 1
+
+        seed = random.randint(0, 2**63 - 1) if self.process_rank == 0 else 0
+        if distributed:
+            seed_tensor = torch.tensor(seed, device=device, dtype=torch.int64)
+            dist.broadcast(seed_tensor, src=0)
+            seed = int(seed_tensor.item())
+
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+
+        with torch.autocast(device_type=device.type, enabled=False):
+            means = self.gmm_means.to(device=device, dtype=torch.float32)          # [K, Dt]
+            variances = self.gmm_variances.to(device=device, dtype=torch.float32)  # [K, Dt]
+            weights = self.gmm_weights.to(device=device, dtype=torch.float32)      # [K]
+            G = self.gmm_G.to(device=device, dtype=torch.float32)                  # [Dt, Ds]
+
+            x = student_x.float()
+            if G.size(1) != x.size(1):
+                raise ValueError(f"G có Ds={G.size(1)} nhưng student_x có D={x.size(1)}")
+
+            # Hướng đơn vị trong không gian student
+            A = F.normalize(
+                torch.randn(x.size(1), num_slices, generator=generator, device=device), dim=0
+            )  # [Ds, M]
+
+            t = torch.linspace(-t_max, t_max, num_t, device=device)
+            win = torch.exp(-0.5 * t.square())
+
+            # ---- Student: ECF của a^T h ----
+            phase_s = (x @ A).unsqueeze(-1) * t                                    # [N, M, T]
+            s = torch.stack([phase_s.cos().sum(0), phase_s.sin().sum(0)], dim=-1)  # [M, T, 2]
+
+            count = torch.tensor(float(x.size(0)), device=device)
+            if distributed:
+                s = grad_all_reduce(s, op=dist.ReduceOp.SUM)
+                dist.all_reduce(count, op=dist.ReduceOp.SUM)
+            student_ecf = s / count                                                # [M, T, 2]
+
+            # ---- Teacher: CF closed-form của MoG chiếu theo b = G a ----
+            with torch.no_grad():
+                b = G @ A                                                          # [Dt, M]
+                if normalize_b:
+                    b = F.normalize(b, dim=0)   # K=1 -> đúng SIGReg gốc
+                pm = means @ b                                                     # [K, M]
+                pv = variances @ b.square()                                        # [K, M]
+                decay = weights[:, None, None] * torch.exp(
+                    -0.5 * pv.unsqueeze(-1) * t.square()
+                )                                                                  # [K, M, T]
+                phase_t = pm.unsqueeze(-1) * t
+                teacher_cf = torch.stack(
+                    [(decay * phase_t.cos()).sum(0), (decay * phase_t.sin()).sum(0)],
+                    dim=-1,
+                )                                                                  # [M, T, 2]
+
+            # ---- Loss: N * trapz(|ECF - CF|^2 * exp(-t^2/2)), trung bình trên slice ----
+            err = (student_ecf - teacher_cf).square().sum(-1) * win                # [M, T]
+            return torch.trapz(err, t, dim=-1).mean() * count
+
+    def mi_loss(
+            self,
+            student_features: torch.Tensor,  # [B, D]
+            teacher_features: torch.Tensor,  # [B, D]
+            temperature: float = 0.02,
+        ) -> torch.Tensor:
+            """Equation (13) của PGA-KD: student_i khớp teacher_i."""
+            if student_features.ndim != 2 or student_features.shape != teacher_features.shape:
+                raise ValueError("student_features và teacher_features phải cùng shape [B, D]")
+            if temperature <= 0:
+                raise ValueError("temperature phải > 0")
     
+            student = F.normalize(student_features.float(), dim=-1)
+            teacher = F.normalize(teacher_features.float(), dim=-1)
+    
+            # logits[i, j] = cosine(student_i, teacher_j) / temperature
+            logits = student @ teacher.T / temperature  # [B, B]
+            labels = torch.arange(logits.size(0), device=logits.device)
+    
+            return F.cross_entropy(logits, labels)
+
+    def sigreg_sinkhorn(
+        self,
+        z_list: list[torch.Tensor],
+        concept_queries: torch.Tensor,
+        num_slices: int = 256,
+        tau: float = 0.05,
+        n_iters: int = 3,
+    ) -> torch.Tensor:
+        B = len(z_list)
+        if B == 0:
+            raise ValueError("z_list không được rỗng")
+        if tau <= 0 or n_iters < 1:
+            raise ValueError("Cần tau > 0 và n_iters >= 1")
+
+        K, D = concept_queries.shape
+        device = z_list[0].device
+        if self.centroids.device != device:
+            self.centroids.data = self.centroids.data.to(device)
+        lengths = torch.tensor([z.size(0) for z in z_list], device=device)
+
+        if K == 0 or (lengths == 0).any():
+            raise ValueError("Cần ít nhất một concept và một image token mỗi ảnh")
+        if any(z.ndim != 2 or z.size(1) != D for z in z_list):
+            raise ValueError("Mỗi phần tử z_list phải có shape [N_i, D]")
+
+        distributed = dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
+
+        with torch.autocast(device_type=device.type, enabled=False):
+            z_padded = pad_sequence(z_list, batch_first=True, padding_value=0).float()
+            N_max = z_padded.size(1)
+            valid = torch.arange(N_max, device=device)[None, :] < lengths[:, None]
+
+            # Normalize chỉ để tính cosine cost, không thay token dùng để tạo centroid.
+            q = F.normalize(concept_queries.float(), dim=-1)
+            z_for_cost = F.normalize(z_padded, dim=-1)
+            cost = 1 - torch.einsum("kd,bnd->bkn", q, z_for_cost)
+
+            neg_large = -1e9
+            log_kernel = (-cost / tau).masked_fill(~valid[:, None, :], neg_large)
+            log_u = torch.zeros(B, K, device=device)
+            log_v = torch.zeros(B, N_max, device=device).masked_fill(~valid, neg_large)
+            log_token_mass = -lengths.float().log()
+
+            # Giữ gradient qua Sinkhorn để concept_queries có thể học.
+            for _ in range(n_iters):
+                log_u = -math.log(K) - torch.logsumexp(
+                    log_kernel + log_v[:, None, :], dim=2
+                )
+                next_log_v = log_token_mass[:, None] - torch.logsumexp(
+                    log_kernel + log_u[:, :, None], dim=1
+                )
+                log_v = next_log_v.masked_fill(~valid, neg_large)
+
+            log_plan = log_kernel + log_u[:, :, None] + log_v[:, None, :]
+            plan = log_plan.masked_fill(~valid[:, None, :], neg_large).exp()
+            weights = plan / plan.sum(dim=2, keepdim=True).clamp_min(1e-12)
+            z_centroids = torch.bmm(weights, z_padded)  # [B, K, D]
+
+            # Không L2-normalize centroid, không thêm noise.
+            x = z_centroids.reshape(B * K, D)         # [B*K, D]
+
+            # Cùng hướng chiếu trên các GPU nếu dùng DDP.
+            seed = random.randint(0, 2**63 - 1) if not distributed or dist.get_rank() == 0 else 0
+            if distributed:
+                seed_tensor = torch.tensor(seed, device=device, dtype=torch.int64)
+                dist.broadcast(seed_tensor, src=0)
+                seed = int(seed_tensor.item())
+
+            generator = torch.Generator(device=device)
+            generator.manual_seed(seed)
+            A = torch.randn(D, num_slices, generator=generator, device=device, dtype=torch.float32)
+            A = A / A.norm(dim=0, keepdim=True).clamp_min(1e-12)
+
+            t = torch.linspace(-5, 5, 17, device=device, dtype=torch.float32)
+            target_cf = torch.exp(-0.5 * t.square())
+
+            phase = (x @ A).unsqueeze(-1) * t         # [B*K, M, 17]
+            ecf_sum = torch.stack(
+                [phase.cos().sum(dim=0), phase.sin().sum(dim=0)],
+                dim=-1,
+            )                                         # [M, 17, 2]
+
+            image_count = torch.tensor(B, device=device, dtype=torch.float32)
+            if distributed:
+                ecf_sum = grad_all_reduce(ecf_sum, op=dist.ReduceOp.SUM)
+                dist.all_reduce(image_count, op=dist.ReduceOp.SUM)
+
+            ecf = ecf_sum / (image_count * K)
+            err = (
+                (ecf[..., 0] - target_cf).square() + ecf[..., 1].square()
+            ) * target_cf
+
+            return torch.trapezoid(err, t, dim=1).mean() * image_count
+    
+    def get_image_hidden_states(self, student_tokenizer, 
+                                student_qry_input,
+                                student_pos_input,
+                                student_qry_output, 
+                                student_pos_output):
+        student_qry_reps, student_qry_image_features, student_qry_attention, student_qry_hidden_states = student_qry_output
+        student_pos_reps, student_pos_image_features, student_pos_attention, student_pos_hidden_states = student_pos_output
+
+        student_special_ids = torch.tensor(
+            list(set(list(student_tokenizer.added_tokens_encoder.values()) + student_tokenizer.all_special_ids) 
+                    - set([student_tokenizer.eos_token_id])),
+            device=student_qry_reps.device,
+            dtype=torch.long
+        )
+
+        num_student_text_qry_tokens = count_clean_text_tokens(student_qry_input, student_special_ids)
+        num_student_text_pos_tokens = count_clean_text_tokens(student_pos_input, student_special_ids)
+
+
+        selected_layer = self.args.num_layers
+
+        batch_size = student_qry_reps.size(0)
+        
+        vision_hidden_states = []
+        cur_idx_qry_img = 0
+        cur_idx_pos_img = 0
+        for i in range(batch_size):
+            # 1. QUERY Processing
+            if student_qry_image_features is not None:
+                if cur_idx_qry_img < len(student_qry_image_features):
+                    # --- Vision ---
+                    stu_feat = student_qry_image_features[cur_idx_qry_img]
+                    
+                    stu_text_hidden_state, vision_hidden_state = get_hidden_text_vision(
+                        student_qry_hidden_states[selected_layer][i],
+                        num_student_text_qry_tokens[i].item(),
+                        stu_feat.size(0),
+                        student_qry_input['attention_mask'][i]
+                    )
+                    vision_hidden_states.append(vision_hidden_state)
+                    cur_idx_qry_img += 1
+
+            # 2. POSITIVE Processing (Tương tự Query)
+            if student_pos_image_features is not None:
+                if cur_idx_pos_img < len(student_pos_image_features):
+                    # --- Vision ---
+                    stu_feat_pos = student_pos_image_features[cur_idx_pos_img]
+
+                    stu_text_hidden_state, vision_hidden_state = get_hidden_text_vision(
+                        student_pos_hidden_states[selected_layer][i],
+                        num_student_text_pos_tokens[i].item(),
+                        stu_feat_pos.size(0),
+                        student_pos_input['attention_mask'][i]
+                    )
+                    vision_hidden_states.append(vision_hidden_state)
+                    cur_idx_pos_img += 1
+
+        return vision_hidden_states
+
+
+
     def forward(self, model_wrapper, input_data):
         student_model = model_wrapper.model
         student_processor = model_wrapper.get_processor()
-        student_tokenizer = student_processor.tokenizer
-        concept_queries = model_wrapper.concept_queries      
+        student_tokenizer = student_processor.tokenizer 
+        projectors = model_wrapper.projectors
 
         student_qry_input = input_data['qry']
         student_pos_input = input_data['pos']
@@ -323,6 +541,8 @@ class TalasJepa(nn.Module):
             all_student_pos_reps = self._dist_gather_tensor(student_pos_reps)
             all_teacher_qry_reps = self._dist_gather_tensor(teacher_qry_reps)
             all_teacher_pos_reps = self._dist_gather_tensor(teacher_pos_reps)
+            student_qry_hidden_states = [self._dist_gather_tensor(h) for h in student_qry_hidden_states]
+            student_pos_hidden_states = [self._dist_gather_tensor(h) for h in student_pos_hidden_states]
         else:
             all_student_qry_reps = student_qry_reps
             all_student_pos_reps = student_pos_reps
@@ -335,98 +555,60 @@ class TalasJepa(nn.Module):
         target = target * (all_student_qry_reps.size(0) // all_student_pos_reps.size(0))
         contrastive_loss = nn.CrossEntropyLoss()(scores / model_wrapper.temperature, target)
 
-        kd_simcse = 0.0
-        last_stu_qry_hidden_state = pooling(student_qry_hidden_states[-1], 
-                                            student_qry_input['attention_mask'], 
-                                            mode='eos', normalize=True)
-        last_stu_pos_hidden_state = pooling(student_pos_hidden_states[-1], 
-                                            student_pos_input['attention_mask'], 
-                                            mode='eos', normalize=True)
         
-        kd_simcse += self.distillcse_kd_loss(last_stu_qry_hidden_state, last_stu_pos_hidden_state, 
-                                             teacher_qry_reps, teacher_pos_reps)
-
         ##################################
-        student_special_ids = torch.tensor(
-            list(set(list(student_tokenizer.added_tokens_encoder.values()) + student_tokenizer.all_special_ids) 
-                 - set([student_tokenizer.eos_token_id])),
-            device=student_qry_input['input_ids'].device,
-            dtype=torch.long
-        )
+        # student_special_ids = torch.tensor(
+        #     list(set(list(student_tokenizer.added_tokens_encoder.values()) + student_tokenizer.all_special_ids) 
+        #          - set([student_tokenizer.eos_token_id])),
+        #     device=student_qry_input['input_ids'].device,
+        #     dtype=torch.long
+        # )
 
-        num_student_text_qry_tokens = count_clean_text_tokens(student_qry_input, student_special_ids)
-        num_student_text_pos_tokens = count_clean_text_tokens(student_pos_input, student_special_ids)
+        # num_student_text_qry_tokens = count_clean_text_tokens(student_qry_input, student_special_ids)
+        # num_student_text_pos_tokens = count_clean_text_tokens(student_pos_input, student_special_ids)
 
-        # Trích xuất Representations từ QRY
-        qry_stu_txt, qry_stu_img, qry_sigreg = self._compute_modality_distill(
-            student_hidden_states=student_qry_hidden_states, 
-            image_features=student_qry_image_features,
-            text_token_counts=num_student_text_qry_tokens, 
-            attention_mask=student_qry_input['attention_mask'], 
-            concept_queries=concept_queries
-        )
-
-        # Trích xuất Representations từ POS
-        pos_stu_txt, pos_stu_img, pos_sigreg = self._compute_modality_distill(
-            student_hidden_states=student_pos_hidden_states, 
-            image_features=student_pos_image_features,
-            text_token_counts=num_student_text_pos_tokens, 
-            attention_mask=student_pos_input['attention_mask'], 
-            concept_queries=concept_queries
-        )
-
-        stu_modality_features = []
-        tea_modality_features = []
-        SIGReg = torch.zeros_like(contrastive_loss)
-        num_sigreg_components = 0
-
-        if tea_text_qry_reps is not None:
-            stu_modality_features.append(qry_stu_txt)
-            tea_modality_features.append(tea_text_qry_reps)
-        if tea_text_pos_reps is not None:
-            stu_modality_features.append(pos_stu_txt)
-            tea_modality_features.append(tea_text_pos_reps)
-
-        if tea_img_qry_reps is not None and qry_stu_img is not None:
-            stu_modality_features.append(qry_stu_img)
-            tea_modality_features.append(tea_img_qry_reps)
-            SIGReg += qry_sigreg
-            num_sigreg_components += 1
-
-        if tea_img_pos_reps is not None and pos_stu_img is not None:
-            stu_modality_features.append(pos_stu_img)
-            tea_modality_features.append(tea_img_pos_reps)
-            SIGReg += pos_sigreg
-            num_sigreg_components += 1
-
-        if num_sigreg_components > 0:
-            SIGReg = SIGReg / num_sigreg_components
-
-        modality_loss = torch.zeros_like(contrastive_loss)
-        if len(stu_modality_features) > 0:
-            all_stu_modality = torch.cat(stu_modality_features, dim=0)
-            all_tea_modality = torch.cat(tea_modality_features, dim=0)
-            modality_loss = self.structure_loss(all_stu_modality, all_tea_modality)
 
         # ==============================================================
 
-        loss_distill = torch.zeros_like(contrastive_loss)
-        if self.args.use_distill_cse_loss:
-            loss_distill += kd_simcse
-            
-        if self.args.use_distill_vison_loss:
-            loss_distill += modality_loss
-
-        loss = contrastive_loss 
+        kd_loss = torch.zeros_like(contrastive_loss)
         if self.args.use_distill_loss:
-            loss = loss + self.kd_weight * loss_distill
-        if self.args.use_sigreg_loss:
-            loss = loss + self.args.sigreg_weight * SIGReg
+            
+            unnorm_student_qry_reps = pooling(student_qry_hidden_states[-1], student_qry_input['attention_mask'], mode='eos', normalize=False)
+            unnorm_student_pos_reps = pooling(student_pos_hidden_states[-1], student_pos_input['attention_mask'], mode='eos', normalize=False)
+            student_rkd_reps = torch.cat([unnorm_student_qry_reps, unnorm_student_pos_reps], dim=0)
+            teacher_rkd_reps = torch.cat([all_teacher_qry_reps, all_teacher_pos_reps], dim=0)
 
+            kd_loss = self.structure_loss(student_rkd_reps, teacher_rkd_reps)
+            # print(f'structure_loss: {kd_loss.item()}')
+
+        sigreg_loss = torch.zeros_like(contrastive_loss)       
+        if self.args.use_sigreg_loss:
+            # Dùng reps local: kd_sigreg tự all_reduce ECF khi chạy DDP.
+
+            selected_layers = self.args.num_layers
+            student_qry_reps = pooling(student_qry_hidden_states[selected_layers], student_qry_input['attention_mask'], mode='eos', normalize=False)
+            student_pos_reps = pooling(student_pos_hidden_states[selected_layers], student_pos_input['attention_mask'], mode='eos', normalize=False)
+
+            student_eos = torch.cat(
+                [student_qry_reps, student_pos_reps],
+                dim=0,
+            )  # [2 * local_batch_size, D_student]
+
+            sigreg_loss += self.kd_sigreg(
+                student_eos,
+                num_slices=256,
+                num_t=self.args.num_t,
+                t_max=self.args.t_max,
+                # num_sw_slices=64
+            )
+
+
+        # overall loss
+        loss = contrastive_loss + self.kd_weight * kd_loss + self.args.sigreg_weight * sigreg_loss
+        
         return {
             'loss': loss,
             'contrastive_loss': contrastive_loss,
-            'kd_loss': loss_distill,
-            'kd_loss_simcse': kd_simcse,
-            'sigreg_loss': SIGReg
+            'kd_loss': kd_loss,
+            'sigreg_loss': sigreg_loss,
         }

@@ -1,0 +1,112 @@
+# Answer extraction from the official SuperGPQA evaluator, eval/eval.py of
+# github.com/SuperGPQA/SuperGPQA @ e31e8bf3e7089aef808be5ddecafd4538dee6e41 (ODC-By, see LICENSE).
+# extract_option_labels and extract_option_content are verbatim. GRIT: only the imports they use are kept, and
+# timeout_decorator (not in the grit env) is replaced by the same SIGALRM timeout it uses by default.
+import re
+import signal
+
+
+class _RegexTimeout(Exception):
+    pass
+
+
+def _timed_out(signum, frame):
+    raise _RegexTimeout
+
+
+def safe_regex_search(pattern, text, flags=0):
+    """
+    TODO: The optimal solution for timeout detection is to use the 'regex' library instead of 're' for regular expression matching.
+    However, since the 'regex' and 're' libraries handle regex parsing differently, it has not been adopted for now.
+    
+    Issue: The current implementation using 'timeout_decorator' does not work on Windows platforms.
+    Reason: 'timeout_decorator' relies on signal-based timeouts, which are only supported on Unix-based systems and do not work on Windows.
+    """
+    previous = signal.signal(signal.SIGALRM, _timed_out)  # GRIT: was @timeout_decorator.timeout(5)
+    signal.alarm(5)
+    try:
+        return re.search(pattern, text, flags)
+    except _RegexTimeout:
+        print(f"Regex match timeout: pattern={pattern}, text={text[:100]}...")
+        return None
+    except Exception as e:
+        print(f"Regex match error: {str(e)}")
+        return None
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+def extract_option_labels(text, options='ABCDEFGHIJ'):
+    if not isinstance(text, str) or not isinstance(options, str):
+        return 'error'
+    
+    text = text.rstrip()
+    last_line = text.split('\n')[-1]
+    
+    option_str = ''.join([chr(65 + i) for i in range(len(options))]) if options else 'ABCDEFGHIJ'
+    
+    patterns = [
+        # e.g. "The final answer to this question is: A."
+        #      "The best option is $\boxed{B}:"
+        #      "The correct answer is (C)."
+        f'[Tt]he\s+(?:\w+\s+)?(?:answer|option)(?:\w+\s+)?\s+is?:?\s*(?:[\*\$\\{{(\[\\\\(]*?(?:(?:\\\\boxed|\\\\mathbf|\\\\mathrm|\\\\text){{)?)*\s*([{option_str}])(?:\\\\?\}}?\$?\)?\]?\}}?)*(?:[\s:\.\*)]|$)',
+
+        # e.g. "ANSWER: A"
+        #      "Answer: $\boxed{B}."
+        #      "ANSWER: (C):"
+        f'(?i:Answer)[\*\s]*:\s*(?:[\*\$\\{{(\[\\\\(]*?(?:(?:\\\\boxed|\\\\mathbf|\\\\mathrm|\\\\text){{)?)*\s*([{option_str}])(?:\\\\?\}}?\$?\)?\]?\}}?)*(?:[\s:\.\*)]|$)',
+        
+        # e.g. "A"
+        #      "$\boxed{B}$"
+        #      "(C)."
+        #      "[D]:"
+        f'^[^\w\r\n]*(?:[\*\$\\{{(\[\\\\(]*?(?:(?:\\\\boxed|\\\\mathbf|\\\\mathrm|\\\\text){{)?)*\s*([{option_str}])(?:\\\\?\}}?\$?\)?\]?\}}?)*(?:[\s:\.\*)]|$)',
+    ]
+
+    for pattern in patterns:
+        match = safe_regex_search(pattern, last_line, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    
+    for pattern in patterns:
+        match = safe_regex_search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    
+    return None
+
+def extract_option_content(text, options_content=None):
+    if not isinstance(text, str) or not isinstance(options_content, list):
+        return 'error'
+    
+    escaped_options_content = [re.escape(option_content) for option_content in options_content]
+    escaped_options_content_str = '|'.join(escaped_options_content)
+    
+    text = text.rstrip()
+    last_line = text.split('\n')[-1]
+        
+    patterns = [
+        f'[Tt]he\s+(?:\w+\s+)?(?:answer|option)(?:\w+\s+)?\s+is:?\s*(?:[\*\$\\{{\(\[\\\\(]*?(?:(?:\\\\boxed|\\\\mathbf|\\\\mathrm|\\\\text){{)?)*\s*({escaped_options_content_str})(?:\\\\?\}}?\$?\)?\]?\}}?)*(?:[\s:\.\*)]|$)',
+        
+        f'(?i:Answer)\s*(?:[\*\$\\{{\(\[\\\\(]*?(?:(?:\\\\boxed|\\\\mathbf|\\\\mathrm|\\\\text){{)?)*\s*({escaped_options_content_str})(?:\\\\?\}}?\$?\)?\]?\}}?)*(?:[\s:\.\*)]|$)',
+        
+        f'^[^\w\r\n]*(?:[\*\$\\{{\(\[\\\\(]*?(?:(?:\\\\boxed|\\\\mathbf|\\\\mathrm|\\\\text){{)?)*\s*({escaped_options_content_str})(?:\\\\?\}}?\$?\)?\]?\}}?)*(?:[\s:\.\*)]|$)',
+    ]
+    
+    for pattern in patterns:
+        match = safe_regex_search(pattern, last_line)
+        if match:
+            if match.group(1) in escaped_options_content:
+                return options_content[escaped_options_content.index(match.group(1))]
+            else:
+                return match.group(1)
+    
+    for pattern in patterns:
+        match = safe_regex_search(pattern, text)
+        if match:
+            if match.group(1) in escaped_options_content:
+                return options_content[escaped_options_content.index(match.group(1))]
+            else:
+                return match.group(1)
+    
+    return None

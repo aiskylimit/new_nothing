@@ -1,0 +1,9 @@
+# prov-nll-dft-j8: also NLL on the first 8 continuation tokens, so the model learns to leave the
+# <End_of_Prefix> marker (DFT alone gives that near-impossible token ~no gradient).
+defaults: [provenance.yaml]
+junction_tokens: 8
+train_variant: provenance-j8
+stages:
+  train:
+    args:
+      junction-objective: nll

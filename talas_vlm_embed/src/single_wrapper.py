@@ -99,7 +99,6 @@ class SingleWrapper(nn.Module):
         self.student_hidden_dim = self.model_args.student_hidden_dim
         self.teacher_hidden_dim = self.model_args.teacher_hidden_dim
         self.set_projector()
-        self.concept_queries = nn.Parameter(torch.randn(8, self.student_hidden_dim))
     
     def _load_model(self):
         print("Load single model with lora rank:", self.model_args.lora_r)
@@ -206,13 +205,6 @@ class SingleWrapper(nn.Module):
                 "lr": lr
             })
             print("-----------Projector parameters added to optimizer.----------")
-
-        if hasattr(self, 'concept_queries') and self.concept_queries is not None:
-            optimizer.add_param_group({
-                "params": [self.concept_queries],
-                "lr": self.training_args.learning_rate
-            })
-            print("-----------concept_queries parameters added to optimizer.----------")
         
         return optimizer
     
@@ -366,6 +358,7 @@ class SingleDataset(Dataset):
             "rep": cache,
             "mean_last_img_token": None,
             "mean_last_text_token": None,
+            "pr_img_layers": None
         }
 
     def __getitem__(self, data_idx):

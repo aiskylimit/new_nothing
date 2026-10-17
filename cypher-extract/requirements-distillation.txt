@@ -1,0 +1,21 @@
+# PyTorch CUDA 12.8 wheels used by the template.
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# Install the base project requirements first, then this file for KD training.
+accelerate>=1.3.0,<=1.11.0
+datasets>=2.16.0,<=4.0.0
+deepspeed>=0.15.0; sys_platform == "linux"
+huggingface-hub>=0.24.0
+llamafactory @ git+https://github.com/hiyouga/LLaMA-Factory.git@f28afaf6355af515454dfb16c97d728307c93897
+numpy>=1.26
+omegaconf>=2.3.0
+peft>=0.18.0,<=0.18.1
+pyyaml>=6.0
+torch==2.9.1+cu128
+torchaudio==2.9.1+cu128
+transformers>=5.5.0,<=5.8.0,!=5.6.0
+trl>=0.18.0,<=0.24.0
+
+# Test/lint tooling shipped with the template.
+pytest>=8.0
+ruff>=0.9

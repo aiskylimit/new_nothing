@@ -1,0 +1,13 @@
+# qwen25-7b on P-ALIGN's 966 traces with P-ALIGN's LoRA recipe; adapters are evaluated on the base model.
+defaults:
+  - ../../common/base.yaml
+  - ../../common/models/qwen25-7b.yaml
+  - ../../common/data/palign-966.yaml
+  - ../../common/train/lora-r16.yaml
+  - ../../common/eval/palign-protocol.yaml
+track: qwen25-7b-palign
+lora_adapter: true
+stages:
+  eval:
+    args:
+      gpu-memory-utilization: 0.5

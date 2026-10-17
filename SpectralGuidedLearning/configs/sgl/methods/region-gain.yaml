@@ -1,0 +1,5 @@
+# SARW ablation, arm region-gain-g1: b_r only (answer-gain region budget, a_k = 1).
+defaults: [sarw.yaml]
+iwc:
+  variant: region-gain
+train_variant: region-gain-g1

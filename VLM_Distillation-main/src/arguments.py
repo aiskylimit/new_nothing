@@ -41,13 +41,14 @@ class ModelArguments:
     projector_config_path: str = field(default=None, metadata={"help": "projector config path, if None, no projector will be used"})
     projector_path: str = field(default=None, metadata={"help": "projector model path, if None, no projector will be used"})
     projector_lr: float = field(default=1e-4, metadata={"help": "projector learning rate"})
-    proj_dim: int = field(default=512, metadata={"help": "shared projection dim used by projector config suffix `p`"})
     student_hidden_dim: int = field(default=896, metadata={"help": "student hidden dim"})
     teacher_hidden_dim: int = field(default=1536, metadata={"help": "teacher hidden dim"})
     load_pretrained_lora: bool = field(default=False, metadata={"help": "load pretrained lora model for student"})
     #! new args for span loss
     
-    
+    modality_gated_pooling: bool = field(default=False, metadata={"help": "whether to use modality gated pooling"})
+    teacher_modality_gated_pooling: bool = field(default=False, metadata={"help": "whether to use modality gated pooling for teacher"})
+    frozen_backbone: bool = field(default=False, metadata={"help": "whether to freeze the backbone model"})
 
 @dataclass
 class DataArguments:
@@ -60,10 +61,10 @@ class DataArguments:
     encode_output_path: str = field(default=None, metadata={"help": "encode output path"})
     max_len: int = field(default=None, metadata={"help": "The maximum total input sequence length after tokenization. Use with caution, since it may truncate text prompts due to large image lengths."},)
     embedding_type: str = field(default="", metadata={"help": "embedding type"})
-    image_resolution: str = field(default=None, metadata={"help": "Optional coarse pre-resize cap before processor-specific image preprocessing."})
-    resize_use_processor: Optional[bool] = field(default=None, metadata={"help": "Override processor image resizing. Leave unset to keep the model processor default; set false only if image sizes are already processor-compatible."})
-    resize_min_pixels: int = field(default=28*28*4, metadata={"help": "Optional processor min_pixels override for processors that support it."})
-    resize_max_pixels: int = field(default=28*28*1280, metadata={"help": "Optional processor max_pixels override for processors that support it."})
+    image_resolution: str = field(default=None, metadata={"help": "for models i.e. LLaVA-next and Qwen, resize images first, none means using original image resolution. This is only works when `--resize_use_processor false`."})
+    resize_use_processor: bool = field(default=False, metadata={"help": "Resize visual inputs insides processor, e.g. Qwen2VLImageProcessor, instead of by our code."})
+    resize_min_pixels: int = field(default=28*28*4, metadata={"help": "The min pixels of the image to resize the image. This is only works when `--resize_use_processor true`."})
+    resize_max_pixels: int = field(default=28*28*1280, metadata={"help": "The max pixels of the image to resize the image. This is only works when `--resize_use_processor true`."})
     image_decay_factor: float = field(default=None, metadata={"help": "The image decay factor for resizing temporal images"})
     num_hardneg: int = field(default=0, metadata={"help": "hard negative number"})
     #! new args
@@ -78,9 +79,11 @@ class DataArguments:
     eval_image_dir: str = field(default=None, metadata={"help": "Eval Image directory path"})
     pos_only: bool = field(default=False, metadata={"help": "Only use positives"})
     # new args distillation
-    percent_data: float = field(default=1.0, metadata={"help": "percentage (%%) of data used for distillation training"})
-    data_path: str = field(default=None, metadata={"help": "path to the training data for distillation, should be a json file with list of {image_path, question, answer}"})
-    
+    percent_data: float = field(default=1.0, metadata={"help": "percentage of data used for distillation training"})
+    # args for TALAS
+    caching_dir: str = field(default=None, metadata={"help": "caching directory for TALAS"})
+
+
 @dataclass
 class TrainingArguments(TrainingArguments):
     image_encoder_freeze: bool = field(default=False, metadata={"help": "huggingface model name"})
@@ -184,6 +187,12 @@ class TrainingArguments(TrainingArguments):
     scva_cgkd_lambda_g: float = field(default=1.0, metadata={"help": "λ_g: weight on CGKD term in the SCVA+CGKD joint loss."})
     ds_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
     deepspeed_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
+    muon_lr: Optional[float] = field(default=None, metadata={"help": "Learning rate for Muon parameter groups. If None, uses torch.optim.Muon default."})
+    muon_weight_decay: Optional[float] = field(default=None, metadata={"help": "Weight decay for Muon parameter groups. If None, uses torch.optim.Muon default."})
+    adjust_lr_fn: Optional[str] = field(default="match_rms_adamw", metadata={"help": "Muon learning-rate adjustment function. Use original, match_rms_adamw, or None."})
+    # args for TALAS
+    num_projectors: int = field(default=0, metadata={"help": "Number of projectors for distillation"})
+    num_self_kd_layers: int = field(default=0, metadata={"help": "Number of self-kd layers for distillation"})
     # new args for span loss
     teacher_layer_mapping: List[int] = field(
         default_factory=list,
@@ -198,6 +207,22 @@ class TrainingArguments(TrainingArguments):
         metadata={"help": "List of split layers for student; number of elements equals number of projectors"}   
     )
     w_cross_modal_loss: float = field(default=1.0, metadata={"help": "weight for cross modal loss"})
+    
+    num_centroids: int = field(default=8, metadata={"help": "Number of centroids for distillation"})
+    centroid_hidden_size: int = field(default=896, metadata={"help": "Hidden size for centroids in distillation"})
+
+    use_distill_loss: bool = field(default=True, metadata={"help": "Use distill loss"})
+    use_distill_cse_loss: bool = field(default=True, metadata={"help": "Use distill cse loss"})
+    use_distill_vison_loss: bool = field(default=True, metadata={"help": "Use distill vison loss"})
+    use_sigreg_loss: bool = field(default=True, metadata={"help": "Use sigreg loss"})
+    sigreg_weight: float = field(default=0.05, metadata={"help": "weight for sigreg loss"})
+    num_layers: int = field(default=1, metadata={"help": "Number of layers for sigreg"})
+    d_cse_temperature: float = field(default=0.02, metadata={"help": "distill cse temperature for softmax"})
+    gmm_ckpt: str = field(default=None, metadata={"help": "GMM checkpoint path for distillation"})
+    num_t: int = field(default=33, metadata={"help": "Number of t for characteristic function"})
+    t_max: float = field(default=1.5, metadata={"help": "Maximum t for characteristic function"})
+    Ds: int = field(default=896, metadata={"help": "Hidden dimension for student model"})
+
 @dataclass
 class MTEBArguments:
     device: str = field(default="cuda", metadata={"help": "use cuda for single GPU inference, if multiple GPUs are available it will use DP automatically"})

@@ -1,0 +1,5 @@
+# Control: the entropy weights of iwc-entropy permuted across the steps of each trace (iwc-shuf-l05).
+defaults: [iwc-entropy.yaml]
+train_variant: iwc-stable-shuffled-nogate-l05
+iwc:
+  variant: iwc-stable-shuffled

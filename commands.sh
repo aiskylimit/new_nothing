@@ -1,20 +1,19 @@
-#2 +a
-#vlm-eval-test
+#i grit.txt
+#grit
 #v1
 
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v3/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/_run_log_/_run-2026-09-03_17-01-16-VLM-Distillation.log
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/outputs/eval/ +a
+# cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
+
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/pl_logs/
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
 
 # nvidia-smi
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
-# kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-# sleep 3
-# CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
+# kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+# sleep 2
 nvidia-smi
 
+# ls OPSD/results/raw/olmo3-7b-think/grpo/
 
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -23,36 +22,27 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./talas_vlm_embed/multi_gpu_v2.py
+
 # cd ./talas_vlm_embed
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# bash ./project_commands.sh
-# CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=0,1 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
-# # CUDA_VISIBLE_DEVICES=6,7 python3 /tmp/llm_pretrain_burn.py &
-
-# cd ./spectral-guided-learning
 # bash ./project_commands.sh
 
-# cd ./reward-guidance-main
+# cd ./multi-mode-distill
+# bash ./project_commands.sh
+
+# cd ./grit
+# bash ./project_commands.sh
+
+# cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./VLM_Distillation-main
-# ls outputs -R
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=0,1,2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
-# # bash ./project_commands.sh
-# bash ./project_commands_eval.sh &
-# bash ./project_commands_eval_2.sh &
-# wait
-# CUDA_VISIBLE_DEVICES=2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
-# CUDA_VISIBLE_DEVICES=2,3 python3 ./../talas_vlm_embed/multi_gpu.py &
-# # CUDA_VISIBLE_DEVICES=4,5,6,7 python3 /tmp/llm_pretrain_burn.py &
+# cd ./OpenED
+# bash gather_pl_logs.sh 
+# bash gather_logs.sh all35
+# tar -czf collected_logs.tar.gz collected_logs/all35/
+# ls -lh collected_logs.tar.gz
+# bash ./project_commands_19.sh
+
+# cd ./opsd
+# bash ./project_commands.sh
+

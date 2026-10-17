@@ -5,9 +5,13 @@
 __pycache__
 .venv
 vlm/
-training/
+training*/
 wandb/
 eval_images/
 MMEB-eval_outputs/
 ER_outputs/
-caching/
+caching*/
+infer/
+meta_train/
+analyze/
+cosine_analysis/

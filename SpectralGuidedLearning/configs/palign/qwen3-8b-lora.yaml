@@ -1,0 +1,12 @@
+# P-ALIGN, Qwen3-8B, LoRA on the released data (P-ALIGN/project_commands.sh, HYPERPARAMETERS.md).
+defaults:
+  - ../common/base.yaml
+  - ../common/models/qwen3-8b.yaml
+  - _released-data.yaml
+  - _lora.yaml
+  - ../common/eval/palign-protocol.yaml
+  - _palign.yaml
+  - _reference.yaml
+run_suffix: -lora
+stop_suffix: "\n"          # LLaMA-Factory qwen3 template: "<|im_end|>\n"
+reference_config: configs/qwen3_8b_palign_sft.yaml

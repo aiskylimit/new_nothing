@@ -626,6 +626,8 @@ class MMEBTrainer(Trainer):
 
         self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
+        # Wait for the checkpoint to be uploaded.
+        self._finish_current_push()
 
         # After training we make sure to retrieve back the original forward pass method
         # for the embedding layer by removing the forward post hook.

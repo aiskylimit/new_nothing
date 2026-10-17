@@ -22,7 +22,7 @@ USE_SIGREG_LOSS=${4:-True}
 KD_WEIGHT=${5:-1.0}
 SIGREG_WEIGHT=${6:-0.05}
 NUM_LAYER=${7:-1}
-USE_MEAN=${8:-True}
+D_TAU=${8:-0.02}
 
 # ============================================================
 # Convert True/False -> 1/0 cho tên folder
@@ -64,23 +64,21 @@ DISTILL_LOSS_BOOL=$(bool_to_python "$USE_DISTILL_LOSS")
 DISTILL_CSE_BOOL=$(bool_to_python "$USE_DISTILL_CSE_LOSS")
 DISTILL_VISION_BOOL=$(bool_to_python "$USE_DISTILL_VISON_LOSS")
 SIGREG_BOOL=$(bool_to_python "$USE_SIGREG_LOSS")
-MEAN_BOOL=$(bool_to_python "$USE_MEAN")
 
 # Folder values
 D_DISTILL=$(bool_to_int "$USE_DISTILL_LOSS")
 D_CSE=$(bool_to_int "$USE_DISTILL_CSE_LOSS")
 D_VISION=$(bool_to_int "$USE_DISTILL_VISON_LOSS")
 D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
-D_MEAN=$(bool_to_int "$USE_MEAN")
 
 
 # ============================================================
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_v1_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_m${D_MEAN}"
+EXP_NAME="talas_jepa_v2_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
 
-OUTPUT_DIR="training/FastVLM-0.5B_cls_${EXP_NAME}"
+OUTPUT_DIR="training/FastVLM-0.5B_cls_${EXP_NAME}_M512"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"
 
 echo "============================================================"
@@ -106,7 +104,7 @@ TRAIN_SCRIPT="train_ddp.py"
 
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name models/FastVLM-0.5B \
+    --model_name apple/FastVLM-0.5B \
     --teacher_model_name "raghavlite/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
@@ -117,7 +115,7 @@ torchrun --standalone \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_qwen2" \
     --pooling "eos" \
-    --dataset_name "vlm2vec_train/MMEB-train" \
+    --dataset_name "TIGER-Lab/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -151,7 +149,7 @@ torchrun --standalone \
     --kd_weight "$KD_WEIGHT" \
     --sigreg_weight "$SIGREG_WEIGHT" \
     --num_layers "$NUM_LAYER" \
-    --use_mean_anchor "$MEAN_BOOL"
+    --d_cse_temperature "$D_TAU"
 
 
 # ============================================================
@@ -191,7 +189,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs_v3/FastVLM-0.5B_cls_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_cls_${EXP_NAME}_M512/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -203,10 +201,10 @@ python eval_mmeb.py \
     --model_backbone llava_qwen2 \
     --normalize True \
     --bf16 \
-    --dataset_name vlm2vec_eval/MMEB-eval \
+    --dataset_name TIGER-Lab/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 64 \
+    --per_device_eval_batch_size 8 \
     --image_dir eval_images/ \
     --tgt_prefix_mod \
     --load_pretrained_lora True \
@@ -225,10 +223,3 @@ echo "Eval:"
 echo "  $EVAL_OUTPUT"
 echo "============================================================"
 
-
-# ============================================================
-# 4. Collect result
-# ============================================================
-
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v3}"
-python json_filter.py ./MMEB-eval_outputs_v3 "${JSON_FILTER_DESTINATION}" --overwrite

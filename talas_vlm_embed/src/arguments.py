@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from transformers import TrainingArguments
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
@@ -106,6 +106,9 @@ class TrainingArguments(TrainingArguments):
     kd_loss_type: str = field(default="contrastive_rkd", metadata={"help": "type of kd loss, current only support RKD"})
     ds_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
     deepspeed_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
+    muon_lr: Optional[float] = field(default=None, metadata={"help": "Learning rate for Muon parameter groups. If None, uses torch.optim.Muon default."})
+    muon_weight_decay: Optional[float] = field(default=None, metadata={"help": "Weight decay for Muon parameter groups. If None, uses torch.optim.Muon default."})
+    adjust_lr_fn: Optional[str] = field(default="match_rms_adamw", metadata={"help": "Muon learning-rate adjustment function. Use original, match_rms_adamw, or None."})
     # args for TALAS
     num_projectors: int = field(default=0, metadata={"help": "Number of projectors for distillation"})
     num_self_kd_layers: int = field(default=0, metadata={"help": "Number of self-kd layers for distillation"})
@@ -123,6 +126,9 @@ class TrainingArguments(TrainingArguments):
         metadata={"help": "List of split layers for student; number of elements equals number of projectors"}   
     )
     w_cross_modal_loss: float = field(default=1.0, metadata={"help": "weight for cross modal loss"})
+    
+    num_centroids: int = field(default=8, metadata={"help": "Number of centroids for distillation"})
+    centroid_hidden_size: int = field(default=896, metadata={"help": "Hidden size for centroids in distillation"})
 
     use_distill_loss: bool = field(default=True, metadata={"help": "Use distill loss"})
     use_distill_cse_loss: bool = field(default=True, metadata={"help": "Use distill cse loss"})
@@ -130,7 +136,11 @@ class TrainingArguments(TrainingArguments):
     use_sigreg_loss: bool = field(default=True, metadata={"help": "Use sigreg loss"})
     sigreg_weight: float = field(default=0.05, metadata={"help": "weight for sigreg loss"})
     num_layers: int = field(default=1, metadata={"help": "Number of layers for sigreg"})
-    use_mean_anchor: bool = field(default=True, metadata={"help": "Use mean anchor for sigreg"})
+    d_cse_temperature: float = field(default=0.02, metadata={"help": "distill cse temperature for softmax"})
+    gmm_ckpt: str = field(default=None, metadata={"help": "GMM checkpoint path for distillation"})
+    num_t: int = field(default=33, metadata={"help": "Number of t for characteristic function"})
+    t_max: float = field(default=1.5, metadata={"help": "Maximum t for characteristic function"})
+    Ds: int = field(default=896, metadata={"help": "Hidden dimension for student model"})
 
 @dataclass
 class MTEBArguments:

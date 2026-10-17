@@ -1,0 +1,7 @@
+# Control of provenance.yaml: DFT on the teacher prefix, NLL on the continuation (prov-dft-nll).
+defaults: [provenance.yaml]
+stages:
+  train:
+    args:
+      prefix-objective: dft
+      cont-objective: nll

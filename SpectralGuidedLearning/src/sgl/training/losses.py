@@ -1,0 +1,88 @@
+"""Selective masked training objective (paper Eq. 9).
+
+    L = -(1/Z) * sum_t M_t * log P(y_t | y_<t),   Z = sum_t M_t
+
+Z counts supervised tokens over the whole optimizer step, not per sequence, so every
+token gets equal weight regardless of local mask density; under gradient accumulation the
+caller passes the full-step count (see MaskedSFTTrainer). Masked positions still run through
+the forward pass but contribute no gradient; an all-ones mask reduces this to standard SFT
+cross-entropy (asserted by the unit tests).
+"""
+
+import torch
+import torch.nn.functional as F
+
+IGNORE_INDEX = -100
+
+# Per-token objective ids for masked_cross_entropy(token_objective=...).
+OBJECTIVE_NLL = 0  # -log p
+OBJECTIVE_DFT = 1  # -sg(p) * log p  (DFT, arXiv 2508.05629): same gradient as the prior-leaning -p
+OBJECTIVES = {"nll": OBJECTIVE_NLL, "dft": OBJECTIVE_DFT}
+
+
+def masked_cross_entropy(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    denominator: torch.Tensor | int | None = None,
+    token_weights: torch.Tensor | None = None,
+    token_objective: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Cross-entropy over unmasked positions only, normalized by supervised-token count.
+
+    Args:
+        logits: (B, T, V) raw model logits (unshifted).
+        labels: (B, T) target ids with IGNORE_INDEX at masked/prompt positions (unshifted).
+        denominator: Z to divide the summed loss by. Defaults to this batch's own
+            supervised-token count; pass a wider count to keep gradient-accumulation
+            microbatches on one common normalizer.
+        token_weights: optional non-negative coefficients aligned with unshifted labels.
+            They redistribute loss over selected tokens, but do not change Z.
+        token_objective: optional OBJECTIVE_* ids aligned with unshifted labels, choosing the
+            per-token objective (NLL or DFT). None = NLL everywhere. Does not change Z.
+
+    Returns:
+        Scalar loss.
+    """
+    shift_logits = logits[:, :-1].float()
+    shift_labels = labels[:, 1:]
+
+    if token_objective is not None:
+        if token_objective.shape != labels.shape:
+            raise ValueError("token_objective must have the same shape as labels")
+        per_token_loss = F.cross_entropy(
+            shift_logits.reshape(-1, shift_logits.size(-1)),
+            shift_labels.reshape(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="none",
+        ).view_as(shift_labels)
+        dft = token_objective[:, 1:] == OBJECTIVE_DFT
+        # p = exp(-nll) of the target token, detached: DFT rescales, it does not add a gradient path.
+        coef = torch.where(dft, torch.exp(-per_token_loss.detach()), torch.ones_like(per_token_loss))
+        if token_weights is not None:
+            if token_weights.shape != labels.shape:
+                raise ValueError("token_weights must have the same shape as labels")
+            coef = coef * token_weights[:, 1:].to(coef.dtype)
+        token_loss = (per_token_loss * coef).sum()
+    elif token_weights is None:
+        token_loss = F.cross_entropy(
+            shift_logits.reshape(-1, shift_logits.size(-1)),
+            shift_labels.reshape(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="sum",
+        )
+    else:
+        if token_weights.shape != labels.shape:
+            raise ValueError("token_weights must have the same shape as labels")
+        if not torch.isfinite(token_weights).all() or (token_weights < 0).any():
+            raise ValueError("token_weights must be finite and non-negative")
+        per_token_loss = F.cross_entropy(
+            shift_logits.reshape(-1, shift_logits.size(-1)),
+            shift_labels.reshape(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="none",
+        ).view_as(shift_labels)
+        token_loss = (per_token_loss * token_weights[:, 1:].to(per_token_loss.dtype)).sum()
+
+    if denominator is None:
+        denominator = (shift_labels != IGNORE_INDEX).sum()
+    return token_loss / torch.as_tensor(denominator, device=token_loss.device).float().clamp_min(1.0)

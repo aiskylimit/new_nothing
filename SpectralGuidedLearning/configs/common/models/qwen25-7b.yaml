@@ -1,0 +1,3 @@
+model:
+  key: qwen25-7b
+  name: Qwen/Qwen2.5-7B-Instruct

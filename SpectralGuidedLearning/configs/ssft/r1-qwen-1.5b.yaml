@@ -1,0 +1,26 @@
+# Segment-Selective SFT, DeepSeek-R1-Distill-Qwen-1.5B, full fine-tuning: the fork's commands.sh,
+# i.e. the "Segment-Selective SFT" row of the paper table. P-ALIGN prompt + empty think block at
+# train and eval, so it is evaluated with exactly P-ALIGN's protocol.
+#   ssft run r1-qwen-1.5b
+#   ssft run r1-qwen-1.5b selective=false run_suffix=-fullsft train_variant=fullcot   # long-CoT baseline
+#   ssft run r1-qwen-1.5b --stages train_reference                                    # upstream trainer
+defaults:
+  - ../common/base.yaml
+  - ../common/models/r1-qwen-1.5b.yaml
+  - ../common/train/full-ds-z2.yaml
+  - ../common/eval/palign-protocol.yaml
+  - _ssft.yaml
+prompt_style: palign
+think_prefix: off
+stages:
+  build:
+    args:
+      deepseek: true
+  train:
+    args:
+      deepspeed-config: null
+      model-dtype: float32
+  train_reference:
+    args:
+      deepseek: true
+      full_finetune: true

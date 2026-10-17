@@ -1,0 +1,8 @@
+# DeepSeek-R1-Distill-Qwen-1.5B on P-ALIGN's 966 traces, full fine-tuning: the paper's main track.
+defaults:
+  - ../../common/base.yaml
+  - ../../common/models/r1-qwen-1.5b.yaml
+  - ../../common/data/palign-966.yaml
+  - ../../common/train/full-ds-z2.yaml
+  - ../../common/eval/palign-protocol.yaml
+track: r1-qwen-1.5b-palign

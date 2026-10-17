@@ -1,0 +1,54 @@
+[
+  {
+    "benchmark": "math500",
+    "accuracy": 0.7826666666666666,
+    "pass@1": 0.7826666666666666,
+    "samples_per_problem": 3,
+    "length": 1477.0486666666666,
+    "n_problems": 500,
+    "n_generations": 1500,
+    "truncation_rate": 0.074,
+    "no_boxed_answer_rate": 0.06933333333333333,
+    "pass@3": 0.878,
+    "model": "iwc-nogate-l05-e43"
+  },
+  {
+    "benchmark": "aime24",
+    "accuracy": 0.2111111111111111,
+    "pass@1": 0.2111111111111111,
+    "samples_per_problem": 3,
+    "length": 3163.988888888889,
+    "n_problems": 30,
+    "n_generations": 90,
+    "truncation_rate": 0.43333333333333335,
+    "no_boxed_answer_rate": 0.4,
+    "pass@3": 0.36666666666666664,
+    "model": "iwc-nogate-l05-e43"
+  },
+  {
+    "benchmark": "aime25",
+    "accuracy": 0.16666666666666666,
+    "pass@1": 0.16666666666666666,
+    "samples_per_problem": 3,
+    "length": 3069.688888888889,
+    "n_problems": 30,
+    "n_generations": 90,
+    "truncation_rate": 0.4222222222222222,
+    "no_boxed_answer_rate": 0.4111111111111111,
+    "pass@3": 0.26666666666666666,
+    "model": "iwc-nogate-l05-e43"
+  },
+  {
+    "benchmark": "amc12",
+    "accuracy": 0.5461847389558233,
+    "pass@1": 0.5461847389558233,
+    "samples_per_problem": 3,
+    "length": 2255.008032128514,
+    "n_problems": 83,
+    "n_generations": 249,
+    "truncation_rate": 0.17269076305220885,
+    "no_boxed_answer_rate": 0.1686746987951807,
+    "pass@3": 0.6746987951807228,
+    "model": "iwc-nogate-l05-e43"
+  }
+]

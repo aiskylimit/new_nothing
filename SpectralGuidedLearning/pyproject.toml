@@ -1,0 +1,72 @@
+[project]
+name = "spectral-guided-learning"
+version = "0.1.0"
+description = "Step-level selection and allocation for long-CoT distillation: SGL, IWC, answer-gain, P-ALIGN and Segment-Selective SFT in one framework."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Keep torch/torchvision/torchaudio/vllm pinned together -- vllm's own kernel/CUDA
+    # requirements and transformers floor (>=5.5.3) are validated against this exact set.
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+    "torchaudio==2.11.0",
+    "vllm==0.27.1",
+    "transformers==5.5.3",
+    "peft>=0.13",
+    "deepspeed>=0.15",
+    "datasets>=2.20",
+    "accelerate>=1.0",
+    "numpy>=2.0,<2.5",
+    "pandas>=2.2",
+    "pyarrow",
+    "matplotlib",
+    "pyyaml",
+    "tqdm",
+    # P-ALIGN's grader: math_verify at their pinned version, OR-ed with oat_math_grader.
+    # oat_math_grader is imported by their evaluation.py but absent from their requirements
+    # and not resolvable from PyPI -- src/palign_grader.py reports when it is missing.
+    "math-verify==0.8.0",
+    "json-repair",
+    "pytest",
+]
+
+[project.scripts]
+sgl = "sgl.cli:sgl_main"
+palign = "sgl.cli:palign_main"
+ssft = "sgl.cli:ssft_main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sgl"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+torch = { index = "pytorch", marker = "sys_platform == 'linux'" }
+torchvision = { index = "pytorch", marker = "sys_platform == 'linux'" }
+torchaudio = { index = "pytorch", marker = "sys_platform == 'linux'" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["regression: end-to-end pipeline regression against golden outputs (~1 min, CPU)"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["references", "src/sgl/eval/graders/oat.py", "paper"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# unsloth must be imported before transformers/torch
+"src/sgl/training/backends/unsloth.py" = ["I001"]
+# P-ALIGN's judge prompt, kept byte for byte
+"src/sgl/palign/truncate.py" = ["E501"]
