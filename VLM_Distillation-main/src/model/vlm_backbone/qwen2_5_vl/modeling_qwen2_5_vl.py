@@ -47,6 +47,8 @@ from transformers.utils.generic import is_flash_attention_requested, maybe_autoc
 from transformers.utils.output_capturing import capture_outputs
 from .configuration_qwen2_5_vl import Qwen2_5_VLConfig, Qwen2_5_VLTextConfig, Qwen2_5_VLVisionConfig
 
+from src.model.scva_attention import capture_response_to_vision_attention
+
 
 logger = logging.get_logger(__name__)
 
@@ -694,6 +696,8 @@ class Qwen2_5_VLAttention(nn.Module):
     and "Generating Long Sequences with Sparse Transformers".
     """
 
+    supports_scva_sparse_capture = True
+
     def __init__(self, config: Qwen2_5_VLTextConfig, layer_idx: int | None = None):
         super().__init__()
         self.config = config
@@ -774,6 +778,11 @@ class Qwen2_5_VLAttention(nn.Module):
             position_ids=position_ids,  # pass positions for FA2
             **kwargs,
         )
+
+        if getattr(self, "_scva_capture_enabled", False):
+            self._scva_attention = capture_response_to_vision_attention(
+                self, query_states, key_states, attention_mask, self.scaling
+            )
 
         attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
         attn_output = self.o_proj(attn_output)

@@ -43,6 +43,8 @@ from transformers.utils.generic import is_flash_attention_requested, maybe_autoc
 from transformers.utils.output_capturing import capture_outputs
 from .configuration_qwen3_vl import Qwen3VLConfig, Qwen3VLTextConfig, Qwen3VLVisionConfig
 
+from src.model.scva_attention import capture_response_to_vision_attention
+
 
 def _build_feature_masks(
     inputs_embeds: torch.FloatTensor,
@@ -454,6 +456,8 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
 class Qwen3VLTextAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
+    supports_scva_sparse_capture = True
+
     def __init__(self, config: Qwen3VLTextConfig, layer_idx: int):
         super().__init__()
         self.layer_type = config.layer_types[layer_idx] if hasattr(config, "layer_types") else None
@@ -520,6 +524,11 @@ class Qwen3VLTextAttention(nn.Module):
             scaling=self.scaling,
             **kwargs,
         )
+
+        if getattr(self, "_scva_capture_enabled", False):
+            self._scva_attention = capture_response_to_vision_attention(
+                self, query_states, key_states, attention_mask, self.scaling
+            )
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)

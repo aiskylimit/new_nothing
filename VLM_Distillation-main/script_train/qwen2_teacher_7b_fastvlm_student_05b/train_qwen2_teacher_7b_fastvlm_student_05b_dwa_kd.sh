@@ -4,12 +4,12 @@ set -euo pipefail
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
 
-STUDENT_MODEL="KamilaMila/FastVLM-0.5B"
-TEACHER_MODEL="Qwen/Qwen3-VL-4B-Instruct"
+STUDENT_MODEL="${STUDENT_MODEL:-/mnt/local/aiskylimit_new_nothingnew_2/VLM_Distillation-main/models/KamilaMila/FastVLM-0.5B}"
+TEACHER_MODEL="${TEACHER_MODEL:-/mnt/local/aiskylimit_new_nothingnew_2/VLM_Distillation-main/models/Qwen/Qwen2-VL-7B-Instruct}"
 DATA_PATH="${PROJECT_DIR}/train_data/llava_v1_5_mix665k.json"
 IMAGE_DIR="${PROJECT_DIR}/train_data"
-OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen3_teacher_4b_fastvlm_student_05b_mcw_kd"
-PROJECTOR_CONFIG="${PROJECT_DIR}/config/mcw_kd_projectors.json"
+OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen2_teacher_7b_fastvlm_student_05b_dwa_kd"
+PROJECTOR_CONFIG="${PROJECT_DIR}/config/dwa_kd_projectors.json"
 
 MASTER_PORT="${MASTER_PORT:-29501}"
 STUDENT_HIDDEN_DIM="${STUDENT_HIDDEN_DIM:-896}"
@@ -26,7 +26,6 @@ torchrun \
   --teacher_model_name "${TEACHER_MODEL}" \
   --student_hidden_dim "${STUDENT_HIDDEN_DIM}" \
   --teacher_hidden_dim "${TEACHER_HIDDEN_DIM}" \
-  --proj_dim 512 \
   --projector_config_path "${PROJECTOR_CONFIG}" \
   --data_path "${DATA_PATH}" \
   --image_dir "${IMAGE_DIR}" \
@@ -35,7 +34,7 @@ torchrun \
   --lora true \
   --lora_r 128 \
   --lora_alpha 256 \
-  --per_device_train_batch_size 1 \
+  --per_device_train_batch_size 2 \
   --gradient_accumulation_steps 1 \
   --num_train_epochs 1 \
   --learning_rate 1e-5 \
@@ -47,21 +46,22 @@ torchrun \
   --save_strategy epoch \
   --save_total_limit 2 \
   --logging_steps 100 \
-  --dataloader_num_workers 2 \
+  --dataloader_num_workers 4 \
   --train_sampling_strategy group_by_length \
   --max_len 2048 \
   --image_resolution low \
   --resume_from none \
-  --kd_loss_type "mcw_kd" \
+  --kd_loss_type "dwa_kd" \
   --kd_objective "forward_kl" \
-  --ce_rate 1.0 \
-  --kd_rate 5.0 \
-  --kd_temperature 1.0 \
+  --ce_rate 0.5 \
+  --kd_rate 0.5 \
+  --dtw_rate 0.1 \
+  --kd_temperature 2.0 \
   --teacher_temperature 1.0 \
-  --top_k_vocab 400 \
-  --mcw_tau_seq 2.0 \
-  --mcw_window_size 4 \
-  --mcw_ot_logits_rate 1.0 \
-  --mcw_ot_hidden_rate 1.0 \
-  --mcw_sinkhorn_alpha 0.1 \
-  --mcw_sinkhorn_iter 100
+  --kd_warmup_steps 300 \
+  --dtw_gamma 2.0 \
+  --dtw_gamma_start 2.0 \
+  --dtw_gamma_end 0.8 \
+  --dtw_gamma_steps 3570 \
+  --dtw_band_width 5 \
+  --dtw_band_source "cma"

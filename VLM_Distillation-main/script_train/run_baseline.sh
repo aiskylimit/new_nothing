@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
-# Run all baseline pairs sequentially by invoking the existing per-pair runners:
-#   1) run_qwen3_teacher_4b_fastvlm_student_05b.sh
-#   2) run_qwen3_teacher_8b_qwen25_student_3b.sh
+# Run the baselines for the Qwen2-VL-7B teacher / FastVLM-0.5B student pair.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
-RUNNERS=(
-  # "run_qwen3_teacher_4b_fastvlm_student_05b.sh"
-  "run_qwen3_teacher_8b_qwen25_student_3b.sh"
-)
+runner="run_qwen2_teacher_7b_fastvlm_student_05b.sh"
+runner_path="${SCRIPT_DIR}/${runner}"
 
-for runner in "${RUNNERS[@]}"; do
-  runner_path="${SCRIPT_DIR}/${runner}"
-  [[ -f "${runner_path}" ]] || { echo "Missing script: ${runner_path}" >&2; exit 1; }
-  printf '\n=== [%s] Starting %s ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${runner}"
-  bash "${runner_path}"
-  printf '=== [%s] Finished %s ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${runner}"
-done
+[[ -f "${runner_path}" ]] || { echo "Missing script: ${runner_path}" >&2; exit 1; }
 
-printf '\nAll baseline pairs completed successfully.\n'
+printf '\n=== [%s] Starting %s ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${runner}"
+bash "${runner_path}"
+printf '=== [%s] Finished %s ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${runner}"
+
+printf '\nAll Qwen2-VL-7B / FastVLM-0.5B baselines completed successfully.\n'

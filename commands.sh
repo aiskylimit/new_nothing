@@ -1,5 +1,5 @@
-#i grit.txt
-#grit
+#i vlm-distill-train.txt
+#gvlm
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 

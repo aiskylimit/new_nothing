@@ -17,7 +17,7 @@ from torch import nn
 
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache
-from transformers.configuration_utils import PreTrainedConfig
+from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.processing_utils import Unpack
 from transformers.utils import TransformersKwargs, auto_docstring
@@ -149,7 +149,7 @@ class FastVlmConfig(LlavaConfig):
         if not tie_word_embeddings and self.text_config.tie_word_embeddings:
             self.tie_word_embeddings = self.text_config.tie_word_embeddings
 
-        PreTrainedConfig.__init__(**kwargs)
+        PretrainedConfig.__init__(self, **kwargs)
 
 
 class FastVlmMultiModalProjector(LlavaMultiModalProjector):

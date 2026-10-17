@@ -5,10 +5,10 @@ PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
 
 STUDENT_MODEL="KamilaMila/FastVLM-0.5B"
-TEACHER_MODEL="Qwen/Qwen3-VL-4B-Instruct"
+TEACHER_MODEL="Qwen/Qwen2-VL-7B-Instruct"
 DATA_PATH="${PROJECT_DIR}/train_data/llava_v1_5_mix665k.json"
 IMAGE_DIR="${PROJECT_DIR}/train_data"
-OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen3_teacher_4b_fastvlm_student_05b_dwa_kd"
+OUTPUT_DIR="${PROJECT_DIR}/outputs/qwen2_teacher_7b_fastvlm_student_05b_dwa_kd"
 PROJECTOR_CONFIG="${PROJECT_DIR}/config/dwa_kd_projectors.json"
 
 MASTER_PORT="${MASTER_PORT:-29501}"
