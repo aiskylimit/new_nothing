@@ -46,5 +46,5 @@ export NCCL_DEBUG=WARN
 # cd ./opsd
 # bash ./project_commands.sh
 
-cd VLM_Distillation-main
-bash ./project_commands.sh
+# cd VLM_Distillation-main
+# bash ./project_commands.sh
