@@ -1,6 +1,6 @@
-#i vlm-distill-eval-2.txt
+#1 +10
 #vlm_run_v2
-#v3
+#v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
 

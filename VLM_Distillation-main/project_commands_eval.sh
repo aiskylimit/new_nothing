@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${SCRIPT_DIR}"
-EVAL_ENV=/mnt/local/uvenvs/vlm-distill-eval/bin/activate
+EVAL_ENV=/mnt/local/uvenvs/vlm-distill-eval-2/bin/activate
 DEFAULT_BASE_MODEL=/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/KamilaMila/FastVLM-0.5B
 
 usage() {
