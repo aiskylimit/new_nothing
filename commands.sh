@@ -1,4 +1,4 @@
-#1 +10
+#i vlm-distill-eval-2.txt
 #vlm_run_v2
 #v3
 
