@@ -1,4 +1,4 @@
-#1 +10
+#3
 #vlm_check
 #v3
 
@@ -46,7 +46,7 @@ export NCCL_DEBUG=WARN
 # cd ./opsd
 # bash ./project_commands.sh
 
-cd VLM_Distillation-main/VLMEvalKit
+# cd VLM_Distillation-main/VLMEvalKit
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
-pwd && ls
+# pwd && ls
