@@ -1,90 +1,8 @@
 #d
 #datasets
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_label_map.tsv /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_label_map.tsv
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/label_list.md /mnt/local/@PROJECT@/unified-ie/data/general_domain/label_list.md
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v1/train.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v1/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v1/dev.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v1/dev.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v1/dev_full.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v1/dev_full.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v1/test.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v1/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v2/train.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v2/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v2/dev.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v2/dev.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v2/dev_full.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v2/dev_full.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_v2/test.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_v2/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v1/train.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v1/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v1/dev.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v1/dev.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v1/dev_full.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v1/dev_full.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v1/test.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v1/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v2/train.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v2/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v2/dev.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v2/dev.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v2/dev_full.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v2/dev_full.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/ee_arg_v2/test.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/ee_arg_v2/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/test.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/test_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/test_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/test_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/test_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/train.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/train_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/train_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/train_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/train_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/valid.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/valid.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/valid_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/valid_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v1/qwen/valid_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v1/qwen/valid_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/test.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/test_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/test_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/test_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/test_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/train.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/train_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/train_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/train_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/train_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/valid.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/valid.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/valid_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/valid_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_arg_v2/qwen/valid_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_arg_v2/qwen/valid_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/test.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/test_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/test_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/test_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/test_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/train.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/train_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/train_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/train_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/train_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/valid.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/valid.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/valid_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/valid_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v1/qwen/valid_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v1/qwen/valid_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/test.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/test_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/test_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/test_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/test_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/train.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/train_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/train_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/train_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/train_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/valid.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/valid.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/valid_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/valid_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/ee_v2/qwen/valid_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/ee_v2/qwen/valid_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_fewrel/dev.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_fewrel/dev.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_fewrel/dev_full.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_fewrel/dev_full.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_fewrel/test.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_fewrel/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_fewrel/train.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_fewrel/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_tacred/dev.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_tacred/dev.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_tacred/dev_full.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_tacred/dev_full.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_tacred/test.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_tacred/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/general_domain/re_tacred/train.jsonl /mnt/local/@PROJECT@/unified-ie/data/general_domain/re_tacred/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/test.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/test_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/test_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/test_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/test_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/train.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/train_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/train_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/train_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/train_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/valid.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/valid.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/valid_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/valid_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_fewrel/qwen/valid_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_fewrel/qwen/valid_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/test.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/test.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/test_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/test_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/test_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/test_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/train.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/train.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/train_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/train_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/train_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/train_0.idx
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/valid.jsonl /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/valid.jsonl
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/valid_0.bin /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/valid_0.bin
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data/general_domain/re_tacred/qwen/valid_0.idx /mnt/local/@PROJECT@/unified-ie/processed_data/general_domain/re_tacred/qwen/valid_0.idx
-#models
---hf Qwen/Qwen3-0.6B /mnt/local/@PROJECT@/unified-ie/models/Qwen3-0.6B
---hf Qwen/Qwen3-4B-Instruct-2507 /mnt/local/@PROJECT@/unified-ie/models/Qwen3-4B-Instruct-2507
+--url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data.zip /mnt/local/@PROJECT@/unified-ie/processed_data.zip
 
-#vlm_run_baseline_v2
+#uni
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -121,12 +39,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./OpenED
-# bash gather_pl_logs.sh 
-# bash gather_logs.sh all35
-# tar -czf collected_logs.tar.gz collected_logs/all35/
-# ls -lh collected_logs.tar.gz
-# bash ./project_commands_19.sh
+# cd ./unified-ie
+# bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
