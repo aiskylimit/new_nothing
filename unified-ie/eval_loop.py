@@ -7,7 +7,8 @@ evaluate() makes a loss pass and, with --eval-gen, a generation pass over one sp
     gen_backend.py), decoded and scored with the same code either way.
 It returns (average loss, score). The score is the dev number the trainers select on: for event
 rows the mean of per-dataset trigger F1 with --label-map (else the pooled trigger F1), for relation
-rows (task "re") the mean of per-dataset triple F1.
+rows (task "re") the mean of per-dataset triple F1, for entity rows (task "ner", needs --label-map) the
+mean of per-dataset entity F1.
 """
 import json
 import os
@@ -22,7 +23,8 @@ from tqdm import tqdm
 from transformers import GenerationConfig
 
 from data_utils.lm_datasets import label_window
-from ed_eval import ed_evaluate, ed_evaluate_by_dataset, format_by_dataset, load_label_map, re_evaluate_by_dataset
+from ed_eval import (ed_evaluate, ed_evaluate_by_dataset, format_by_dataset, load_label_map, ner_evaluate_by_dataset,
+                     re_evaluate_by_dataset)
 from gen_backend import (export_for_vllm, find_vllm_python, resolve_generation_config, row_seed, run_vllm,
                          unpadded_prompts, vllm_params)
 from rouge_metric import compute_metrics
@@ -139,16 +141,21 @@ def evaluate(args, tokenizer, model, dataset, split, epoch, device, adaptive_thr
             references = dataset.answers
             responses = responses[:len(references)]
             res = compute_metrics(responses, references)
-            if dataset.raw[0].get("task") == "re":
-                res["by_dataset"] = re_evaluate_by_dataset(responses, dataset.raw)
-                score[0] = res["by_dataset"]["macro_triple_f1"]
+            task = dataset.raw[0].get("task")
+            if task in ("re", "ner"):
+                if task == "re":
+                    res["by_dataset"] = re_evaluate_by_dataset(responses, dataset.raw)
+                    score[0] = res["by_dataset"]["macro_triple_f1"]
+                else:
+                    res["by_dataset"] = ner_evaluate_by_dataset(responses, dataset.raw, load_label_map(args.label_map))
+                    score[0] = res["by_dataset"]["macro_entity_f1"]
                 summary = format_by_dataset(res["by_dataset"], split, epoch)
                 print_rank(summary)
                 save_rank(summary, os.path.join(args.save, "log.txt"))
             else:
                 res.update(ed_evaluate(responses, references))
                 score[0] = res["trigger"]["f1"]
-            if args.label_map is not None and dataset.raw[0].get("task") != "re":
+            if args.label_map is not None and task not in ("re", "ner"):
                 res["by_dataset"] = ed_evaluate_by_dataset(responses, dataset.raw, load_label_map(args.label_map))
                 score[0] = res["by_dataset"]["macro_trigger_f1"]
                 summary = format_by_dataset(res["by_dataset"], split, epoch)

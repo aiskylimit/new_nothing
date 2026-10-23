@@ -23,6 +23,9 @@ huggingface-cli download datht/unified-ie --repo-type dataset --local-dir data
 | `ee_v1/`, `ee_v2/` | event detection: `{"events": [[trigger, type], ...]}` | ACE, MAVEN, RAMS, GENEVA |
 | `ee_arg_v1/`, `ee_arg_v2/` | event extraction with arguments: `[[trigger, type, [[argument, role], ...]], ...]` | ACE, GENEVA |
 | `re_tacred/`, `re_fewrel/` | sentence-level relation extraction, no entity pair given: `{"relations": [[subject, relation, object], ...]}` | TACRED, FewRel (labels not merged, one folder each) |
+| `ner_v1/`, `ner_v2/` | named entity recognition: `{"entities": [[span, type], ...]}` | CoNLL-2003, OntoNotes 5.0 (21 labels, `ner_label_map.tsv`; only PER/PERSON merged; sentences without entities kept) |
+
+NER: CoNLL's PER and OntoNotes' PERSON are merged (93% agreement both ways on shared entity strings). CoNLL's LOC, ORG and MISC are broader than any OntoNotes type (LOC is 95% GPE there, ORG 49% ORG / 44% GPE, MISC 83% NORP), so they stay separate under their own names (`location`, `organization or team`, `miscellaneous` in v2). NER rows are tokenized with `--max-prompt-length 480` (one CoNLL test sentence needs 462 tokens), so NER training must pass 480 too. Built by `tools/build_ner_data.py`; scored per dataset as exact (span, type) matches, counting repeats (`entity`), and spans alone (`span`).
 
 v1 writes LDC labels as `level1.level2` (`conflict.attack`) and FrameNet labels as MAVEN does (`Hostile_encounter`). v2 writes every label (and role) in lowercase words (`conflict attack`, `hostile encounter`). Same rows, same order, only the label strings differ.
 
