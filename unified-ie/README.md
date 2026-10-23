@@ -6,14 +6,14 @@ The training code is EventKD: a Qwen3-0.6B student learns from a LoRA-tuned Qwen
 
 ## Data
 
-Data lives on Hugging Face (private dataset `datht/unified-ie`), not in git. `download.txt` lists every file and the
-two Qwen3 models in the same `--url` / `--hf` format as `new_nothing/OpenED` (`@PROJECT@` = the project folder);
-the scripts use `models/Qwen3-*` when it's there, else the Hub ids. It also fetches `processed_data/general_domain/`,
-the four folders already tokenized (Qwen3 tokenizer, max prompt 460, max length 768, as `scripts/general_domain/process_data.sh`),
-so a GPU box only downloads and trains. Or pull everything by hand:
+Data lives on Hugging Face (private dataset `datht/unified-ie`), not in git. For training, `download.txt` fetches only
+`processed_data.zip` (every tokenized folder under `processed_data/general_domain/` plus `data/general_domain/ee_label_map.tsv`
+and `ner_label_map.tsv`, 58 MB) and the two Qwen3 models into `models/`; `run.sh` unpacks the zip on its first run.
+The scripts use `models/Qwen3-*` when it's there, else the Hub ids. The untokenized rows (`general_domain/<folder>/*.jsonl`)
+stay on HF for rebuilding:
 
 ```bash
-huggingface-cli download datht/unified-ie --repo-type dataset --local-dir data
+huggingface-cli download datht/unified-ie --repo-type dataset --local-dir data --include "general_domain/*"
 ```
 
 `data/general_domain/` holds ACE05, MAVEN, RAMS and GENEVA merged into one label set of 233 event types. The prompt doesn't name the dataset or list the labels.

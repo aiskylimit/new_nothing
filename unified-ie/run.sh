@@ -8,9 +8,20 @@
 cd "$(dirname "$0")"
 mkdir -p logs
 
+# tokenized data + label maps: download.txt fetches processed_data.zip; unpack it once (Python's zipfile:
+# the image has no unzip binary)
+if [ ! -f processed_data/general_domain/re_tacred/qwen/train_0.bin ]; then
+    if [ ! -f processed_data.zip ]; then
+        echo "missing processed_data.zip: fetch it with download.txt first"
+        exit 1
+    fi
+    echo "unpacking processed_data.zip"
+    python -c "import zipfile; zipfile.ZipFile('processed_data.zip').extractall('.')" || exit 1
+fi
+
 for d in re_tacred re_fewrel; do
     if [ ! -f processed_data/general_domain/${d}/qwen/train_0.bin ]; then
-        echo "missing processed_data/general_domain/${d}/qwen: fetch it with download.txt first"
+        echo "missing processed_data/general_domain/${d}/qwen after unpacking processed_data.zip"
         exit 1
     fi
 done
