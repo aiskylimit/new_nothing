@@ -47,10 +47,12 @@ Swap `ee_v1` for `ee_v2`, `ee_arg_v1` or `ee_arg_v2`.
 RE, one model per dataset, all four runs at once on GPUs 4-7 (one 80GB B200 each; effective batch 32 as before, from micro-batch 8 x 4 for the teacher and 16 x 2 for the student):
 
 ```bash
-bash run.sh   # teacher TACRED (GPU 4), teacher FewRel (5), student TACRED (6), student FewRel (7)
+bash run.sh   # GPU 4: teacher TACRED then teacher NER | 5: teacher FewRel | 6: student TACRED then student NER | 7: student FewRel
 ```
 
-Each run is a standalone script in `scripts/general_domain/re/` with its GPU, data and hyperparameters fixed. Dev/test are scored per dataset on exact (subject, relation, object) triples, plus subject-object pairs. Console output goes to `logs/<run>.log`; `grep -rh RESULT results/qwen3/general_domain --include=log.txt` collects the scores.
+NER (ner_v2: CoNLL-2003 + OntoNotes 5.0) uses the same teacher/student pair and follows the TACRED run on its GPU, since TACRED is the short one. NER scripts pass `--max-prompt-length 480` and `--label-map data/general_domain/ner_label_map.tsv`.
+
+Each run is a standalone script in `scripts/general_domain/re/` or `scripts/general_domain/ner/` with its GPU, data and hyperparameters fixed. Dev/test are scored per dataset on exact (subject, relation, object) triples, plus subject-object pairs. Console output goes to `logs/<run>.log`; `grep -rh RESULT results/qwen3/general_domain --include=log.txt` collects the scores.
 
 Student SFT baseline (Qwen3-0.6B, full fine-tuning, CE only):
 
