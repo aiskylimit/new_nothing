@@ -1,12 +1,12 @@
 #! /bin/bash
-# LoRA SFT of the Qwen3-4B teacher on FewRel (sentence-level RE), GPU 5
+# LoRA SFT of the Qwen3-4B teacher on FewRel (sentence-level RE)
 # Standalone: GPU, data and hyperparameters are fixed here; started by run.sh.
 
 GPUS=(5)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
 MASTER_ADDR=localhost
-MASTER_PORT=29505
+MASTER_PORT=29506
 NNODES=1
 NODE_RANK=0
 GPUS_PER_NODE=${#GPUS[@]}

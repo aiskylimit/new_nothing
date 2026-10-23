@@ -1,5 +1,5 @@
 #! /bin/bash
-# SFT of the Qwen3-0.6B student (full fine-tuning, CE only) on NER (CoNLL-2003 + OntoNotes 5.0, ner_v2), GPU 6 after the TACRED student
+# SFT of the Qwen3-0.6B student (full fine-tuning, CE only) on NER (CoNLL-2003 + OntoNotes 5.0, ner_v2)
 # Standalone: GPU, data and hyperparameters are fixed here; started by run.sh.
 
 GPUS=(6)

@@ -1,12 +1,12 @@
 #! /bin/bash
-# SFT of the Qwen3-0.6B student (full fine-tuning, CE only) on TACRED (sentence-level RE), GPU 6
+# SFT of the Qwen3-0.6B student (full fine-tuning, CE only) on TACRED (sentence-level RE)
 # Standalone: GPU, data and hyperparameters are fixed here; started by run.sh.
 
-GPUS=(6)
+GPUS=(7)
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
 MASTER_ADDR=localhost
-MASTER_PORT=29506
+MASTER_PORT=29511
 NNODES=1
 NODE_RANK=0
 GPUS_PER_NODE=${#GPUS[@]}
