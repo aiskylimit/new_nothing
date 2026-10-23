@@ -123,7 +123,7 @@ class VLMModel(nn.Module):
         return model_args.checkpoint_path if model_args.checkpoint_path else model_args.model_name
 
     @staticmethod
-    def _verify_attention_backend(model, expected_backend: str, model_backbone: str):
+    def _verify_attention_backend(model, expected_backend: str, model_backbone: str, vision_output_attentions: bool | None = None):
         config = model.config
         configs = {"config": config}
         configs.update(
@@ -133,19 +133,36 @@ class VLMModel(nn.Module):
                 if (sub_config := getattr(config, name, None)) is not None
             }
         )
-        mismatches = {
-            name: getattr(candidate, "_attn_implementation", None)
-            for name, candidate in configs.items()
-            if getattr(candidate, "_attn_implementation", None) != expected_backend
-        }
+        mismatches = {}
+
+        for name, candidate in configs.items():
+            expected = expected_backend
+
+            # Vision attention can independently use SDPA.
+            if (
+                name.startswith("vision_config")
+                and vision_output_attentions is False
+                and model_backbone != FAST_VLM
+            ):
+                expected = "sdpa"
+
+            actual = getattr(candidate, "_attn_implementation", None)
+
+            if actual != expected:
+                mismatches[name] = {
+                    "expected": expected,
+                    "actual": actual,
+                }
+
         if mismatches:
             raise RuntimeError(
                 f"Attention backend verification failed for {model_backbone}: "
-                f"expected {expected_backend}, got {mismatches}."
+                f"{mismatches}."
             )
+
         print_master(
-            f"Verified attention backend [{expected_backend}] for [{model_backbone}] "
-            f"across {', '.join(configs)}."
+            f"Verified attention backend for [{model_backbone}]: "
+            f"{', '.join(configs)}."
         )
 
     @staticmethod
@@ -426,7 +443,12 @@ class VLMModel(nn.Module):
                 **load_kwargs,
             )
 
-        cls._verify_attention_backend(model, expected_attention_backend, model_backbone)
+        cls._verify_attention_backend(
+            model,
+            expected_attention_backend,
+            model_backbone,
+            vision_output_attentions=vision_output_attentions,
+        )
         return model, model_backbone
 
     @staticmethod

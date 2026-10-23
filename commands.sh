@@ -1,5 +1,5 @@
 #1 +10
-#vlm_check_v2
+#vlm_run_baseline_v2
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -47,6 +47,6 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd VLM_Distillation-main
-# bash ./project_commands.sh
-bash ./project_commands_collect_eval_summary.sh
+bash ./project_commands.sh
+# bash ./project_commands_collect_eval_summary.sh
 # pwd && ls

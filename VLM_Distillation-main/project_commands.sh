@@ -51,40 +51,12 @@ fi
 
 
 # ============================================================
-# 2. Evaluate previously completed EMKD training
-# ============================================================
-
-EMKD_RUN_NAME="qwen2_teacher_7b_fastvlm_student_05b_emkd"
-EMKD_OUTPUT_DIR="${PROJECT_DIR}/outputs/${EMKD_RUN_NAME}"
-
-printf '\n============================================================\n'
-printf '[%s] EVAL EXISTING EMKD CHECKPOINT\n' "$(date '+%Y-%m-%d %H:%M:%S')"
-printf 'Output: %s\n' "${EMKD_OUTPUT_DIR}"
-printf 'GPU: 0\n'
-printf '============================================================\n'
-
-if CUDA_VISIBLE_DEVICES=0 bash "${EVAL_SCRIPT}" \
-    "${EMKD_OUTPUT_DIR}" "${BASE_MODEL}"; then
-
-    printf '\n=== [%s] EMKD EVAL SUCCESS ===\n' \
-        "$(date '+%Y-%m-%d %H:%M:%S')"
-else
-    exit_code=$?
-
-    printf '\n=== [%s] EMKD EVAL FAILED: exit_code=%s ===\n' \
-        "$(date '+%Y-%m-%d %H:%M:%S')" "${exit_code}" >&2
-
-    exit "${exit_code}"
-fi
-
-
-# ============================================================
 # 3. Remaining train + eval jobs
 # ============================================================
 
 JOBS=(
-  "train_qwen2_teacher_7b_fastvlm_student_05b_emkd.sh|qwen2_teacher_7b_fastvlm_student_05b_emkd"
-  "train_qwen2_teacher_7b_fastvlm_student_05b_mcw_kd.sh|qwen2_teacher_7b_fastvlm_student_05b_mcw_kd"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_emkd.sh|qwen2_teacher_7b_fastvlm_student_05b_emkd"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_mcw_kd.sh|qwen2_teacher_7b_fastvlm_student_05b_mcw_kd"
   "train_qwen2_teacher_7b_fastvlm_student_05b_sre.sh|qwen2_teacher_7b_fastvlm_student_05b_sre"
 )
 
