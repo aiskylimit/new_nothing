@@ -6,14 +6,14 @@ The training code is EventKD: a Qwen3-0.6B student learns from a LoRA-tuned Qwen
 
 ## Data
 
-Data lives on Hugging Face (private dataset `datht/unified-ie`), not in git. `download.txt` lists every file and the
-two Qwen3 models in the same `--url` / `--hf` format as `new_nothing/OpenED` (`@PROJECT@` = the project folder);
-the scripts use `models/Qwen3-*` when it's there, else the Hub ids. It also fetches `processed_data/general_domain/`,
-the four folders already tokenized (Qwen3 tokenizer, max prompt 460, max length 768, as `scripts/general_domain/process_data.sh`),
-so a GPU box only downloads and trains. Or pull everything by hand:
+Data lives on Hugging Face (private dataset `datht/unified-ie`), not in git. For training, `download.txt` fetches only
+`processed_data.zip` (every tokenized folder under `processed_data/general_domain/` plus `data/general_domain/ee_label_map.tsv`
+and `ner_label_map.tsv`, 58 MB) and the two Qwen3 models into `models/`; `run.sh` unpacks the zip on its first run.
+The scripts use `models/Qwen3-*` when it's there, else the Hub ids. The untokenized rows (`general_domain/<folder>/*.jsonl`)
+stay on HF for rebuilding:
 
 ```bash
-huggingface-cli download datht/unified-ie --repo-type dataset --local-dir data
+huggingface-cli download datht/unified-ie --repo-type dataset --local-dir data --include "general_domain/*"
 ```
 
 `data/general_domain/` holds ACE05, MAVEN, RAMS and GENEVA merged into one label set of 233 event types. The prompt doesn't name the dataset or list the labels.
@@ -23,6 +23,9 @@ huggingface-cli download datht/unified-ie --repo-type dataset --local-dir data
 | `ee_v1/`, `ee_v2/` | event detection: `{"events": [[trigger, type], ...]}` | ACE, MAVEN, RAMS, GENEVA |
 | `ee_arg_v1/`, `ee_arg_v2/` | event extraction with arguments: `[[trigger, type, [[argument, role], ...]], ...]` | ACE, GENEVA |
 | `re_tacred/`, `re_fewrel/` | sentence-level relation extraction, no entity pair given: `{"relations": [[subject, relation, object], ...]}` | TACRED, FewRel (labels not merged, one folder each) |
+| `ner_v1/`, `ner_v2/` | named entity recognition: `{"entities": [[span, type], ...]}` | CoNLL-2003, OntoNotes 5.0 (21 labels, `ner_label_map.tsv`; only PER/PERSON merged; sentences without entities kept) |
+
+NER: CoNLL's PER and OntoNotes' PERSON are merged (93% agreement both ways on shared entity strings). CoNLL's LOC, ORG and MISC are broader than any OntoNotes type (LOC is 95% GPE there, ORG 49% ORG / 44% GPE, MISC 83% NORP), so they stay separate under their own names (`location`, `organization or team`, `miscellaneous` in v2). NER rows are tokenized with `--max-prompt-length 480` (one CoNLL test sentence needs 462 tokens), so NER training must pass 480 too. Built by `tools/build_ner_data.py`; scored per dataset as exact (span, type) matches, counting repeats (`entity`), and spans alone (`span`).
 
 v1 writes LDC labels as `level1.level2` (`conflict.attack`) and FrameNet labels as MAVEN does (`Hostile_encounter`). v2 writes every label (and role) in lowercase words (`conflict attack`, `hostile encounter`). Same rows, same order, only the label strings differ.
 
@@ -44,10 +47,12 @@ Swap `ee_v1` for `ee_v2`, `ee_arg_v1` or `ee_arg_v2`.
 RE, one model per dataset, all four runs at once on GPUs 4-7 (one 80GB B200 each; effective batch 32 as before, from micro-batch 8 x 4 for the teacher and 16 x 2 for the student):
 
 ```bash
-bash run.sh   # teacher TACRED (GPU 4), teacher FewRel (5), student TACRED (6), student FewRel (7)
+bash run.sh   # every teacher/student SFT run (EE v1/v2, EAE v1/v2, NER, TACRED, FewRel), one queue per GPU 4-7
 ```
 
-Each run is a standalone script in `scripts/general_domain/re/` with its GPU, data and hyperparameters fixed. Dev/test are scored per dataset on exact (subject, relation, object) triples, plus subject-object pairs. Console output goes to `logs/<run>.log`; `grep -rh RESULT results/qwen3/general_domain --include=log.txt` collects the scores.
+`run.sh` runs 14 SFT jobs (the same Qwen3-4B teacher / Qwen3-0.6B student pair on ee_v1, ee_v2, ee_arg_v1, ee_arg_v2, ner_v2, re_tacred, re_fewrel), one queue per GPU so each GPU runs one job at a time; the queue order is in the header of `run.sh`. NER scripts pass `--max-prompt-length 480` and `--label-map data/general_domain/ner_label_map.tsv`.
+
+Each run is a standalone script in `scripts/general_domain/{ee,re,ner}/` with its GPU, data and hyperparameters fixed. Dev/test are scored per dataset on exact (subject, relation, object) triples, plus subject-object pairs. Console output goes to `logs/<run>.log`; `grep -rh RESULT results/qwen3/general_domain --include=log.txt` collects the scores.
 
 Student SFT baseline (Qwen3-0.6B, full fine-tuning, CE only):
 

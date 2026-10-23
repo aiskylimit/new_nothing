@@ -277,6 +277,34 @@ def re_evaluate_by_dataset(pred_list, rows):
     out["macro_triple_f1"] = sum(v["triple"]["f1"] for v in out.values()) / max(1, len(counts))
     return out
 
+def ner_evaluate_by_dataset(pred_list, rows, label_map):
+    """NER per source dataset in its own labels ({"entities": [[span, type], ...]}). A predicted label the
+    row's dataset does not use is dropped. Entities are matched as a multiset of (span, type) after
+    lowercasing, so a name that occurs twice counts twice. span: the span alone (identification)."""
+    counts = defaultdict(lambda: {k: {"tp": 0, "fp": 0, "fn": 0} for k in ("entity", "span")})
+    for pred_json, row in zip(pred_list, rows):
+        m = label_map[row["dataset"]]
+        gold = [(normalize(g[0]), g[1]) for g in row["gold_eval"]]
+        pred = []
+        for e in safe_load(pred_json).get("entities", []):
+            try:
+                label = m.get(normalize(e[1]))
+                if label is not None:
+                    pred.append((normalize(e[0]), label))
+            except (TypeError, IndexError, AttributeError):
+                continue
+        c = counts[row["dataset"]]
+        update_counts(pred, gold, c["entity"])
+        update_counts([p[0] for p in pred], [g[0] for g in gold], c["span"])
+    out = {}
+    for ds, c in sorted(counts.items()):
+        out[ds] = {}
+        for k in ("entity", "span"):
+            p, r, f1 = compute_f1(c[k])
+            out[ds][k] = {"precision": p, "recall": r, "f1": f1, "counts": dict(c[k])}
+    out["macro_entity_f1"] = sum(v["entity"]["f1"] for v in out.values()) / max(1, len(counts))
+    return out
+
 def format_by_dataset(by_dataset, split, epoch):
     """One log line per dataset plus the macro averages, for reading results straight off log.txt."""
     lines = []
