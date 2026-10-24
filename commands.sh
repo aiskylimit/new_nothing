@@ -1,7 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data.zip /mnt/local/@PROJECT@/unified-ie/processed_data.zip
-
+#1 +60
 #uni
 #v2
 
@@ -39,8 +36,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./unified-ie
-# bash ./project_commands.sh
+cd ./unified-ie
+bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
