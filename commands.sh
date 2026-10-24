@@ -37,6 +37,7 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 cd ./unified-ie
+mv processed_data.zip/processed_data.zip ./processed_data.zip && rmdir processed_data.zip
 bash ./project_commands.sh
 
 # cd ./opsd
