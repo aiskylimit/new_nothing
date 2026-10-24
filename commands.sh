@@ -1,4 +1,4 @@
-#1 +60
+#2
 #uni
 #v2
 
@@ -36,11 +36,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./unified-ie
-mv processed_data.zip/processed_data.zip ./processed_data_tmp.zip
-rmdir processed_data.zip
-mv processed_data_tmp.zip processed_data.zip
-bash ./project_commands.sh
+# cd ./unified-ie
+# bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
