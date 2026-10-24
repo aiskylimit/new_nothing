@@ -1,7 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data.zip /mnt/local/@PROJECT@/unified-ie/processed_data.zip
-
+#1 +10
 #uni
 #v1
 
@@ -45,7 +42,7 @@ export NCCL_DEBUG=WARN
 # cd ./opsd
 # bash ./project_commands.sh
 
-# cd VLM_Distillation-main
+cd VLM_Distillation-main
 # bash ./project_commands.sh
-# bash ./project_commands_collect_eval_summary.sh
+bash ./project_commands_collect_eval_summary.sh
 # pwd && ls
