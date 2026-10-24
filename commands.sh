@@ -3,7 +3,7 @@
 --url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data.zip /mnt/local/@PROJECT@/unified-ie/processed_data.zip
 
 #uni
-#v1
+#v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
 
