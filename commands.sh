@@ -47,4 +47,5 @@ ls -lh logs.tar.gz
 # cd VLM_Distillation-main
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
+# bash ./project_commands_eval_base_model_1.sh
 # pwd && ls
