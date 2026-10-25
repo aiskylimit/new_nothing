@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs.tar.gz +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs.tar.gz +a
 #uni-log
 #v1
 
