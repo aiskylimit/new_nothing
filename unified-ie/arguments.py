@@ -79,6 +79,9 @@ def add_data_args(parser: argparse.ArgumentParser):
     group.add_argument("--dev-ratio", type=float, default=1)
     group.add_argument("--label-map", type=str, default=None,
                        help="ee_label_map.tsv: score each source dataset in its own label scheme")
+    group.add_argument("--datasets", type=str, default=None,
+                       help="comma-separated source datasets (the rows' \"dataset\" field) kept in train, dev and test; "
+                            "default all rows. One teacher per dataset: --datasets ace")
     group.add_argument("--balance-alpha", type=float, default=None,
                        help="each epoch takes rows of source dataset d prop. to n_d**alpha (0.5 = square root), "
                             "no row twice in an epoch, every row used before any repeats (BalancedSampler)")

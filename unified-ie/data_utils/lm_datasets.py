@@ -28,9 +28,17 @@ class LMTrainDataset(Dataset):
         if os.path.exists(os.path.join(path, f"teacher_train_0.bin")) and split == "train":
             self.t_lm_ctx = DistributedMMapIndexedDataset(path, f"teacher_train", get_rank(), get_world_size())
 
+        # --datasets: keep only those source datasets. Row i of {split}.jsonl is row i of the .bin
+        # (tools/process_data.py writes both in one loop), so self.keep maps a kept row to its .bin row.
+        self.keep = None
         if os.path.exists(os.path.join(path, f"{split}.jsonl")):
             with open(os.path.join(path, f"{split}.jsonl")) as f:
                 self.raw = [json.loads(line) for line in f.readlines()]
+                if args.datasets is not None:
+                    wanted = set(args.datasets.split(","))
+                    self.keep = [i for i, x in enumerate(self.raw) if x["dataset"] in wanted]
+                    assert self.keep, f"no {split} rows for --datasets {args.datasets}"
+                    self.raw = [self.raw[i] for i in self.keep]
                 self.answers = [x["response"] if isinstance(x["response"], list) else [x["response"]] for x in self.raw]
                 self.full_texts = [x["prompt"] + x["response"] for x in self.raw]
                 self.offset_mapping = [tokenizer(text, return_offsets_mapping=True, truncation=True, 
@@ -40,13 +48,14 @@ class LMTrainDataset(Dataset):
                 
                 self.get_span_offsets()
         
-        print_rank(len(self.lm_ctx))
+        rows = len(self.lm_ctx) if self.keep is None else len(self.keep)
+        print_rank(rows)
         if num == -1:
-            self.num = len(self.lm_ctx)
+            self.num = rows
         else:
             self.num = num
 
-        print_rank(f"Num LM instances: {len(self.lm_ctx)}")
+        print_rank(f"Num LM instances: {rows}")
 
     def get_span_offsets(self):
         self.span_offsets = []
@@ -92,12 +101,13 @@ class LMTrainDataset(Dataset):
         return self._get_lm(index)
     
     def _get_lm(self, index):
-        data = self.lm_ctx[index]
+        row = index if self.keep is None else self.keep[index]   # raw, span_offsets etc. are already filtered
+        data = self.lm_ctx[row]
         input_ids = data.astype(int)
 
         t_input_ids = None
         if self.t_lm_ctx is not None:
-            t_data = self.t_lm_ctx[index]
+            t_data = self.t_lm_ctx[row]
             t_input_ids = t_data.astype(int)
 
         return {

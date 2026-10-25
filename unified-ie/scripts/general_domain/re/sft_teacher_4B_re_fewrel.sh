@@ -1,12 +1,12 @@
 #! /bin/bash
 # LoRA SFT of the Qwen3-4B teacher on FewRel (sentence-level RE)
-# Standalone: GPU, data and hyperparameters are fixed here; started by run.sh.
+# Standalone: data and hyperparameters are fixed here; run.sh starts it with GPU and PORT set (defaults below).
 
-GPUS=(5)
+GPUS=(${GPU:-5})
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
 MASTER_ADDR=localhost
-MASTER_PORT=29506
+MASTER_PORT=${PORT:-29506}
 NNODES=1
 NODE_RANK=0
 GPUS_PER_NODE=${#GPUS[@]}
