@@ -16,7 +16,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
                   --master_port $MASTER_PORT"
 
 # model
-# DATA: folder under data/general_domain (ee_v1, ee_v2, ee_arg_v1, ee_arg_v2)
+# DATA: folder under data/general_domain (ee_v1, ee_v2)
 DATA=${1:-ee_v1}
 # LoRA dir of the SFT teacher, e.g. results/qwen3/general_domain/sft_4B_ee_v1/<run>/<step>
 TEACHER_PEFT=${2:?"usage: bash $0 <data folder> <teacher_lora_dir>"}

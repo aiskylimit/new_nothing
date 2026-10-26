@@ -147,7 +147,8 @@ def main():
                 binary_builder.add_item(torch.IntTensor(prompt + [-1] + response))
 
             rec = {"prompt": prompt_str, "response": line["response"]}
-            for k in ("dataset", "task", "gold_eval"):  # general_domain rows: per-dataset sampling and scoring
+            # general_domain rows: per-dataset sampling and scoring; unknown_args masks the [] of MAVEN/RAMS events
+            for k in ("dataset", "task", "gold_eval", "unknown_args"):
                 if k in line:
                     rec[k] = line[k]
             json_file.write(json.dumps(rec) + "\n")

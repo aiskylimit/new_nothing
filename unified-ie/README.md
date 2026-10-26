@@ -1,6 +1,6 @@
 # Unified IE
 
-One generative model trained on several IE datasets at once. For now it's event extraction only. NER data isn't picked yet, and the RE labels (TACRED, FewRel) aren't merged yet.
+One generative model trained on several IE datasets at once: event extraction, relation extraction and NER. For now there's one teacher per source dataset and one student per task (SFT baselines). RE labels (TACRED, FewRel) aren't merged.
 
 The training code is EventKD: a Qwen3-0.6B student learns from a LoRA-tuned Qwen3-4B teacher with CE + skewed forward KL + span-level representation distillation (`span_finetune.py`). No pseudo labels, no self-distillation.
 
@@ -8,7 +8,7 @@ The training code is EventKD: a Qwen3-0.6B student learns from a LoRA-tuned Qwen
 
 Data lives on Hugging Face (private dataset `datht/unified-ie`), not in git. For training, `download.txt` fetches only
 `processed_data.zip` (every tokenized folder under `processed_data/general_domain/` plus `data/general_domain/ee_label_map.tsv`
-and `ner_label_map.tsv`, 58 MB) and the two Qwen3 models into `models/`; `run.sh` unpacks the zip on its first run.
+and `ner_label_map.tsv`, 58 MB) and the two Qwen3 models into `models/`; `run.sh` unpacks the zip on its first run, and again whenever the unpacked EE data predates the argument format (no `unknown_args`); an old zip stops it with a message to fetch the zip again.
 The scripts use `models/Qwen3-*` when it's there, else the Hub ids. The untokenized rows (`general_domain/<folder>/*.jsonl`)
 stay on HF for rebuilding:
 
@@ -20,8 +20,7 @@ huggingface-cli download datht/unified-ie --repo-type dataset --local-dir data -
 
 | folder | task | datasets |
 |---|---|---|
-| `ee_v1/`, `ee_v2/` | event detection: `{"events": [[trigger, type], ...]}` | ACE, MAVEN, RAMS, GENEVA |
-| `ee_arg_v1/`, `ee_arg_v2/` | event extraction with arguments: `[[trigger, type, [[argument, role], ...]], ...]` | ACE, GENEVA |
+| `ee_v1/`, `ee_v2/` | event extraction with arguments: `{"events": [[trigger, type, [[argument, role], ...]], ...]}` | ACE, MAVEN, RAMS, GENEVA (arguments from ACE and GENEVA only) |
 | `re_tacred/`, `re_fewrel/` | sentence-level relation extraction, no entity pair given: `{"relations": [[subject, relation, object], ...]}` | TACRED, FewRel (labels not merged, one folder each) |
 | `ner_v1/`, `ner_v2/` | named entity recognition: `{"entities": [[span, type], ...]}` | CoNLL-2003, OntoNotes 5.0 (21 labels, `ner_label_map.tsv`; only PER/PERSON merged; sentences without entities kept) |
 
@@ -29,7 +28,7 @@ NER: CoNLL's PER and OntoNotes' PERSON are merged (93% agreement both ways on sh
 
 v1 writes LDC labels as `level1.level2` (`conflict.attack`) and FrameNet labels as MAVEN does (`Hostile_encounter`). v2 writes every label (and role) in lowercase words (`conflict attack`, `hostile encounter`). Same rows, same order, only the label strings differ.
 
-Arguments are a separate training run because MAVEN and RAMS rows have none: mixed in, they'd teach "no arguments" for the types those datasets share with ACE and GENEVA.
+Detection and arguments are one task with one prompt. MAVEN and RAMS have no argument annotation, so their events are written `[trigger, type, []]` and the row carries `"unknown_args": true`. That `[]` means "not annotated", not "no arguments", so the trainer gives it no loss: `LMTrainDataset` finds the tokens overlapping each `[]` (with the Qwen3 tokenizer it's exactly one token, `' []'`) and sets their labels to -100, which takes them out of CE and of the KD loss too. Checked on the full train split: one masked token per MAVEN/RAMS event (66,286 + 6,725), every other response token keeps its label, ACE and GENEVA rows untouched. MAVEN/RAMS `gold_eval` has no arguments, so they're scored on triggers only; ACE and GENEVA also get argument P/R/F1. The checkpoint is still picked on the mean trigger F1.
 
 Each row carries `dataset` and `gold_eval` (gold in the dataset's own labels). `dev.jsonl` keeps at most 300 rows per dataset for checkpoint selection, `dev_full.jsonl` has all of them. `ee_label_map.tsv` maps every original label to its merged v1/v2 name, and `label_list.md` lists the 233 labels.
 
@@ -42,15 +41,15 @@ bash scripts/general_domain/sft_teacher_4B.sh ee_v1                # LoRA SFT of
 bash scripts/general_domain/eventkd_0.6B_4B.sh ee_v1 <teacher_lora_dir>
 ```
 
-Swap `ee_v1` for `ee_v2`, `ee_arg_v1` or `ee_arg_v2`.
+Swap `ee_v1` for `ee_v2`.
 
-RE, one model per dataset, all four runs at once on GPUs 4-7 (one 80GB B200 each; effective batch 32 as before, from micro-batch 8 x 4 for the teacher and 16 x 2 for the student):
+Every SFT run at once on GPUs 4-7 (one 80GB B200 each; effective batch 32 as before, from micro-batch 8 x 4 for the teacher and 16 x 2 for the student):
 
 ```bash
-bash run.sh   # every teacher/student SFT run (EE v1/v2, EAE v1/v2, NER, TACRED, FewRel), one queue per GPU 4-7
+bash run.sh   # every teacher/student SFT run (EE v1/v2, NER, TACRED, FewRel), one queue per GPU 4-7
 ```
 
-`run.sh` runs 14 SFT jobs (the same Qwen3-4B teacher / Qwen3-0.6B student pair on ee_v1, ee_v2, ee_arg_v1, ee_arg_v2, ner_v2, re_tacred, re_fewrel), one queue per GPU so each GPU runs one job at a time; the queue order is in the header of `run.sh`. NER scripts pass `--max-prompt-length 480` and `--label-map data/general_domain/ner_label_map.tsv`.
+`run.sh` runs 17 SFT jobs: a Qwen3-4B LoRA teacher per source dataset (`script:dataset` passes the dataset, and `--datasets` keeps only its rows in train, dev and test: EE teachers on ace, maven, rams, geneva for both ee_v1 and ee_v2, NER on conll03 and ontonotes, plus TACRED and FewRel) and a Qwen3-0.6B student per task (ee_v1, ee_v2, ner_v2, re_tacred, re_fewrel). One queue per GPU, so each GPU runs one job at a time, on torchrun port 29500 + 10 x GPU; the queues are at the end of `run.sh`, and `run2.sh` restarts the GPU 7 queue alone. NER scripts pass `--max-prompt-length 480` and `--label-map data/general_domain/ner_label_map.tsv`.
 
 Each run is a standalone script in `scripts/general_domain/{ee,re,ner}/` with its GPU, data and hyperparameters fixed. Dev/test are scored per dataset on exact (subject, relation, object) triples, plus subject-object pairs. Console output goes to `logs/<run>.log`; `grep -rh RESULT results/qwen3/general_domain --include=log.txt` collects the scores.
 
@@ -61,7 +60,7 @@ bash scripts/general_domain/sft_student_0.6B.sh ee_v1          # every row once 
 bash scripts/general_domain/sft_student_0.6B.sh ee_v1 0.5      # square-root balancing, 13 epochs
 ```
 
-`--balance-alpha a` (BalancedSampler) gives dataset d a share of every epoch prop. to n_d^a, with no row twice in an epoch. With a = 0.5 on ee_v* an epoch is GENEVA 1,872 (all) + ACE 2,402 + RAMS 3,456 + MAVEN 7,008 rows. Each dataset is walked through a shuffled order across epochs, so every row is used before any row is used again (after 13 epochs: MAVEN rows 3-4 times, RAMS 7-8, ACE 10-11, GENEVA 13). The seed only fixes the order. Each epoch's row list is saved to `balanced_epochs/epoch_<e>_indices.json`.
+`--balance-alpha a` (BalancedSampler) gives dataset d a share of every epoch prop. to n_d^a, with no row twice in an epoch. With a = 0.5 on ee_v* an epoch is GENEVA 1,872 (all) + ACE 2,402 + RAMS 3,452 + MAVEN 7,009 rows. Each dataset is walked through a shuffled order across epochs, so every row is used before any row is used again (after 13 epochs: MAVEN rows 3-4 times, RAMS 7-8, ACE 10-11, GENEVA 13). The seed only fixes the order. Each epoch's row list is saved to `balanced_epochs/epoch_<e>_indices.json`.
 
 Things that differ from the original EventKD scripts:
 
@@ -73,5 +72,7 @@ Things that differ from the original EventKD scripts:
 Speed (same losses, ported from `new_nothing/OpenED`):
 
 - The student and teacher forwards compute logits only over the label window (`logits_to_keep`), the only positions CE and KD read. On ED rows that's about 33 of 768 columns, so the LM head and the KL work shrink by about 20x. Checked on CPU: CE and SFKL match the full computation to 6 decimals.
-- `--dynamic-pad` pads each batch to its longest row (rounded up to 64) instead of 768. It's on for teacher SFT. It stays off while the span loss runs, because the span token weights average over every query row, padding included, so they'd change with the pad width.
+- `--dynamic-pad` pads each batch to its longest row (rounded up to 64) instead of 768. It's on for every SFT script and also works with the span loss (see below). `--student-gen` still turns it off.
 - `--gen-backend vllm` generates dev/test answers in vLLM (`gen_backend.py`, `tools/vllm_generate.py`, from `new_nothing`). It needs its own environment (`uv venv .venv-vllm --python 3.12 && uv pip install --python .venv-vllm vllm==0.27.1`, or `VLLM_PY=...`) and a single process (world size 1). Answers are statistically equivalent to `generate()`, not token-identical.
+
+Span loss fix: `compute_token_weights` in `span_finetune.py` used to take `attn_weights.mean(dim=1)`, which averages the attention over every query row, padding rows included. With 768-wide rows about 2/3 of those rows are padding, so the token weights were mostly set by the padding and changed with the pad width. It now averages over the real query rows only, which is the definition in the EventKD paper (w_t = 1/N sum_s alpha_s->t). Checked on CPU: the old weights had correlation 0.16 with the paper's weights and 0 of the top 10 tokens in common; after the fix the weights at pad width 768 and 256 differ by at most 4e-8. The same bug is in the original EventKD code and in new_nothing (CED), which weren't changed.

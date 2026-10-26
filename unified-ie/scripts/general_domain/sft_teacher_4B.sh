@@ -16,7 +16,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE \
                   --master_port $MASTER_PORT"
 
 # model
-# DATA: folder under data/general_domain (ee_v1, ee_v2, ee_arg_v1, ee_arg_v2)
+# DATA: folder under data/general_domain (ee_v1, ee_v2; RE and NER have their own scripts in re/ and ner/)
 DATA=${1:-ee_v1}
 BASE_PATH=.
 CKPT_NAME="qwen3-4B"
