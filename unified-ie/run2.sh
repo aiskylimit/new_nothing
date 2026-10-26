@@ -1,7 +1,7 @@
 #! /bin/bash
 # Starts only the GPU 7 queue of run.sh (same jobs, same order, same GPU and port) and returns; the runs
 # keep going after logout. For rerunning that queue alone, e.g. after it failed; don't run it while
-# run.sh's GPU 7 queue is still alive. Needs processed_data unpacked (run.sh does that).
+# run.sh's GPU 7 queue is still alive. Unpacks processed_data.zip itself when processed_data/ is missing or old.
 # Console output: logs/<script>[_<dataset>].log. Training log with the RESULT lines:
 # results/qwen3/general_domain/sft_*/<settings>/log.txt (teachers: sft_4B_<data>_<dataset>)
 cd "$(dirname "$0")"
@@ -18,15 +18,44 @@ source "${VENV}/bin/activate"
 # the pod's PET_* rendezvous variables would override --master_port (see run.sh)
 for v in $(compgen -e | grep '^PET_' || true); do unset "${v}"; done
 
+# same unpacking as run.sh: an old processed_data/ (EE without "unknown_args") is unpacked again from the zip
+fresh () { grep -q '"unknown_args"' processed_data/general_domain/ee_v1/qwen/train.jsonl 2>/dev/null; }
+if [ ! -f processed_data/general_domain/ner_v2/qwen/train_0.bin ] || ! fresh; then
+    if [ ! -f processed_data.zip ]; then
+        echo "missing processed_data.zip: fetch it with download.txt first"
+        exit 1
+    fi
+    echo "unpacking processed_data.zip"
+    python -c "import zipfile; zipfile.ZipFile('processed_data.zip').extractall('.')" || exit 1
+fi
+if ! fresh; then
+    echo "processed_data.zip is the old one (EE without arguments): delete it and fetch it again with download.txt"
+    exit 1
+fi
+
 for d in ee_v1 ee_v2 re_tacred re_fewrel; do
     if [ ! -f processed_data/general_domain/${d}/qwen/train_0.bin ]; then
-        echo "missing processed_data/general_domain/${d}/qwen: run run.sh once to unpack processed_data.zip"
+        echo "missing processed_data/general_domain/${d}/qwen after unpacking processed_data.zip"
         exit 1
     fi
 done
-if ! grep -q '"unknown_args"' processed_data/general_domain/ee_v1/qwen/train.jsonl; then
-    echo "processed_data/general_domain/ee_v1 is the old EE data (no arguments): run run.sh once to unpack the new zip"
-    exit 1
+
+# SMOKE=1 bash run2.sh: each job trains one optimizer step (64 rows = one effective batch of 32, twice, the
+# loop stops after the first step), saves, then scores 16 dev and 16 test rows. A torchrun wrapper appends
+# the flags (argparse keeps the last value) and moves --save to results_smoke/; logs/smoke_*.log, port +1,
+# so it can run next to the real queue.
+PREFIX="" PORT_OFFSET=0
+if [ "${SMOKE:-0}" = 1 ]; then
+    PREFIX="smoke_" PORT_OFFSET=1
+    mkdir -p logs/smoke_bin
+    cat > logs/smoke_bin/torchrun <<EOF
+#!/bin/bash
+args=()
+for a in "\$@"; do args+=("\${a/results\/qwen3/results_smoke/qwen3}"); done
+exec $(command -v torchrun) "\${args[@]}" --train-num 64 --dev-num 16 --epochs 1
+EOF
+    chmod +x logs/smoke_bin/torchrun
+    export PATH="${PWD}/logs/smoke_bin:${PATH}"
 fi
 
 # same as run.sh: the jobs run one after the other on the GPU, on torchrun port 29500 + 10 x GPU
@@ -36,7 +65,7 @@ start () {  # $1 = GPU, then jobs: script path under scripts/general_domain/, op
     for j in "$@"; do
         local s=${j%%:*} ds=""
         [ "${j}" != "${s}" ] && ds=${j#*:}
-        cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu)) bash scripts/general_domain/${s}.sh ${ds} > logs/$(basename ${s})${ds:+_${ds}}.log 2>&1; "
+        cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu + PORT_OFFSET)) bash scripts/general_domain/${s}.sh ${ds} > logs/${PREFIX}$(basename ${s})${ds:+_${ds}}.log 2>&1; "
     done
     nohup bash -c "${cmd}" > /dev/null 2>&1 &
     echo "started gpu${gpu} (pid $!): $*"
