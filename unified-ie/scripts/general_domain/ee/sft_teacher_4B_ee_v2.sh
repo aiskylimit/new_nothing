@@ -1,12 +1,12 @@
 #! /bin/bash
 # LoRA SFT of the Qwen3-4B teacher on event detection (ACE, MAVEN, RAMS, GENEVA; ee_v2 labels)
-# Standalone: GPU, data and hyperparameters are fixed here; started by run.sh.
+# Standalone: data and hyperparameters are fixed here; run.sh starts it with GPU and PORT set (defaults below).
 
-GPUS=(6)
+GPUS=(${GPU:-6})
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
 
 MASTER_ADDR=localhost
-MASTER_PORT=29508
+MASTER_PORT=${PORT:-29508}
 NNODES=1
 NODE_RANK=0
 GPUS_PER_NODE=${#GPUS[@]}
@@ -14,6 +14,7 @@ GPUS_PER_NODE=${#GPUS[@]}
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE                   --nnodes $NNODES                   --node_rank $NODE_RANK                   --master_addr $MASTER_ADDR                   --master_port $MASTER_PORT"
 
 DATA=ee_v2
+DATASET=${1:-}   # one source dataset (ace, maven, rams, geneva): one teacher per dataset; empty = every dataset of DATA
 BASE_PATH=.
 # model
 CKPT_NAME="qwen3-4B"
@@ -30,7 +31,7 @@ EPOCHS=3
 # length
 MAX_LENGTH=768
 # runtime
-SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_4B_${DATA}"
+SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_4B_${DATA}${DATASET:+_${DATASET}}"
 # seed
 SEED=42
 
@@ -44,6 +45,7 @@ OPTS+=" --model-type qwen"
 OPTS+=" --n-gpu ${GPUS_PER_NODE}"
 # data
 OPTS+=" --data-dir ${DATA_DIR}"
+[ -n "${DATASET}" ] && OPTS+=" --datasets ${DATASET}"
 OPTS+=" --num-workers 0"
 OPTS+=" --dev-num -1"
 # score each source dataset in its own labels; dev answers every epoch, test answers when the mean
