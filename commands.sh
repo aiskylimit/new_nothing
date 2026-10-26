@@ -1,4 +1,4 @@
-#i talas-vlm-embed.txt
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #vlm2vec
 #v1
 
