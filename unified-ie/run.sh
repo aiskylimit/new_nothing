@@ -53,14 +53,25 @@ done
 # 29500 + 10 x GPU (one job at a time per queue, so no two live runs share a port)
 start () {  # $1 = GPU, then jobs: script path under scripts/general_domain/, optionally :<dataset>
     local gpu=$1; shift
-    local cmd=""
+    local mark=logs/.gpu${gpu}_started
+    local cmd=": > ${mark}; "
     for j in "$@"; do
         local s=${j%%:*} ds=""
         [ "${j}" != "${s}" ] && ds=${j#*:}
         cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu)) bash scripts/general_domain/${s}.sh ${ds} > logs/$(basename ${s})${ds:+_${ds}}.log 2>&1; "
     done
+    rm -f ${mark}
     nohup bash -c "${cmd}" > /dev/null 2>&1 &
-    echo "started gpu${gpu} (pid $!): $*"
+    local pid=$!
+    # the runner hangs up the session as soon as this script exits; a queue still starting up (before nohup
+    # has made it ignore SIGHUP) dies then without writing a single log, which is what kept hitting the GPU 7
+    # queue, the last one started. Wait until the queue's own bash runs (from then on it ignores SIGHUP).
+    for i in $(seq 50); do [ -f ${mark} ] && break; sleep 0.2; done
+    if [ -f ${mark} ]; then
+        echo "started gpu${gpu} (pid ${pid}): $*"
+    else
+        echo "gpu${gpu} queue did not start within 10 s"
+    fi
 }
 
 start 4 ner/sft_teacher_4B_ner:ontonotes re/sft_student_0.6B_re_tacred
