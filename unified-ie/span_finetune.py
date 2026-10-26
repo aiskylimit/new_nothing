@@ -254,7 +254,11 @@ def compute_token_weights(hidden_state, attention_mask):
     attn_weights = attn_weights * mask
     attn_weights = attn_weights / attn_weights.sum(dim=-1, keepdim=True)
 
-    token_weights = attn_weights.mean(dim=1).squeeze(0)  # [L]
+    # w_t = (1/N) sum_s alpha_{s->t} over the N real tokens, as in the EventKD paper. The original
+    # attn_weights.mean(dim=1) also averaged the padding query rows (~2/3 of a 768-wide row), so the
+    # weights were driven by the padding and changed with the pad width.
+    query_mask = attention_mask.unsqueeze(-1).to(attn_weights.dtype)  # [B, L, 1]
+    token_weights = (attn_weights * query_mask).sum(dim=1) / query_mask.sum(dim=1).clamp(min=1)  # [B, L]
     return token_weights.detach()
 
 def prepare_span_indices_and_weights(t_layer_weights, s_layer_weights, 
@@ -731,10 +735,8 @@ def main():
     tokenizer = get_tokenizer(args)
     print(type(tokenizer))
 
-    # the span loss averages token weights over every query row, padding included, so it changes
-    # with the pad width: dynamic padding stays off whenever the span loss runs (as in new_nothing)
-    args.dynamic_pad_effective = args.dynamic_pad and not args.student_gen and \
-        (args.teacher_model_path is None or args.w_span_loss == 0)
+    # the span loss is padding-invariant since compute_token_weights averages over real query rows only
+    args.dynamic_pad_effective = args.dynamic_pad and not args.student_gen
     print_rank(f"dynamic padding: {args.dynamic_pad_effective}")
     dataset = prepare_dataset(
         args,

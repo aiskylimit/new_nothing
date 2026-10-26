@@ -1,4 +1,5 @@
 import random
+import re
 import torch
 import os
 import json
@@ -47,6 +48,7 @@ class LMTrainDataset(Dataset):
                                        for text in self.full_texts]
                 
                 self.get_span_offsets()
+                self.get_unknown_arg_tokens()
         
         rows = len(self.lm_ctx) if self.keep is None else len(self.keep)
         print_rank(rows)
@@ -94,6 +96,23 @@ class LMTrainDataset(Dataset):
 
             self.span_offsets.append(result_tuples)
 
+    def get_unknown_arg_tokens(self):
+        """Rows with "unknown_args" (MAVEN, RAMS: no argument annotation) write every event as
+        [trigger, type, []]. That [] means "not annotated", not "no arguments", so the tokens that
+        overlap it get no loss (CE and KD both read label != -100). With the Qwen3 tokenizer the
+        slot is the single token ' []'. Returns, per row, the token indices in prompt + response."""
+        self.unknown_arg_tokens = []
+        for item, full_text, offsets in zip(self.raw, self.full_texts, self.offset_mapping):
+            tokens = []
+            if item.get("unknown_args"):
+                start = len(item["prompt"])
+                spans = [(start + m.start(1), start + m.end(1))
+                         for m in re.finditer(r'", (\[\])\]', item["response"])]
+                for k, (a, b) in enumerate(offsets[0].tolist()):
+                    if b > a and any(a < e and s < b for s, e in spans):
+                        tokens.append(k)
+            self.unknown_arg_tokens.append(tokens)
+
     def __len__(self):
         return self.num
    
@@ -114,7 +133,8 @@ class LMTrainDataset(Dataset):
             "input_ids": input_ids,
             "t_input_ids": t_input_ids,
             "span_offsets": self.span_offsets[index],
-            "offset_mapping": self.offset_mapping[index]
+            "offset_mapping": self.offset_mapping[index],
+            "unknown_arg_tokens": self.unknown_arg_tokens[index]
         }
 
     def _process_lm(self, i, samp, model_data, no_model_data, gen_data):
@@ -201,6 +221,11 @@ class LMTrainDataset(Dataset):
 
         for i, samp in enumerate(samples):
             self._process_lm(i, samp, model_data, no_model_data, gen_data)
+            # token k is predicted at label position k - 1
+            for k in samp["unknown_arg_tokens"]:
+                if 0 < k <= max_length:
+                    no_model_data["label"][i][k - 1] = -100
+                    no_model_data["loss_mask"][i][k - 1] = 0
 
         t_model_data, t_no_model_data = None, None
         if samples[0]["t_input_ids"] is not None:
