@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-uv sync
-source .venv/bin/activate
+source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 
 bash set_base_model_path.sh
