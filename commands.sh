@@ -1,5 +1,5 @@
-#2 -1
-#vlm_check
+#1 +60
+#uni
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -36,10 +36,10 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./unified-ie
+cd ./unified-ie
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
