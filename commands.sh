@@ -1,11 +1,11 @@
-#1 +60
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #uni
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-iepenED/logs.tar.gz +a
 
 # nvidia-smi
@@ -36,10 +36,10 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./unified-ie
+# cd ./unified-ie
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
-bash ./project_commands.sh
+# bash ./project_commands.sh
 
 # cd ./opsd
 # bash ./project_commands.sh
