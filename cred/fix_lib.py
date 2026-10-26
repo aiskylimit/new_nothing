@@ -4,7 +4,7 @@ import sys
 
 
 RELATIVE_FILE = "transformers/models/qwen2_vl/image_processing_qwen2_vl.py"
-START_LINE = 140
+START_LINE = 139
 END_LINE = 143
 
 
