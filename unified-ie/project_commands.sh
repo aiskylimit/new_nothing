@@ -11,6 +11,8 @@
 cd "$(dirname "$0")"
 mkdir -p logs
 
+source /mnt/local/uvenvs/unified-ie/bin/activate
+
 # the pod sets PET_* rendezvous variables; torchrun reads them over --master_port, so every run would join
 # one shared rendezvous and die with whichever run hosts it (same fix as OpenED/project_commands_lib.sh)
 for v in $(compgen -e | grep '^PET_' || true); do unset "${v}"; done
