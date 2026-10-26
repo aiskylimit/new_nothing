@@ -11,6 +11,15 @@
 cd "$(dirname "$0")"
 mkdir -p logs
 
+# every run needs the unified-ie venv (peft etc.); the image's own python3.10 has no peft. The queues
+# below are started from this shell, so they inherit it.
+VENV=/mnt/local/uvenvs/unified-ie
+if [ ! -f "${VENV}/bin/activate" ]; then
+    echo "ERROR: ${VENV} does not exist" >&2
+    exit 1
+fi
+source "${VENV}/bin/activate"
+
 # the pod sets PET_* rendezvous variables; torchrun reads them over --master_port, so every run would join
 # one shared rendezvous and die with whichever run hosts it (same fix as OpenED/project_commands_lib.sh)
 for v in $(compgen -e | grep '^PET_' || true); do unset "${v}"; done
