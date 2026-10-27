@@ -53,6 +53,23 @@ bash run.sh   # every teacher/student SFT run (EE v1/v2, NER, TACRED, FewRel), o
 
 Each run is a standalone script in `scripts/general_domain/{ee,re,ner}/` with its GPU, data and hyperparameters fixed. Dev/test are scored per dataset on exact (subject, relation, object) triples, plus subject-object pairs. Console output goes to `logs/<run>.log`; `grep -rh RESULT results/qwen3/general_domain --include=log.txt` collects the scores.
 
+Multi-teacher KD as in BAM (Clark et al., ACL 2019), once the per-dataset EE teachers are trained:
+
+```bash
+bash scripts/general_domain/ee/bam_0.6B_4B.sh ee_v1
+KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/ee/bam_0.6B_4B.sh ee_v1   # EventKD losses, same teachers
+```
+
+The Qwen3-0.6B student (full fine-tuning, same data and hyperparameters as the SFT student) learns from the four Qwen3-4B LoRA teachers, and each row is distilled only from the teacher of its own dataset (`--teacher-peft-paths ace=<dir>,maven=<dir>,...`). The base 4B is loaded once with one unmerged adapter per dataset. Each batch runs one teacher forward per dataset in it and puts the logits and hidden states back in row order. That's fine for the span loss, since it only compares spans inside a row. Without `TEACHERS=`, the script takes each teacher's best dev epoch from `results/qwen3/general_domain/sft_4B_<data>_<dataset>` (`tools/best_lora.py`; a `PEFT_PATH` continuation in `<settings>-from<step>` competes on its dev score too).
+
+Every part is its own switch, so a rerun only changes a flag; the run dir `bam_0.6B_4B_<data>/<type>_<schedule>_span<w>` is named after them:
+
+- `--kd-schedule anneal` (`KD_SCHEDULE`): BAM's teacher annealing, the KD weight goes linearly from 1 to 0 over training, so the student starts on the teacher and ends on the gold labels. `constant` uses `--kd-ratio`.
+- `--type fkl` (`KD_TYPE`): forward KL, which is BAM's loss (CE on the teacher's distribution). `sfkl` is the skewed KL from EventKD.
+- `--w-span-loss` (`W_SPAN`): 0 turns the span loss off and skips the teacher's hidden states; 1.0 is EventKD's.
+
+Checked on CPU with a tiny Qwen3 and random LoRAs: each row's routed logits and hidden states match its own merged LoRA to float error (relative 3e-5, while the two teachers differ by 1.22), the span loss and KL run on a real ee_v1 dev batch mixing all four datasets, and a LoRA student's layers are the same through `get_decoder()` as before.
+
 Student SFT baseline (Qwen3-0.6B, full fine-tuning, CE only):
 
 ```bash

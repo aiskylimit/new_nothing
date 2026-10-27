@@ -60,7 +60,16 @@ def get_teacher_model(args, device):
             model = AutoModelForCausalLM.from_pretrained(args.teacher_model_path, config=config, device_map={"": device}, torch_dtype=torch.float32)
             model = model.half()
         
-        if args.teacher_peft_path is not None:
+        if args.teacher_peft_paths is not None:
+            # one adapter per source dataset on one copy of the base, not merged: teacher_forward()
+            # switches to the row's adapter
+            for k, (name, path) in enumerate(teacher_peft_paths(args).items()):
+                if k == 0:
+                    model = PeftModel.from_pretrained(model, path, adapter_name=name)
+                else:
+                    model.load_adapter(path, adapter_name=name)
+                print_rank(f"teacher adapter {name}: {path}")
+        elif args.teacher_peft_path is not None:
             model = PeftModel.from_pretrained(model, args.teacher_peft_path)
             model = model.merge_and_unload()
             print("merge_and_unload")
@@ -70,8 +79,46 @@ def get_teacher_model(args, device):
                 sum([p.nelement() for p in model.parameters()])), flush=True)
 
     model.eval()
-    
+
     return model
+
+
+def teacher_peft_paths(args):
+    """--teacher-peft-paths "maven=dir,rams=dir" -> {"maven": "dir", "rams": "dir"}"""
+    paths = {}
+    for item in args.teacher_peft_paths.split(","):
+        name, path = item.split("=", 1)
+        paths[name.strip()] = path.strip()
+    return paths
+
+
+def teacher_forward(args, teacher_model, model_batch, datasets, window, hidden):
+    """Teacher logits over the label window, and the hidden states (index as in HF hidden_states) when
+    `hidden`. With --teacher-peft-paths every row goes through the adapter of its own dataset, as in BAM
+    (Clark et al. 2019): one forward per dataset in the batch, results put back in row order. Only the
+    --teacher_layer_mapping layers are kept; the span loss reads no other layer and compares spans within
+    a row only, so rows from different teachers can share a batch."""
+    if args.teacher_peft_paths is None:
+        out = teacher_model(**model_batch, output_hidden_states=hidden, use_cache=False, logits_to_keep=window)
+        return out.logits, out.hidden_states
+
+    logits, hidden_states = None, None
+    for name in sorted(set(datasets)):
+        rows = torch.tensor([i for i, d in enumerate(datasets) if d == name], device=window.device)
+        teacher_model.set_adapter(name)
+        out = teacher_model(**{k: v[rows] for k, v in model_batch.items()}, output_hidden_states=hidden,
+                            use_cache=False, logits_to_keep=window)
+        if logits is None:
+            logits = out.logits.new_empty((len(datasets),) + out.logits.shape[1:])
+            if hidden:
+                hidden_states = [None] * len(out.hidden_states)
+                for l in args.teacher_layer_mapping:
+                    hidden_states[l] = out.hidden_states[l].new_empty((len(datasets),) + out.hidden_states[l].shape[1:])
+        logits[rows] = out.logits
+        if hidden:
+            for l in args.teacher_layer_mapping:
+                hidden_states[l][rows] = out.hidden_states[l]
+    return logits, hidden_states
 
 
 def get_optimizer(args, model):
@@ -493,7 +540,8 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             else:
                 student_captured_hidden.append(output)
 
-    for layer in model.base_model.model.model.layers:
+    # get_decoder(): the student may be a LoRA PeftModel or fully fine-tuned
+    for layer in model.module.get_decoder().layers:
         h_layer = layer.register_forward_hook(capture_hook_fn)
         hook_handles.append(h_layer)
     
@@ -572,24 +620,28 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                 lm_loss = loss_func(logits.float().reshape(-1, logits.shape[-1]), label_batch["label"].reshape(-1))
             
             if teacher_model is not None:
+                # --w-span-loss 0 skips the span loss and the teacher's hidden states
+                use_span = args.w_span_loss > 0
                 with torch.no_grad():
                     teacher_model.eval()
-                    teacher_outputs = teacher_model(**model_batch, output_hidden_states=True, use_cache=False,
-                                                    logits_to_keep=window)
-                    teacher_logits = teacher_outputs.logits
+                    teacher_logits, teacher_hidden = teacher_forward(args, teacher_model, model_batch,
+                                                                     no_model_batch["dataset"], window, use_span)
 
                 distil_loss = get_distil_loss(args, teacher_logits, label_batch, logits)
 
-                spans_offsets = no_model_batch["span_offsets"]
-                offset_mapping = no_model_batch["offset_mapping"]
+                if use_span:
+                    spans_offsets = no_model_batch["span_offsets"]
+                    offset_mapping = no_model_batch["offset_mapping"]
 
-                span_loss = compute_overall_span_loss(model_batch['attention_mask'], 
-                                                      student_captured_hidden, teacher_outputs.hidden_states, 
-                                                      offset_mapping, spans_offsets, args)
-                span_loss = args.w_span_loss * span_loss
-                distil_loss = distil_loss + span_loss
+                    span_loss = compute_overall_span_loss(model_batch['attention_mask'],
+                                                          student_captured_hidden, teacher_hidden,
+                                                          offset_mapping, spans_offsets, args)
+                    span_loss = args.w_span_loss * span_loss
+                    distil_loss = distil_loss + span_loss
                 # loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * (distil_loss + span_loss)
-                loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
+                # BAM teacher annealing: the target moves from the teacher to the gold labels as training goes
+                kd_ratio = 1 - global_step / args.total_iters if args.kd_schedule == "anneal" else args.kd_ratio
+                loss = (1 - kd_ratio) * lm_loss + kd_ratio * distil_loss
             else:
                 loss = lm_loss
                 
@@ -769,6 +821,13 @@ def main():
     if args.teacher_model_type is None:
         args.teacher_model_type = args.model_type
     
+    if args.teacher_peft_paths is not None and args.do_train:
+        # every train dataset needs its teacher, and a name that matches no dataset is a typo
+        names, rows = set(teacher_peft_paths(args)), set(r["dataset"] for r in dataset["train"].raw)
+        assert names == rows, f"--teacher-peft-paths has {sorted(names)}, the train rows are from {sorted(rows)}"
+        # student-generated batches come from the replay buffer, which drops the rows' dataset
+        assert "adaptive" not in args.type and "mixed" not in args.type, "--teacher-peft-paths needs gold batches"
+
     if args.teacher_model_path is not None:
         teacher_model = get_teacher_model(args, device)
     else:

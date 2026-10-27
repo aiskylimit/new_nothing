@@ -151,6 +151,10 @@ def add_hp_args(parser: argparse.ArgumentParser):
     group.add_argument('--loss-scale', type=float, default=65536,
                        help='loss scale')
     group.add_argument("--kd-ratio", type=float, default=None)
+    group.add_argument("--kd-schedule", type=str, default="constant", choices=["constant", "anneal"],
+                       help="constant: loss = (1 - kd_ratio) CE + kd_ratio KD; anneal: BAM teacher annealing "
+                            "(Clark et al. 2019), the KD weight falls linearly from 1 to 0 over training and "
+                            "--kd-ratio is ignored")
 
     group.add_argument('--warmup-iters', type=int, default=0,
                        help='percentage of data to warmup on (.01 = 1% of all '
@@ -250,6 +254,10 @@ def add_peft_args(parser: argparse.ArgumentParser):
     group.add_argument("--peft-path", type=str, default=None)
     group.add_argument("--teacher-peft-name", type=str, default=None)
     group.add_argument("--teacher-peft-path", type=str, default=None)
+    group.add_argument("--teacher-peft-paths", type=str, default=None,
+                       help="one teacher per source dataset (BAM): name=lora_dir,name=lora_dir,... with the names "
+                            "of the rows' \"dataset\" field; each row is distilled from its own dataset's LoRA. "
+                            "Replaces --teacher-peft-path")
     return parser
 
 
