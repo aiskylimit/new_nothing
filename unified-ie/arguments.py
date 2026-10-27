@@ -174,6 +174,11 @@ def add_hp_args(parser: argparse.ArgumentParser):
     group.add_argument("--scheduler-name", type=str, default="constant_trm")
 
     group.add_argument("--w-span-loss", type=float, default=1.0)
+    group.add_argument("--span-locate", type=str, default="legacy", choices=["legacy", "response"],
+                       help="where the span loss finds each span string (EE trigger/type/argument/role, NER "
+                            "entity/type, RE subject/relation/object): legacy = the original EventKD search, each "
+                            "string after the previous one starting at the top of the prompt; response = each string "
+                            "where the answer JSON writes it")
 
     return parser
 

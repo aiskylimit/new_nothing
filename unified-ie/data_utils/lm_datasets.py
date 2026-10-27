@@ -79,12 +79,22 @@ class LMTrainDataset(Dataset):
             f"{d} {quota[d]}/{len(groups[d])}" for d in sorted(groups)) + f" (total {len(chosen)})")
 
     def get_span_offsets(self):
+        """Per row, the (start, end) characters in prompt + response of every span the span loss compares:
+        EE trigger, event type, argument, role; NER entity, entity type; RE subject, relation, object.
+        --span-locate legacy is the original EventKD search: each string is looked for after the previous
+        one, from the top of the prompt, so the first one lands in the input sentence (or in the system
+        prompt when the word occurs there) and most later ones in the answer. response: each string is the
+        quoted JSON string the answer writes at that place, taken in answer order."""
         self.span_offsets = []
         for item, full_text in zip(self.raw, self.full_texts):
             response_str = item["response"]
             response_json = json.loads(response_str)
 
             values_to_find = []
+            for entity in response_json.get("entities", []):
+                values_to_find += [entity[0], entity[1]]          # NER: span, type
+            for triple in response_json.get("relations", []):
+                values_to_find += [triple[0], triple[1], triple[2]]  # RE: subject, relation, object
             for event in response_json.get("events", []):
                 values_to_find.append(event[0])  # 1. trigger
                 values_to_find.append(event[1])  # 2. event_type
@@ -101,6 +111,20 @@ class LMTrainDataset(Dataset):
                 # general_domain rows have no description: [trigger, type] or [trigger, type, arguments]
 
             result_tuples = []
+            if getattr(self.args, "span_locate", "legacy") == "response":
+                pos = len(item["prompt"])
+                for val in values_to_find:
+                    # the quoted form matches only the whole JSON string ("attack", not the end of
+                    # "conflict attack"); the rows may write non-ASCII as is or as \u escapes
+                    for enc in (json.dumps(val, ensure_ascii=False), json.dumps(val)):
+                        c = full_text.find(enc, pos)
+                        if c != -1:
+                            result_tuples.append((c + 1, c + len(enc) - 1))
+                            pos = c + len(enc)
+                            break
+                self.span_offsets.append(result_tuples)
+                continue
+
             # search_start_idx = len(full_text) - len(response_str)
             search_start_idx = 0
 

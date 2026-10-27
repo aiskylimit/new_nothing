@@ -8,8 +8,10 @@
 # Each part is a switch (env variable, default = BAM); the run dir is named after them:
 #   KD_SCHEDULE=anneal    BAM teacher annealing (KD weight 1 -> 0); constant = fixed KD_RATIO
 #   KD_TYPE=fkl           forward KL, BAM's loss; sfkl = skewed forward KL of EventKD
-#   W_SPAN=0              span loss off; 1.0 = EventKD span loss on teacher layers 33/36 (EE rows only:
-#                         NER and RE rows have no spans yet)
+#   W_SPAN=0              span loss off; 1.0 = EventKD span loss on teacher layers 33/36 (spans: EE trigger,
+#                         type, argument, role; NER entity, type; RE subject, relation, object)
+#   SPAN_LOCATE=response  with W_SPAN > 0: every span where the answer JSON writes it; legacy = the original
+#                         EventKD search (first span usually in the input sentence, the rest in the answer)
 #   SUBSET=               all train rows; 0.5 = fixed square-root subset (same rows as the SFT student's SUBSET=0.5)
 #   TEACHERS=             name=lora_dir,...; empty = best dev epoch of each teacher run in results/ below
 # e.g. KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh ee_v1
@@ -50,6 +52,7 @@ KD_SCHEDULE=${KD_SCHEDULE:-anneal}
 KD_RATIO=${KD_RATIO:-0.9}
 KD_TYPE=${KD_TYPE:-fkl}
 W_SPAN=${W_SPAN:-0}
+SPAN_LOCATE=${SPAN_LOCATE:-response}
 SUBSET=${SUBSET:-}
 TEACHERS=${TEACHERS:-}
 if [ -z "${TEACHERS}" ]; then
@@ -79,7 +82,7 @@ EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}${SUBSET:+_subset${SUBSET}}
+RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")${SUBSET:+_subset${SUBSET}}
 SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}/${RUN}"
 # seed
 SEED=42
@@ -140,6 +143,7 @@ OPTS+=" --deepspeed_config ${BASE_PATH}/configs/deepspeed/ds_config_bf16.json"
 OPTS+=" --type ${KD_TYPE}"
 # span loss
 OPTS+=" --w-span-loss ${W_SPAN}"
+OPTS+=" --span-locate ${SPAN_LOCATE}"
 OPTS+=" --teacher_layer_mapping 33 36"
 OPTS+=" --student_layer_mapping 25 28"
 # gen: greedy (no --do-sample)
