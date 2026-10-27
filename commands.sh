@@ -1,4 +1,10 @@
-#1 +60
+#d
+#datasets
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/train.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/dev.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/valid.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/manifest.json /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference
+
 #impact
 #v1
 
