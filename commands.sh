@@ -1,4 +1,13 @@
-#i impact-opd-b200.txt
+#d
+#models
+--hf meta-llama/Llama-2-7b-hf /mnt/local/@PROJECT@/impact_opd/models/Llama-2-7b-hf
+--hf TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T /mnt/local/@PROJECT@/impact_opd/models/TinyLlama-1.1B-intermediate-step-1431k-3T
+#datasets
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/train.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/dev.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/valid.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/manifest.json /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference
+
 #uni
 #v2
 
