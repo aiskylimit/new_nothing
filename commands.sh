@@ -38,7 +38,7 @@ export NCCL_DEBUG=WARN
 
 cd ./unified-ie
 # bash pack_checkpoints.sh
-tree checkpoint
+tree results
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
 # bash ./run2.sh
