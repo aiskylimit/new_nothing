@@ -11,11 +11,14 @@ from .data import read_jsonl, write_jsonl, save_json
 
 
 def prepare_reference_dolly(root, calib_n=256):
-    """Preserve bundled MiniLLM prompts/splits, auditing duplicate prompts."""
+    """Prepare the downloaded MiniLLM-format Dolly splits without Hub reads."""
     from .data import normalize, digest
     import random
     root = Path(root).resolve()
-    source = Path(__file__).resolve().parents[1] / "data/dolly"
+    source = root / "raw/dolly_reference/original"
+    for split in ("train", "dev", "valid"):
+        if not (source / f"{split}.jsonl").is_file():
+            raise FileNotFoundError(f"Download Dolly first with project_commands.sh download: {source}")
     splits = {s: [dict(normalize(r, "dolly-dskd", f"bundled-dolly/{s}", i),
                        id=f"dolly-dskd:{s}:{i}", prompt_format="raw")
                   for i, r in enumerate(read_jsonl(source / f"{s}.jsonl"))]
@@ -51,7 +54,7 @@ def parse_manifest(path, project_root):
         fields = shlex.split(line, comments=True)
         if not fields:
             continue
-        if len(fields) != 3 or fields[0] not in ("--hf", "--url"):
+        if len(fields) != 3 or fields[0] not in ("--hf", "--hf-dataset", "--url"):
             raise ValueError(f"Invalid download manifest line: {line}")
         kind, source, target = fields
         marker = "/impact_opd/"
@@ -64,13 +67,37 @@ def parse_manifest(path, project_root):
     return entries
 
 
+def verify_dolly_snapshot(target):
+    """Check only the selected original JSONL files; no remote manifest paths are followed."""
+    target = Path(target)
+    manifest = json.loads((target / "manifest.json").read_text())
+    expected = {r["path"]: r for r in manifest["files"]}
+    for split in ("train", "dev", "valid"):
+        name = f"original/{split}.jsonl"
+        path = target / name
+        if name not in expected or not path.is_file():
+            raise ValueError(f"Incomplete Dolly snapshot: {name}")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected[name]["sha256"]:
+            raise ValueError(f"Dolly checksum mismatch: {name}")
+
+
 def download(manifest, root):
     existing = Path(root) / "download_manifest.json"
     records = json.loads(existing.read_text())["entries"] if existing.is_file() else []
     for entry in parse_manifest(manifest, root):
         target = Path(entry["destination"])
         target.mkdir(parents=True, exist_ok=True)
-        if entry["kind"] == "--hf":
+        if entry["kind"] == "--hf-dataset":
+            from huggingface_hub import snapshot_download
+            reference = json.loads((Path(__file__).resolve().parents[1] / "HF_DATASET.json").read_text())
+            if entry["source"] != reference["repo_id"]:
+                raise ValueError("Dataset must match the pinned HF_DATASET.json reference")
+            revision = reference["revision"]
+            snapshot_download(repo_id=entry["source"], repo_type="dataset", revision=revision,
+                local_dir=target, allow_patterns=["original/*.jsonl", "manifest.json", "provenance.json", "README.md", "LICENSE"])
+            verify_dolly_snapshot(target)
+            records.append({**entry, "repo_type": "dataset", "resolved_commit": revision})
+        elif entry["kind"] == "--hf":
             from huggingface_hub import snapshot_download, HfApi
             revision = HfApi().model_info(entry["source"]).sha
             snapshot_download(repo_id=entry["source"], revision=revision, local_dir=target,
@@ -91,6 +118,9 @@ def download(manifest, root):
             records.append({**entry, "file": str(dest), "bytes": dest.stat().st_size,
                             "sha256": hashlib.sha256(dest.read_bytes()).hexdigest()})
         print(entry["destination"], flush=True)
+    dolly_snapshot = Path(root) / "raw/dolly_reference"
+    if (dolly_snapshot / "manifest.json").is_file():
+        verify_dolly_snapshot(dolly_snapshot)
     unique = {(r["kind"], r["source"]): r for r in records}
     save_json(Path(root) / "download_manifest.json", {"entries": list(unique.values())})
 

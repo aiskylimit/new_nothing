@@ -16,9 +16,9 @@ bash project_commands.sh all
 
 Nếu đã clone, cập nhật branch bằng `git pull --ff-only` trước khi chạy. Có thể dùng token từ môi trường `HF_TOKEN`; không ghi token vào manifest/repo. Nếu dùng `hf auth login`, đặt `HF_HOME="$PWD/cache/huggingface"` để login và script dùng cùng cache. [LLaMA-2](https://huggingface.co/meta-llama/Llama-2-7b-hf) yêu cầu quyền truy cập trước khi tải.
 
-Ba file để set máy vẫn là `impact-opd-b200.txt` (env uv/Python 3.11/torch 2.9.0 CUDA 12.8), `download.txt` (model local), `project_commands.sh` (chạy tuần tự). Env mặc định `/mnt/local/uvenvs/impact-opd-b200`; project root tự lấy từ thư mục script. Có thể override `OPD_VENV`, `OPD_PROJECT_ROOT`, `CUDA_VISIBLE_DEVICES`.
+Ba file để set máy vẫn là `impact-opd-b200.txt` (env uv/Python 3.11/torch 2.9.0 CUDA 12.8), `download.txt` (model và dataset local), `project_commands.sh` (chạy tuần tự). Env mặc định `/mnt/local/uvenvs/impact-opd-b200`; project root tự lấy từ thư mục script. Có thể override `OPD_VENV`, `OPD_PROJECT_ROOT`, `CUDA_VISIBLE_DEVICES`.
 
-Preflight kiểm tra B200, BF16 và backward. Từ sau download, các bước dùng model/data/cache local và bật offline. Downloader lưu commit của model trong `download_manifest.json`; preflight kiểm tra tokenizer trước khi bắt đầu teacher SFT. Dolly đã đóng gói trong `data/dolly/`.
+Preflight kiểm tra B200, BF16 và backward. Từ sau download, các bước dùng model/data/cache local và bật offline. Downloader lưu commit của model trong `download_manifest.json`; preflight kiểm tra tokenizer trước khi bắt đầu teacher SFT. Dolly được tải từ Hugging Face vào `raw/dolly_reference/`; thư mục `data/` không còn lưu trên GitHub.
 
 ```text
 prepare Dolly → preflight → teacher SFT → BI ba subsets
@@ -43,7 +43,7 @@ data = load_dataset("pkcii/eval-impact-dolly", "opd", revision="54795e8ce55e1669
 bi = load_dataset("pkcii/eval-impact-dolly", "bi", revision="54795e8ce55e166971eeec88c283e66a5e228241")
 ```
 
-Bản JSONL dùng cho local trainer nằm trong [jsonl/](https://huggingface.co/datasets/pkcii/eval-impact-dolly/tree/main/jsonl); source/checksum và thay đổi split được lưu ở `provenance.json` / `manifest.json`. Pipeline local vẫn chuẩn bị cùng dữ liệu từ Dolly đã đóng gói, không bắt buộc tải lại từ Hub. Link model base được tác giả liệt kê trong [DSKD Models](https://github.com/songmzhang/DSKD#models); không phải checkpoint teacher đã SFT sẵn.
+Bản JSONL dùng cho local trainer nằm trong [jsonl/](https://huggingface.co/datasets/pkcii/eval-impact-dolly/tree/main/jsonl); source/checksum và thay đổi split được lưu ở `provenance.json` / `manifest.json`. Lệnh `project_commands.sh download` tải ba JSONL gốc từ revision đã pin trong `HF_DATASET.json` và kiểm tra checksum. Bước `prepare` dựng train/calibration từ `raw/dolly_reference/original/`, hoàn toàn offline. Các thư mục `raw/` và `data/` được gitignore; GitHub chỉ giữ code và metadata/link data. Link model base được tác giả liệt kê trong [DSKD Models](https://github.com/songmzhang/DSKD#models); không phải checkpoint teacher đã SFT sẵn.
 
 ## Cấu hình tham chiếu
 

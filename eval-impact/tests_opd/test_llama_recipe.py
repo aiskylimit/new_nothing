@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 from opd.b200 import make_plan, execute_job
 from opd.bi import render_prompt
-from opd.data import read_jsonl, save_json
+from opd.data import read_jsonl, save_json, write_jsonl
 from opd.local_assets import prepare_reference_dolly
 from opd.losses import build_direct_batch, direct_opd_loss
 from opd.recipes import apply_recipe
@@ -39,22 +39,27 @@ class LlamaRecipeTests(unittest.TestCase):
 
     def test_reference_split_keeps_prompts_and_excludes_train_test_overlap(self):
         with tempfile.TemporaryDirectory() as temp:
-            prepare_reference_dolly(temp)
+            source = Path(temp) / "raw/dolly_reference/original"
+            original = [{"prompt": prompt, "output": f"answer {i}"} for i, prompt in enumerate(
+                ["train a", "train b", "test a", "train a"])]
+            write_jsonl(source / "train.jsonl", original)
+            write_jsonl(source / "valid.jsonl", [{"prompt": p, "output": "test"} for p in ("test a", "test b")])
+            write_jsonl(source / "dev.jsonl", [{"prompt": p, "output": "dev"} for p in
+                ["train a", "test b", *[f"dev {i}" for i in range(6)]]])
+            prepare_reference_dolly(temp, calib_n=2)
             root = Path(temp) / "data/opd/dolly-dskd"
             train, test = read_jsonl(root / "train.jsonl"), read_jsonl(root / "test.jsonl")
             train_hashes = {r["prompt_sha256"] for r in train}
             test_hashes = {r["prompt_sha256"] for r in test}
-            self.assertEqual((len(train), len(test)), (11421, 500))
+            self.assertEqual((len(train), len(test)), (3, 2))
             self.assertFalse(train_hashes & test_hashes)
-            source = Path(__file__).resolve().parents[1] / "data/dolly/train.jsonl"
-            original = read_jsonl(source)
             for row in train:
                 self.assertEqual(row["prompt"], original[row["source_index"]]["prompt"])
                 self.assertEqual(row["response"], original[row["source_index"]]["output"])
             subsets = []
             for seed in (42, 43, 44):
                 calibration = read_jsonl(root / f"calibration-seed{seed}.jsonl")
-                self.assertEqual(len(calibration), 256)
+                self.assertEqual(len(calibration), 2)
                 self.assertFalse({r["prompt_sha256"] for r in calibration} & (train_hashes | test_hashes))
                 subsets.append([r["id"] for r in calibration])
             self.assertNotEqual(subsets[0], subsets[1])

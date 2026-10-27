@@ -15,3 +15,7 @@ Validation host: macOS CPU, Python 3.10, torch 2.7.0 and transformers 4.55.2. Ta
 No pretrained LLaMA2/TinyLLaMA training, instruction benchmark, math benchmark or CUDA/B200 performance run was performed on this host. The public TinyLLaMA tokenizer was inspected (32,000 tokens, BOS 1, EOS 2, no chat template). The real teacher/student tokenizer compatibility is checked locally before teacher SFT on the target machine; access to gated LLaMA2 weights must already be approved for the user's Hugging Face account.
 
 See [DSKDV2_REFERENCE.md](DSKDV2_REFERENCE.md) for the reference revision, adopted hyperparameters, inferred choices and differences from the published experiment.
+
+After the dataset migration to Hugging Face, unit tests use synthetic data fixtures created in temporary directories; fresh clones no longer need any tracked dataset payload. The published full Dolly snapshot is validated separately through the download/prepare path.
+
+Migration validation: 31 unit tests passed. A fresh staged export without any `data/` directory passed the code-only tests. Both the pinned Hub dataset downloader and the template-compatible `--url` download path were exercised from empty local roots; offline preparation reproduced all six normalized train/test/calibration JSONL files byte-for-byte against the published release.

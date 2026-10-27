@@ -11,6 +11,8 @@ hf-cache/
 # Downloaded model weights and raw data; use download.txt
 models/
 raw/
+# Dataset contents live on Hugging Face; prepare/download recreate these locally.
+/data/
 *.safetensors
 *.pt
 *.pth
