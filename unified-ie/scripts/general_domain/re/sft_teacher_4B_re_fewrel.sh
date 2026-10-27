@@ -26,7 +26,7 @@ BATCH_SIZE=8
 LR=0.0001
 GRAD_ACC=4
 EVAL_BATCH_SIZE=64
-EPOCHS=${EPOCHS:-3}
+EPOCHS=${EPOCHS:-5}   # the first teachers (2026-10-26/27) had 3; run.sh trains those 2 more from their last checkpoint
 # length
 MAX_LENGTH=768
 # runtime
