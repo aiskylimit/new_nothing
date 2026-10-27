@@ -1,15 +1,18 @@
 #! /bin/bash
-# Multi-teacher KD as in BAM (Clark et al. 2019): the Qwen3-0.6B student (full fine-tuning) learns event
-# extraction (ee_v1 or ee_v2: ACE, MAVEN, RAMS, GENEVA) from four Qwen3-4B LoRA teachers, one per source
-# dataset; each row is distilled from the teacher of its own dataset. Same data and hyperparameters as
-# sft_student_0.6B_ee_v*.sh (effective batch 32, 5 epochs), so the SFT student is the baseline.
-#   bash scripts/general_domain/ee/bam_0.6B_4B.sh ee_v1
+# Multi-teacher KD as in BAM (Clark et al. 2019): the Qwen3-0.6B student (full fine-tuning) learns from one
+# Qwen3-4B LoRA teacher per source dataset, each row distilled from the teacher of its own dataset.
+#   bash scripts/general_domain/bam_0.6B_4B.sh mt_v2   # EE + NER + RE in one student, 8 teachers
+#   bash scripts/general_domain/bam_0.6B_4B.sh ee_v1   # EE only (ee_v1 or ee_v2), 4 teachers
+# Same data and hyperparameters as the SFT student of that folder (sft_student_0.6B_mt_v2.sh,
+# sft_student_0.6B_ee_v*.sh), so that student is the baseline.
 # Each part is a switch (env variable, default = BAM); the run dir is named after them:
 #   KD_SCHEDULE=anneal    BAM teacher annealing (KD weight 1 -> 0); constant = fixed KD_RATIO
 #   KD_TYPE=fkl           forward KL, BAM's loss; sfkl = skewed forward KL of EventKD
-#   W_SPAN=0              span loss off; 1.0 = EventKD span loss on teacher layers 33/36
-#   TEACHERS=             name=lora_dir,...; empty = best dev epoch of results/.../sft_4B_<data>_<dataset>
-# e.g. KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/ee/bam_0.6B_4B.sh ee_v1
+#   W_SPAN=0              span loss off; 1.0 = EventKD span loss on teacher layers 33/36 (EE rows only:
+#                         NER and RE rows have no spans yet)
+#   BALANCE=              every row once per epoch; 0.5 = square-root balancing, more epochs (as the SFT student)
+#   TEACHERS=             name=lora_dir,...; empty = best dev epoch of each teacher run in results/ below
+# e.g. KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh ee_v1
 # Standalone; run.sh-style GPU and PORT (defaults below).
 
 GPUS=(${GPU:-7})
@@ -23,18 +26,38 @@ GPUS_PER_NODE=${#GPUS[@]}
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE                   --nnodes $NNODES                   --node_rank $NODE_RANK                   --master_addr $MASTER_ADDR                   --master_port $MASTER_PORT"
 
-DATA=${1:-ee_v1}
+DATA=${1:-mt_v2}
 BASE_PATH=.
+MAPS=${BASE_PATH}/data/general_domain
+# per data folder: teacher runs (dataset=results dir), label maps, prompt width, balanced epochs
+case ${DATA} in
+    ee_v1|ee_v2)
+        TEACHER_RUNS="ace=sft_4B_${DATA}_ace geneva=sft_4B_${DATA}_geneva maven=sft_4B_${DATA}_maven rams=sft_4B_${DATA}_rams"
+        LABEL_MAP=${MAPS}/ee_label_map.tsv
+        MAX_PROMPT=460
+        BALANCED_EPOCHS=13;;
+    mt_v2)
+        TEACHER_RUNS="ace=sft_4B_ee_v2_ace geneva=sft_4B_ee_v2_geneva maven=sft_4B_ee_v2_maven rams=sft_4B_ee_v2_rams"
+        TEACHER_RUNS+=" conll03=sft_4B_ner_v2_conll03 ontonotes=sft_4B_ner_v2_ontonotes"
+        TEACHER_RUNS+=" tacred=sft_4B_re_tacred fewrel=sft_4B_re_fewrel"
+        LABEL_MAP=${MAPS}/ee_label_map.tsv,${MAPS}/ner_label_map.tsv
+        MAX_PROMPT=480
+        BALANCED_EPOCHS=18;;
+    *)
+        echo "unknown data folder ${DATA} (ee_v1, ee_v2, mt_v2)"
+        exit 1;;
+esac
 # switches
 KD_SCHEDULE=${KD_SCHEDULE:-anneal}
 KD_RATIO=${KD_RATIO:-0.9}
 KD_TYPE=${KD_TYPE:-fkl}
 W_SPAN=${W_SPAN:-0}
+BALANCE=${BALANCE:-}
 TEACHERS=${TEACHERS:-}
 if [ -z "${TEACHERS}" ]; then
-    for d in ace geneva maven rams; do
-        lora=$(python tools/best_lora.py ${BASE_PATH}/results/qwen3/general_domain/sft_4B_${DATA}_${d}) || exit 1
-        TEACHERS+="${TEACHERS:+,}${d}=${lora}"
+    for t in ${TEACHER_RUNS}; do
+        lora=$(python tools/best_lora.py ${BASE_PATH}/results/qwen3/general_domain/${t#*=}) || exit 1
+        TEACHERS+="${TEACHERS:+,}${t%%=*}=${lora}"
     done
 fi
 echo "teachers: ${TEACHERS}"
@@ -45,19 +68,20 @@ CKPT="Qwen/Qwen3-0.6B"
 TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="Qwen/Qwen3-4B-Instruct-2507"
 [ -d models/Qwen3-4B-Instruct-2507 ] && TEACHER_CKPT="models/Qwen3-4B-Instruct-2507"
-# data
+# data (folders added after the first processed_data.zip, like mt_v2, come out of the zip here)
 DATA_DIR="${BASE_PATH}/processed_data/general_domain/${DATA}/qwen/"
-# hp: as the SFT student (LR, 5 epochs, effective batch 32), but micro-batch 8 x GRAD_ACC 4 instead of
+[ -f ${DATA_DIR}/train_0.bin ] || python tools/unpack_data.py ${DATA} || exit 1
+# hp: as the SFT student (LR, epochs, effective batch 32), but micro-batch 8 x GRAD_ACC 4 instead of
 # 16 x 2: the teacher forward and the full-vocabulary KL need room on one 80GB GPU
 BATCH_SIZE=8
 LR=0.00005
 GRAD_ACC=4
 EVAL_BATCH_SIZE=128
-EPOCHS=5
+EPOCHS=${EPOCHS:-$([ -n "${BALANCE}" ] && echo ${BALANCED_EPOCHS} || echo 5)}
 # length
 MAX_LENGTH=768
 # runtime
-RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}
+RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}${BALANCE:+_balance${BALANCE}}
 SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}/${RUN}"
 # seed
 SEED=42
@@ -77,9 +101,10 @@ OPTS+=" --n-gpu ${GPUS_PER_NODE}"
 OPTS+=" --data-dir ${DATA_DIR}"
 OPTS+=" --num-workers 0"
 OPTS+=" --dev-num -1"
-# score each source dataset in its own labels; dev answers every epoch, test answers when the mean
-# per-dataset trigger F1 on dev improves
-OPTS+=" --label-map ${BASE_PATH}/data/general_domain/ee_label_map.tsv"
+[ -n "${BALANCE}" ] && OPTS+=" --balance-alpha ${BALANCE}"
+# score each source dataset in its own labels; dev answers every epoch, test answers when the dev score
+# (mean per-dataset F1; for mt_v2 the mean of the EE, NER and RE scores) improves
+OPTS+=" --label-map ${LABEL_MAP}"
 OPTS+=" --eval-gen-mode best"
 # pad each batch to its longest row
 OPTS+=" --dynamic-pad"
@@ -98,7 +123,7 @@ OPTS+=" --kd-schedule ${KD_SCHEDULE}"
 OPTS+=" --kd-ratio ${KD_RATIO}"
 # length
 OPTS+=" --max-length ${MAX_LENGTH}"
-OPTS+=" --max-prompt-length 460"
+OPTS+=" --max-prompt-length ${MAX_PROMPT}"
 # runtime
 OPTS+=" --do-train"
 OPTS+=" --do-valid"

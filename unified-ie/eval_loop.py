@@ -8,7 +8,7 @@ evaluate() makes a loss pass and, with --eval-gen, a generation pass over one sp
 It returns (average loss, score). The score is the dev number the trainers select on: for event
 rows the mean of per-dataset trigger F1 with --label-map (else the pooled trigger F1), for relation
 rows (task "re") the mean of per-dataset triple F1, for entity rows (task "ner", needs --label-map) the
-mean of per-dataset entity F1.
+mean of per-dataset entity F1. A split with several tasks (mt_*) gets the mean of those task scores.
 """
 import json
 import os
@@ -106,6 +106,48 @@ def _hf_responses(args, tokenizer, model, loader, generation_config, device):
     return tokenizer.batch_decode(all_response_ids, skip_special_tokens=True)
 
 
+def score_responses(args, responses, references, rows, split, epoch):
+    """Scores the answers of one split, returns (metrics, dev score). Rows of several tasks (mt_* folders)
+    are scored task by task, each with its own scorer, and the score is the mean of the task scores, so
+    every task weighs the same whatever its number of datasets."""
+    tasks = sorted({r.get("task") for r in rows}, key=str)
+    if len(tasks) > 1:
+        res, scores = {}, {}
+        for task in tasks:
+            idx = [i for i, r in enumerate(rows) if r.get("task") == task]
+            res[task], scores[task] = score_responses(args, [responses[i] for i in idx], [references[i] for i in idx],
+                                                      [rows[i] for i in idx], split, epoch)
+        res["mean_task_score"] = sum(scores.values()) / len(scores)
+        line = (f"RESULT {split} epoch {epoch} | tasks   | " + " | ".join(f"{t} {100 * s:.2f}" for t, s in scores.items())
+                + f" | mean {100 * res['mean_task_score']:.2f}")
+        print_rank(line)
+        save_rank(line, os.path.join(args.save, "log.txt"))
+        return res, res["mean_task_score"]
+
+    res = compute_metrics(responses, references)
+    task = tasks[0]
+    if task in ("re", "ner"):
+        if task == "re":
+            res["by_dataset"] = re_evaluate_by_dataset(responses, rows)
+            score = res["by_dataset"]["macro_triple_f1"]
+        else:
+            res["by_dataset"] = ner_evaluate_by_dataset(responses, rows, load_label_map(args.label_map))
+            score = res["by_dataset"]["macro_entity_f1"]
+        summary = format_by_dataset(res["by_dataset"], split, epoch)
+        print_rank(summary)
+        save_rank(summary, os.path.join(args.save, "log.txt"))
+    else:
+        res.update(ed_evaluate(responses, references))
+        score = res["trigger"]["f1"]
+    if args.label_map is not None and task not in ("re", "ner"):
+        res["by_dataset"] = ed_evaluate_by_dataset(responses, rows, load_label_map(args.label_map))
+        score = res["by_dataset"]["macro_trigger_f1"]
+        summary = format_by_dataset(res["by_dataset"], split, epoch)
+        print_rank(summary)
+        save_rank(summary, os.path.join(args.save, "log.txt"))
+    return res, score
+
+
 def evaluate(args, tokenizer, model, dataset, split, epoch, device, adaptive_threshold=None):
     dp_world_size = dist.get_world_size()
     loss_func = nn.CrossEntropyLoss()
@@ -140,27 +182,7 @@ def evaluate(args, tokenizer, model, dataset, split, epoch, device, adaptive_thr
         if responses is not None:
             references = dataset.answers
             responses = responses[:len(references)]
-            res = compute_metrics(responses, references)
-            task = dataset.raw[0].get("task")
-            if task in ("re", "ner"):
-                if task == "re":
-                    res["by_dataset"] = re_evaluate_by_dataset(responses, dataset.raw)
-                    score[0] = res["by_dataset"]["macro_triple_f1"]
-                else:
-                    res["by_dataset"] = ner_evaluate_by_dataset(responses, dataset.raw, load_label_map(args.label_map))
-                    score[0] = res["by_dataset"]["macro_entity_f1"]
-                summary = format_by_dataset(res["by_dataset"], split, epoch)
-                print_rank(summary)
-                save_rank(summary, os.path.join(args.save, "log.txt"))
-            else:
-                res.update(ed_evaluate(responses, references))
-                score[0] = res["trigger"]["f1"]
-            if args.label_map is not None and task not in ("re", "ner"):
-                res["by_dataset"] = ed_evaluate_by_dataset(responses, dataset.raw, load_label_map(args.label_map))
-                score[0] = res["by_dataset"]["macro_trigger_f1"]
-                summary = format_by_dataset(res["by_dataset"], split, epoch)
-                print_rank(summary)
-                save_rank(summary, os.path.join(args.save, "log.txt"))
+            res, score[0] = score_responses(args, responses, references, dataset.raw, split, epoch)
             eval_dir = os.path.join(args.save, "eval", str(epoch))
             os.makedirs(eval_dir, exist_ok=True)
             with open(os.path.join(eval_dir, f"{split}_answers.jsonl"), "w") as f:

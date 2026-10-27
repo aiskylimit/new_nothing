@@ -1,6 +1,6 @@
 #! /bin/bash
 # usage: bash scripts/general_domain/process_data.sh ee_v1
-# DATA: folder under data/general_domain (ee_v1, ee_v2, re_tacred, re_fewrel; NER needs --max-prompt-length 480)
+# DATA: folder under data/general_domain (ee_v1, ee_v2, re_tacred, re_fewrel; NER and mt_v2 need --max-prompt-length 480)
 DATA=${1:-ee_v1}
 
 export TF_CPP_MIN_LOG_LEVEL=3

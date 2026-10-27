@@ -189,12 +189,15 @@ def ed_evaluate(pred_list, gt_list):
 # ---- per-dataset scoring for the merged label set (data/general_domain) ----
 
 def load_label_map(path):
-    """dataset -> {normalized merged label (v1 or v2 spelling): label in the dataset's own scheme}."""
+    """dataset -> {normalized merged label (v1 or v2 spelling): label in the dataset's own scheme}.
+    `path` may list several maps, comma-separated (mt_* folders: ee_label_map.tsv,ner_label_map.tsv);
+    they are keyed by dataset, and no dataset is in two of them."""
     label_map = defaultdict(dict)
-    with open(path, encoding="utf-8") as f:
-        for r in csv.DictReader(f, delimiter="\t"):
-            for col in ("label_v1", "label_v2"):
-                label_map[r["dataset"]][normalize(r[col])] = r["eval_label"]
+    for p in path.split(","):
+        with open(p, encoding="utf-8") as f:
+            for r in csv.DictReader(f, delimiter="\t"):
+                for col in ("label_v1", "label_v2"):
+                    label_map[r["dataset"]][normalize(r[col])] = r["eval_label"]
     return label_map
 
 def scheme_label(dataset, label):
