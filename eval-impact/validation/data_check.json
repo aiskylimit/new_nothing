@@ -1,0 +1,20 @@
+{
+  "dolly": {
+    "train": 4000,
+    "calibration": 256,
+    "disjoint": true,
+    "train_sources_only": true
+  },
+  "gsm8k": {
+    "train": 4000,
+    "calibration": 256,
+    "disjoint": true,
+    "train_sources_only": true
+  },
+  "mixed": {
+    "train": 4000,
+    "calibration": 256,
+    "disjoint": true,
+    "train_sources_only": true
+  }
+}

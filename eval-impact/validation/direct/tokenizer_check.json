@@ -1,0 +1,12 @@
+{
+  "student": "Qwen/Qwen2.5-Math-1.5B-Instruct",
+  "teacher": "Qwen/Qwen2.5-Math-7B-Instruct",
+  "tokenizer_compatible": true,
+  "actual_shared_token_ids": 151665,
+  "max_token_id": 151664,
+  "student_output_vocab": 151936,
+  "teacher_output_vocab": 152064,
+  "student_commit": "aafeb0fc6f22cbf0eaeed126eff8be45b0360a35",
+  "teacher_commit": "ef9926d75ab1d54532f6a30dd5e760355eb9aa4d",
+  "padding_policy": "exclude only unassigned LM-head rows for KL and generation"
+}

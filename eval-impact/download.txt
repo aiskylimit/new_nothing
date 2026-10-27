@@ -1,0 +1,11 @@
+# Default OPD pair: base checkpoints, shared LLaMA tokenizer.
+# LLaMA-2 requires prior approved Hugging Face access (use HF_TOKEN / hf auth login).
+# Downloader remaps /impact_opd/ suffix into OPD_PROJECT_ROOT.
+--hf meta-llama/Llama-2-7b-hf /mnt/local/@PROJECT@/impact_opd/models/Llama-2-7b-hf
+--hf TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T /mnt/local/@PROJECT@/impact_opd/models/TinyLlama-1.1B-intermediate-step-1431k-3T
+# Dataset revision is pinned in HF_DATASET.json; JSONL originals are verified on download.
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/train.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/dev.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/original/valid.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference/original
+--url https://huggingface.co/datasets/pkcii/eval-impact-dolly/resolve/54795e8ce55e166971eeec88c283e66a5e228241/manifest.json /mnt/local/@PROJECT@/impact_opd/raw/dolly_reference
+# No MATH-500/GSM8K models or data are downloaded by this manifest.

@@ -1,0 +1,19 @@
+{
+  "checked_latest_three_files": [
+    {
+      "name": "talas-vlm-embed.txt",
+      "sha256": "0d97eef1c9d4e87f34fde88b95b1b8e2aa94d26e9955775f9f3ef4c76c1f7b47",
+      "bytes": 509
+    },
+    {
+      "name": "download.txt",
+      "sha256": "e45c9d45c0f8cf51bbe4405a140f6a8cf9bfaf32f504b6db326f3e83f75813b7",
+      "bytes": 14482
+    },
+    {
+      "name": "project_commands.sh",
+      "sha256": "f5fd193a976bd6a3a17b42b95d558c89246a0172c6454ca54d8108dd6613018c",
+      "bytes": 2303
+    }
+  ]
+}

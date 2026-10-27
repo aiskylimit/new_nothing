@@ -1,0 +1,33 @@
+# Local environments and caches
+.venv*/
+venv/
+validation/eval-env/
+__pycache__/
+*.py[cod]
+.DS_Store
+cache/
+.hf-cache/
+hf-cache/
+# Downloaded model weights and raw data; use download.txt
+models/
+raw/
+# Dataset contents live on Hugging Face; prepare/download recreate these locally.
+/data/
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.onnx
+*.gguf
+# Runtime results
+outputs/
+runs/
+logs/
+*.log
+# Local credentials and archives
+.env
+.env.*
+!.env.example
+*.zip
+*.tar
+*.tar.gz

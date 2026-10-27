@@ -1,0 +1,10 @@
+# Same --hf / --url format as the user's download.txt.
+# @PROJECT@ is replaced by the platform, or use opd.local_assets --project-root.
+# models: default math-small profile
+--hf Qwen/Qwen2.5-Math-7B-Instruct /mnt/local/@PROJECT@/impact_opd/models/Qwen2.5-Math-7B-Instruct
+--hf Qwen/Qwen2.5-Math-1.5B-Instruct /mnt/local/@PROJECT@/impact_opd/models/Qwen2.5-Math-1.5B-Instruct
+# raw training and evaluation data, all stored on local disk
+--url https://huggingface.co/datasets/databricks/databricks-dolly-15k/resolve/main/databricks-dolly-15k.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly
+--url https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/train-00000-of-00001.parquet /mnt/local/@PROJECT@/impact_opd/raw/gsm8k
+--url https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/test-00000-of-00001.parquet /mnt/local/@PROJECT@/impact_opd/raw/gsm8k
+--url https://huggingface.co/datasets/HuggingFaceH4/MATH-500/resolve/main/test.jsonl /mnt/local/@PROJECT@/impact_opd/raw/math500

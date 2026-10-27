@@ -1,0 +1,8 @@
+{
+  "student": "Qwen/Qwen2.5-0.5B-Instruct",
+  "teacher": "Qwen/Qwen2.5-1.5B-Instruct",
+  "tokenizer_compatible": true,
+  "actual_shared_token_ids": 151665,
+  "student_head_size": 151936,
+  "teacher_head_size": 151936
+}
