@@ -59,16 +59,31 @@ EOF
 fi
 
 # same as run.sh: the jobs run one after the other on the GPU, on torchrun port 29500 + 10 x GPU
+QUEUE_LOGS=() QUEUE_PID=""
 start () {  # $1 = GPU, then jobs: script path under scripts/general_domain/, optionally :<dataset>
     local gpu=$1; shift
-    local cmd=""
+    local mark=logs/.${PREFIX}gpu${gpu}_started
+    local cmd=": > ${mark}; "
     for j in "$@"; do
         local s=${j%%:*} ds=""
         [ "${j}" != "${s}" ] && ds=${j#*:}
-        cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu + PORT_OFFSET)) bash scripts/general_domain/${s}.sh ${ds} > logs/${PREFIX}$(basename ${s})${ds:+_${ds}}.log 2>&1; "
+        local log=logs/${PREFIX}$(basename ${s})${ds:+_${ds}}.log
+        cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu + PORT_OFFSET)) bash scripts/general_domain/${s}.sh ${ds} > ${log} 2>&1; "
+        QUEUE_LOGS+=("${log}")
     done
+    rm -f ${mark} "${QUEUE_LOGS[@]}"  # the queue rewrites them; removed so the console doesn't replay old runs
     nohup bash -c "${cmd}" > /dev/null 2>&1 &
-    echo "started gpu${gpu} (pid $!): $*"
+    local pid=$!
+    QUEUE_PID=${pid}
+    # the runner hangs up the session as soon as this script exits; a queue still starting up (before nohup
+    # has made it ignore SIGHUP) dies then without writing a single log, which is what kept hitting the GPU 7
+    # queue, the last one started. Wait until the queue's own bash runs (from then on it ignores SIGHUP).
+    for i in $(seq 50); do [ -f ${mark} ] && break; sleep 0.2; done
+    if [ -f ${mark} ]; then
+        echo "started gpu${gpu} (pid ${pid}): $*"
+    else
+        echo "gpu${gpu} queue did not start within 10 s"
+    fi
 }
 
 start 7 ee/sft_teacher_4B_ee_v2:rams re/sft_teacher_4B_re_tacred \
@@ -76,3 +91,8 @@ start 7 ee/sft_teacher_4B_ee_v2:rams re/sft_teacher_4B_re_tacred \
     ee/sft_student_0.6B_ee_v1 ee/sft_student_0.6B_ee_v2 re/sft_student_0.6B_re_fewrel
 
 echo "follow: tail -f logs/*.log    results: grep -rh RESULT results/qwen3/general_domain --include=log.txt"
+
+# the logs also go to this console, until the queue ends. The queue runs on its own: if the runner stops this
+# script (time limit, hang-up), only the console copy stops, the training and logs/ go on.
+tail -n +1 -F --pid=${QUEUE_PID} "${QUEUE_LOGS[@]}" 2>/dev/null
+echo "gpu7 queue finished"
