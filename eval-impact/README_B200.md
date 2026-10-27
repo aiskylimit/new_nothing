@@ -39,8 +39,8 @@ RUN_NAME=llama2-existing-teacher bash project_commands.sh all
 ```python
 from datasets import load_dataset
 
-data = load_dataset("pkcii/eval-impact-dolly", "opd", revision="83ff3bde423f990f1210b400b0a112d205159e2a")
-bi = load_dataset("pkcii/eval-impact-dolly", "bi", revision="83ff3bde423f990f1210b400b0a112d205159e2a")
+data = load_dataset("pkcii/eval-impact-dolly", "opd", revision="54795e8ce55e166971eeec88c283e66a5e228241")
+bi = load_dataset("pkcii/eval-impact-dolly", "bi", revision="54795e8ce55e166971eeec88c283e66a5e228241")
 ```
 
 Bản JSONL dùng cho local trainer nằm trong [jsonl/](https://huggingface.co/datasets/pkcii/eval-impact-dolly/tree/main/jsonl); source/checksum và thay đổi split được lưu ở `provenance.json` / `manifest.json`. Pipeline local vẫn chuẩn bị cùng dữ liệu từ Dolly đã đóng gói, không bắt buộc tải lại từ Hub. Link model base được tác giả liệt kê trong [DSKD Models](https://github.com/songmzhang/DSKD#models); không phải checkpoint teacher đã SFT sẵn.

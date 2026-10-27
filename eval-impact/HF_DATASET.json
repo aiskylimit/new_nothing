@@ -2,7 +2,7 @@
   "repo_id": "pkcii/eval-impact-dolly",
   "repo_type": "dataset",
   "url": "https://huggingface.co/datasets/pkcii/eval-impact-dolly",
-  "revision": "83ff3bde423f990f1210b400b0a112d205159e2a",
+  "revision": "54795e8ce55e166971eeec88c283e66a5e228241",
   "configs": {
     "opd": {
       "train": 11421,
@@ -25,5 +25,11 @@
   "verified_content_hashes": true,
   "math500_gsm8k_included": false,
   "model_weights_included": false,
-  "model_source": "https://github.com/songmzhang/DSKD/blob/9962b495eb248d5b9d519cf471e7d0e8d7e9b206/README.md#models"
+  "model_source": "https://github.com/songmzhang/DSKD/blob/9962b495eb248d5b9d519cf471e7d0e8d7e9b206/README.md#models",
+  "verified_load_dataset_configs": [
+    "opd",
+    "bi",
+    "original"
+  ],
+  "verified_split_disjointness": true
 }
