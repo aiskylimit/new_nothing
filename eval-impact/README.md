@@ -32,6 +32,19 @@ TEACHER_ADAPTER=/mnt/local/PROJECT_NAME/teacher_adapter \
 RUN_NAME=llama2-existing-teacher bash project_commands.sh all
 ```
 
+## Data trên Hugging Face
+
+Đã upload data đang dùng tại [pkcii/eval-impact-dolly](https://huggingface.co/datasets/pkcii/eval-impact-dolly), gồm `opd` (train/BI validation/test), `bi` (ba calibration subsets), và `original` (split gốc để đối chiếu). Chỉ có Dolly; không có MATH/GSM hoặc trọng số model. License data: CC BY-SA 3.0.
+
+```python
+from datasets import load_dataset
+
+data = load_dataset("pkcii/eval-impact-dolly", "opd", revision="83ff3bde423f990f1210b400b0a112d205159e2a")
+bi = load_dataset("pkcii/eval-impact-dolly", "bi", revision="83ff3bde423f990f1210b400b0a112d205159e2a")
+```
+
+Bản JSONL dùng cho local trainer nằm trong [jsonl/](https://huggingface.co/datasets/pkcii/eval-impact-dolly/tree/main/jsonl); source/checksum và thay đổi split được lưu ở `provenance.json` / `manifest.json`. Pipeline local vẫn chuẩn bị cùng dữ liệu từ Dolly đã đóng gói, không bắt buộc tải lại từ Hub. Link model base được tác giả liệt kê trong [DSKD Models](https://github.com/songmzhang/DSKD#models); không phải checkpoint teacher đã SFT sẵn.
+
 ## Cấu hình tham chiếu
 
 Đối chiếu [repo DSKDv2](https://github.com/songmzhang/DSKDv2/tree/ae4993e8b857ca001742de651498dc627138dd32) và [paper, Table I / Experimental Setup](https://arxiv.org/html/2504.11426v1#S4.SS1). Chi tiết nguồn và phần khác biệt nằm ở [DSKDV2_REFERENCE.md](DSKDV2_REFERENCE.md).
