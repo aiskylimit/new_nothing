@@ -4,7 +4,7 @@
 # which keeps only its rows); students one per task. One queue per GPU, so each GPU runs one job at a time.
 # Now, on GPUs 4-6 (GPU 7 runs run2.sh): teachers go to 5 epochs. The 3 EE teachers whose 2026-10-26 run used
 # the old EE data (no arguments) train again from scratch; the other 9 teachers go on from their 3-epoch
-# checkpoint for 2 more. The full plan of the first round is kept below, commented out.
+# checkpoint for 2 more (the 3 are done, so only those 9 are started now). The full plan of the first round is kept below, commented out.
 # EE = events with arguments on ACE/MAVEN/RAMS/GENEVA (ee_v1, ee_v2; MAVEN/RAMS have no arguments, so the
 # loss skips their []), NER = CoNLL-2003 + OntoNotes (ner_v2), RE = TACRED, FewRel.
 # Console output: logs/<script>[_<dataset>].log. Training log with the RESULT lines:
@@ -109,16 +109,23 @@ cont () {  # $1 = job, $2 = run folder: "$1@<highest step of its 3-epoch run>", 
     if [ -z "${c}" ]; then echo "no 3-epoch checkpoint for $2: not continued" >&2; return; fi
     echo "$1@${c}"
 }
-# queues balanced on the time the runs took (MAVEN ~85 min for 3 epochs, OntoNotes ~155, FewRel ~95, ...),
-# about 3.2-3.6 h each
-start 4 ee/sft_teacher_4B_ee_v1:maven \
-    $(cont re/sft_teacher_4B_re_tacred sft_4B_re_tacred) \
+# first try (2026-10-27): the 3 from scratch finished; the 9 continued ones all stopped at argparse (the
+# suffix "-from<step>" was read as a flag), fixed in the teacher scripts.
+# start 4 ee/sft_teacher_4B_ee_v1:maven \
+#     $(cont re/sft_teacher_4B_re_tacred sft_4B_re_tacred) \
+#     $(cont ee/sft_teacher_4B_ee_v1:ace sft_4B_ee_v1_ace) $(cont ee/sft_teacher_4B_ee_v2:ace sft_4B_ee_v2_ace)
+# start 5 ee/sft_teacher_4B_ee_v2:maven \
+#     $(cont re/sft_teacher_4B_re_fewrel sft_4B_re_fewrel)
+# start 6 ee/sft_teacher_4B_ee_v1:rams \
+#     $(cont ner/sft_teacher_4B_ner:ontonotes sft_4B_ner_v2_ontonotes) $(cont ner/sft_teacher_4B_ner:conll03 sft_4B_ner_v2_conll03) \
+#     $(cont ee/sft_teacher_4B_ee_v1:geneva sft_4B_ee_v1_geneva) $(cont ee/sft_teacher_4B_ee_v2:geneva sft_4B_ee_v2_geneva) \
+#     $(cont ee/sft_teacher_4B_ee_v2:rams sft_4B_ee_v2_rams)
+# now only the 9 continued ones, queues balanced on 2/3 of the 3-epoch time (OntoNotes ~105 min, FewRel ~65,
+# CoNLL03 ~35, ...), about 1.5-1.8 h each
+start 4 $(cont ner/sft_teacher_4B_ner:ontonotes sft_4B_ner_v2_ontonotes)
+start 5 $(cont re/sft_teacher_4B_re_fewrel sft_4B_re_fewrel) $(cont ee/sft_teacher_4B_ee_v2:rams sft_4B_ee_v2_rams) \
     $(cont ee/sft_teacher_4B_ee_v1:ace sft_4B_ee_v1_ace) $(cont ee/sft_teacher_4B_ee_v2:ace sft_4B_ee_v2_ace)
-start 5 ee/sft_teacher_4B_ee_v2:maven \
-    $(cont re/sft_teacher_4B_re_fewrel sft_4B_re_fewrel)
-start 6 ee/sft_teacher_4B_ee_v1:rams \
-    $(cont ner/sft_teacher_4B_ner:ontonotes sft_4B_ner_v2_ontonotes) $(cont ner/sft_teacher_4B_ner:conll03 sft_4B_ner_v2_conll03) \
-    $(cont ee/sft_teacher_4B_ee_v1:geneva sft_4B_ee_v1_geneva) $(cont ee/sft_teacher_4B_ee_v2:geneva sft_4B_ee_v2_geneva) \
-    $(cont ee/sft_teacher_4B_ee_v2:rams sft_4B_ee_v2_rams)
+start 6 $(cont ner/sft_teacher_4B_ner:conll03 sft_4B_ner_v2_conll03) $(cont re/sft_teacher_4B_re_tacred sft_4B_re_tacred) \
+    $(cont ee/sft_teacher_4B_ee_v1:geneva sft_4B_ee_v1_geneva) $(cont ee/sft_teacher_4B_ee_v2:geneva sft_4B_ee_v2_geneva)
 
 echo "follow: tail -f logs/*.log    results: grep -rh RESULT results/qwen3/general_domain --include=log.txt"
