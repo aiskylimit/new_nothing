@@ -1,0 +1,13 @@
+{
+  "fixture_only": true,
+  "tests_passed": 16,
+  "opd_baseline_has_no_projectors": true,
+  "resume_matches_uninterrupted_bitwise": {
+    "student": true,
+    "projection": true,
+    "rng": true,
+    "data_pointer": true,
+    "no_dual_space_keys": true,
+    "direct_objective": true
+  }
+}

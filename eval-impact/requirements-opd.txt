@@ -1,0 +1,11 @@
+# Separate environment for the new runner; it does not need DeepSpeed/CVXPy/spaCy.
+torch>=2.6,<3
+transformers>=4.51,<5
+tokenizers>=0.21,<0.23
+accelerate>=1.6,<2
+peft>=0.15,<1
+datasets>=3,<5
+numpy>=1.26,<3
+scipy>=1.11,<2
+sentencepiece>=0.2
+safetensors>=0.5
