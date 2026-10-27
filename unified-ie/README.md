@@ -60,22 +60,22 @@ One student on all three tasks (`mt_v2`), the SFT baseline and multi-teacher KD 
 
 ```bash
 bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh                 # CE only, every row once per epoch, 5 epochs
-BALANCE=0.5 bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh     # square-root balancing, 18 epochs
+SUBSET=0.5 bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh      # fixed square-root subset, 5 epochs
 bash scripts/general_domain/bam_0.6B_4B.sh mt_v2                          # BAM, 8 teachers
 KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh mt_v2   # EventKD losses, same teachers
 bash scripts/general_domain/bam_0.6B_4B.sh ee_v1                          # EE only, 4 teachers
 ```
 
-With `BALANCE=0.5` an `mt_v2` epoch is 41,183 rows (GENEVA all 1,872, TACRED 2,934, ACE 2,402, RAMS 3,453, CoNLL 5,127, MAVEN 7,009, FewRel 7,795, OntoNotes 10,591), so 18 epochs give about the updates of 5 plain ones.
+Two data settings, both without duplicated rows: all 148,583 train rows, or with `SUBSET=0.5` (`--subset-alpha 0.5`) a fixed subset where each dataset keeps rows prop. to the square root of its size and the rest is dropped: 41,183 rows (GENEVA all 1,872, TACRED 2,934, ACE 2,402, RAMS 3,453, CoNLL 5,127, MAVEN 7,009, FewRel 7,795, OntoNotes 10,591). The rows are drawn once with the seed, so the SFT student and BAM train on the same subset, and both settings run 5 epochs with each row once per epoch. Checked on CPU: per-dataset counts equal the quotas, no row twice, the same rows on every run with seed 42, every kept row matches its tokenized row, and it composes with `--datasets`.
 
 The BAM student (full fine-tuning, same data and hyperparameters as the SFT student of that folder) learns from Qwen3-4B LoRA teachers, one per source dataset, and each row is distilled only from the teacher of its own dataset (`--teacher-peft-paths ace=<dir>,conll03=<dir>,...`): on `mt_v2` the four `ee_v2` teachers, the two `ner_v2` ones, TACRED and FewRel. The base 4B is loaded once with one unmerged adapter per dataset. Each batch runs one teacher forward per dataset in it and puts the logits and hidden states back in row order. That's fine for the span loss, since it only compares spans inside a row. Without `TEACHERS=`, the script takes each teacher's best dev epoch from its results dir (`sft_4B_<data>_<dataset>`, `sft_4B_re_<dataset>`) (`tools/best_lora.py`; a `PEFT_PATH` continuation in `<settings>-from<step>` competes on its dev score too).
 
-Every part is its own switch, so a rerun only changes a flag; the run dir `bam_0.6B_4B_<data>/<type>_<schedule>_span<w>[_balance<a>]` is named after them:
+Every part is its own switch, so a rerun only changes a flag; the run dir `bam_0.6B_4B_<data>/<type>_<schedule>_span<w>[_subset<a>]` is named after them:
 
 - `--kd-schedule anneal` (`KD_SCHEDULE`): BAM's teacher annealing, the KD weight goes linearly from 1 to 0 over training, so the student starts on the teacher and ends on the gold labels. `constant` uses `--kd-ratio`.
 - `--type fkl` (`KD_TYPE`): forward KL, which is BAM's loss (CE on the teacher's distribution). `sfkl` is the skewed KL from EventKD.
 - `--w-span-loss` (`W_SPAN`): 0 turns the span loss off and skips the teacher's hidden states; 1.0 is EventKD's. Spans come from events only, so NER and RE rows add nothing to it yet.
-- `--balance-alpha` (`BALANCE`): as for the SFT student.
+- `--subset-alpha` (`SUBSET`): the same square-root subset as the SFT student.
 
 Checked on CPU with a tiny Qwen3 and random LoRAs: each row's routed logits and hidden states match its own merged LoRA to float error (relative 3e-5, while the two teachers differ by 1.22), the span loss and KL run on a real ee_v1 dev batch mixing all four datasets and on an `mt_v2` batch with one row of each of the 8 datasets (8 adapters, every row equal to its own adapter alone), and a LoRA student's layers are the same through `get_decoder()` as before.
 
@@ -86,7 +86,7 @@ bash scripts/general_domain/sft_student_0.6B.sh ee_v1          # every row once 
 bash scripts/general_domain/sft_student_0.6B.sh ee_v1 0.5      # square-root balancing, 13 epochs
 ```
 
-`--balance-alpha a` (BalancedSampler) gives dataset d a share of every epoch prop. to n_d^a, with no row twice in an epoch. With a = 0.5 on ee_v* an epoch is GENEVA 1,872 (all) + ACE 2,402 + RAMS 3,452 + MAVEN 7,009 rows. Each dataset is walked through a shuffled order across epochs, so every row is used before any row is used again (after 13 epochs: MAVEN rows 3-4 times, RAMS 7-8, ACE 10-11, GENEVA 13). The seed only fixes the order. Each epoch's row list is saved to `balanced_epochs/epoch_<e>_indices.json`.
+`--balance-alpha a` (BalancedSampler, not used by the multi-task scripts since it repeats rows of small datasets) gives dataset d a share of every epoch prop. to n_d^a, with no row twice in an epoch. With a = 0.5 on ee_v* an epoch is GENEVA 1,872 (all) + ACE 2,402 + RAMS 3,452 + MAVEN 7,009 rows. Each dataset is walked through a shuffled order across epochs, so every row is used before any row is used again (after 13 epochs: MAVEN rows 3-4 times, RAMS 7-8, ACE 10-11, GENEVA 13). The seed only fixes the order. Each epoch's row list is saved to `balanced_epochs/epoch_<e>_indices.json`.
 
 Things that differ from the original EventKD scripts:
 

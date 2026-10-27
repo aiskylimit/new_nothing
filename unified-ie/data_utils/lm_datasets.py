@@ -40,6 +40,8 @@ class LMTrainDataset(Dataset):
                     self.keep = [i for i, x in enumerate(self.raw) if x["dataset"] in wanted]
                     assert self.keep, f"no {split} rows for --datasets {args.datasets}"
                     self.raw = [self.raw[i] for i in self.keep]
+                if split == "train" and getattr(args, "subset_alpha", None) is not None:
+                    self.take_subset(args.subset_alpha, args.seed)
                 self.answers = [x["response"] if isinstance(x["response"], list) else [x["response"]] for x in self.raw]
                 self.full_texts = [x["prompt"] + x["response"] for x in self.raw]
                 self.offset_mapping = [tokenizer(text, return_offsets_mapping=True, truncation=True, 
@@ -58,6 +60,23 @@ class LMTrainDataset(Dataset):
             self.num = num
 
         print_rank(f"Num LM instances: {rows}")
+
+    def take_subset(self, alpha, seed):
+        """--subset-alpha: keep balanced_quota(alpha) rows of every source dataset, drawn once with the seed
+        (same rows for every run with that seed), and drop the rest. Composes with --datasets: self.keep
+        still maps a kept row to its .bin row."""
+        assert getattr(self.args, "balance_alpha", None) is None, "--subset-alpha and --balance-alpha exclude each other"
+        groups = {}
+        for i, x in enumerate(self.raw):
+            groups.setdefault(x["dataset"], []).append(i)
+        quota = balanced_quota([x["dataset"] for x in self.raw], alpha)
+        rng = random.Random(seed)
+        chosen = sorted(i for d in sorted(groups) for i in rng.sample(groups[d], quota[d]))
+        base = self.keep if self.keep is not None else list(range(len(self.raw)))
+        self.keep = [base[i] for i in chosen]
+        self.raw = [self.raw[i] for i in chosen]
+        print_rank(f"--subset-alpha {alpha}: train rows " + ", ".join(
+            f"{d} {quota[d]}/{len(groups[d])}" for d in sorted(groups)) + f" (total {len(chosen)})")
 
     def get_span_offsets(self):
         self.span_offsets = []
