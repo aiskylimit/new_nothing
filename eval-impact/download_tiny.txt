@@ -1,3 +1,9 @@
 # Optional smaller pair. Reuse dataset files downloaded by download.txt.
 --hf Qwen/Qwen2.5-1.5B-Instruct /mnt/local/@PROJECT@/impact_opd/models/Qwen2.5-1.5B-Instruct
 --hf Qwen/Qwen2.5-0.5B-Instruct /mnt/local/@PROJECT@/impact_opd/models/Qwen2.5-0.5B-Instruct
+
+# Optional legacy-profile data (not used by the default LLaMA run).
+--url https://huggingface.co/datasets/databricks/databricks-dolly-15k/resolve/main/databricks-dolly-15k.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly
+--url https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/train-00000-of-00001.parquet /mnt/local/@PROJECT@/impact_opd/raw/gsm8k
+--url https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/test-00000-of-00001.parquet /mnt/local/@PROJECT@/impact_opd/raw/gsm8k
+--url https://huggingface.co/datasets/HuggingFaceH4/MATH-500/resolve/main/test.jsonl /mnt/local/@PROJECT@/impact_opd/raw/math500

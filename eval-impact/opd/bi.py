@@ -22,11 +22,13 @@ def masked_bi(hidden_states, attention_mask):
     return torch.stack(scores, dim=1)
 
 
-def render_prompt(tokenizer, prompt):
+def render_prompt(tokenizer, prompt, prompt_format="auto"):
+    if prompt_format == "raw":
+        return prompt
     if getattr(tokenizer, "chat_template", None):
         return tokenizer.apply_chat_template([{"role": "user", "content": prompt}],
                     tokenize=False, add_generation_prompt=True, enable_thinking=False)
-    return prompt + "\n"
+    return prompt
 
 
 def summarize(samples, metadata, top_k=6, tau=2.0, bootstrap=1000, seed=42):
@@ -66,7 +68,7 @@ def summarize(samples, metadata, top_k=6, tau=2.0, bootstrap=1000, seed=42):
 
 @torch.no_grad()
 def collect(model, tokenizer, rows, out, model_id, max_length=1024, batch_size=1,
-            top_k=6, tau=2.0, seed=42, text_mode="prompt", revision=None):
+            top_k=6, tau=2.0, seed=42, text_mode="prompt", revision=None, adapter_sha256=None):
     out = Path(out)
     if not rows or batch_size < 1 or max_length < 1:
         raise ValueError("Nonempty calibration set and positive lengths/batch sizes required")
@@ -82,10 +84,10 @@ def collect(model, tokenizer, rows, out, model_id, max_length=1024, batch_size=1
     try:
         for i in range(0, len(rows), batch_size):
             chunk = rows[i:i + batch_size]
-            texts = [render_prompt(tokenizer, r["prompt"]) +
+            texts = [render_prompt(tokenizer, r["prompt"], r.get("prompt_format", "auto")) +
                      (r.get("response", "") if text_mode == "prompt_response" else "") for r in chunk]
             enc = tokenizer(texts, padding=True, truncation=True, max_length=max_length,
-                            add_special_tokens=False, return_tensors="pt")
+                            add_special_tokens=False, return_token_type_ids=False, return_tensors="pt")
             enc = {k: v.to(device) for k, v in enc.items()}
             outputs = model(**enc, use_cache=False, output_hidden_states=True)
             values = masked_bi(outputs.hidden_states, enc["attention_mask"]).cpu().tolist()
@@ -99,7 +101,7 @@ def collect(model, tokenizer, rows, out, model_id, max_length=1024, batch_size=1
         model.train(was_training)
         tokenizer.padding_side = old_padding
     config = getattr(model, "config", None)
-    metadata = {"model": model_id, "revision": revision,
+    metadata = {"adapter_sha256": adapter_sha256, "model": model_id, "revision": revision,
                 "resolved_commit": getattr(config, "_commit_hash", None),
                 "tokenizer": getattr(tokenizer, "name_or_path", type(tokenizer).__name__),
                 "max_length": max_length, "seed": seed, "text_mode": text_mode,
@@ -119,7 +121,7 @@ def collect(model, tokenizer, rows, out, model_id, max_length=1024, batch_size=1
 
 
 def compare(a, b):
-    for key in ("model", "revision", "resolved_commit", "tokenizer", "max_length", "text_mode", "hidden_state_convention"):
+    for key in ("adapter_sha256", "model", "revision", "resolved_commit", "tokenizer", "max_length", "text_mode", "hidden_state_convention"):
         if a["metadata"].get(key) != b["metadata"].get(key):
             raise ValueError(f"Cannot compare incompatible BI runs: {key}")
     la, lb = a["layers"], b["layers"]
@@ -148,6 +150,7 @@ def main():
     sub = p.add_subparsers(dest="command", required=True)
     c = sub.add_parser("collect")
     c.add_argument("--model", required=True)
+    c.add_argument("--adapter", default=None)
     c.add_argument("--revision", default=None)
     c.add_argument("--data", required=True)
     c.add_argument("--out", required=True)
@@ -168,9 +171,11 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
         model = AutoModelForCausalLM.from_pretrained(args.model, revision=args.revision,
                         torch_dtype=getattr(torch, args.dtype)).to(args.device)
+        from .recipes import load_teacher_adapter, adapter_signature
+        model = load_teacher_adapter(model, args.adapter)
         collect(model, tokenizer, read_jsonl(args.data), args.out, args.model,
                 args.max_length, args.batch_size, args.top_k, args.tau, args.seed,
-                args.text_mode, args.revision)
+                args.text_mode, args.revision, adapter_signature(args.adapter))
     else:
         import json
         runs = {name: json.loads(Path(path).read_text()) for name, path in

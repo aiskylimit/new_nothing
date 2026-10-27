@@ -5,12 +5,14 @@ the same objective, seed, prompts, optimizer, rollout budget, and checkpoints.
 """
 import argparse
 import json
+import math
 import random
 import time
 from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
+from .recipes import TEACHER, STUDENT, UPSTREAM_COMMIT, RECIPES, apply_recipe, adapter_signature, load_teacher_adapter
 from .alignment import response_alignment_loss
 from .losses import require_shared_tokenizer, direct_opd_loss, build_direct_batch
 from .bi import collect, render_prompt
@@ -20,8 +22,17 @@ from .data import digest, read_jsonl, save_json, write_jsonl
 
 def make_parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--student", default="Qwen/Qwen2.5-Math-1.5B-Instruct")
-    p.add_argument("--teacher", default="Qwen/Qwen2.5-Math-7B-Instruct")
+    p.add_argument("--student", default=STUDENT)
+    p.add_argument("--teacher", default=TEACHER)
+    p.add_argument("--preset", choices=list(RECIPES), default="dskd-tiny")
+    p.add_argument("--teacher-adapter", default=None)
+    p.add_argument("--epochs", type=int, default=None)
+    p.add_argument("--scheduler", choices=["constant", "cosine"], default=None)
+    p.add_argument("--lora-alpha", type=int, default=None)
+    p.add_argument("--lora-dropout", type=float, default=None)
+    p.add_argument("--lora-targets", default=None)
+    p.add_argument("--temperature-squared", action=argparse.BooleanOptionalAction, default=None)
+    p.add_argument("--truncate-prompts", action=argparse.BooleanOptionalAction, default=None)
     p.add_argument("--student-revision", default=None)
     p.add_argument("--teacher-revision", default=None)
     p.add_argument("--method", choices=["opd", "opd_impact"], required=True)
@@ -31,23 +42,23 @@ def make_parser():
     p.add_argument("--out", required=True)
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--dtype", choices=["bfloat16", "float16", "float32"], default="bfloat16")
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--steps", type=int, default=256, help="Optimizer updates")
-    p.add_argument("--grad-accum", type=int, default=8)
-    p.add_argument("--lr", type=float, default=1e-5)
-    p.add_argument("--projector-lr", type=float, default=5e-5)
+    p.add_argument("--seed", type=int, default=10)
+    p.add_argument("--steps", type=int, default=None, help="Optimizer updates")
+    p.add_argument("--grad-accum", type=int, default=None)
+    p.add_argument("--lr", type=float, default=None)
+    p.add_argument("--projector-lr", type=float, default=None)
     p.add_argument("--projector-vocab", type=int, default=4096)
-    p.add_argument("--lora-rank", type=int, default=32, help="0 for full training")
-    p.add_argument("--max-length", type=int, default=2048)
-    p.add_argument("--max-prompt-length", type=int, default=512)
-    p.add_argument("--max-new-tokens", type=int, default=512)
+    p.add_argument("--lora-rank", type=int, default=None, help="0 for full training")
+    p.add_argument("--max-length", type=int, default=None)
+    p.add_argument("--max-prompt-length", type=int, default=None)
+    p.add_argument("--max-new-tokens", type=int, default=None)
     p.add_argument("--rollout-retries", type=int, default=5)
-    p.add_argument("--bi-max-length", type=int, default=1024)
+    p.add_argument("--bi-max-length", type=int, default=None)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--top-p", type=float, default=1.0)
-    p.add_argument("--kd-temperature", type=float, default=1.0)
-    p.add_argument("--kd-rate", type=float, default=1.0, help="1 = pure OPD; values below 1 explicitly add reference CE")
-    p.add_argument("--kd-objective", choices=["forward_kl", "reverse_kl", "js_divergence"], default="reverse_kl")
+    p.add_argument("--kd-temperature", type=float, default=None)
+    p.add_argument("--kd-rate", type=float, default=None, help="1 = pure OPD; values below 1 explicitly add reference CE")
+    p.add_argument("--kd-objective", choices=["forward_kl", "reverse_kl", "js_divergence"], default=None)
     p.add_argument("--impact-lambda", type=float, default=0.25)
     p.add_argument("--top-k", type=int, default=6)
     p.add_argument("--bi-tau", type=float, default=2.0)
@@ -59,8 +70,9 @@ def make_parser():
     return p
 
 
-def supervised_loss(student, tokenizer, row, device, max_length):
-    prompt_ids = tokenizer.encode(render_prompt(tokenizer, row["prompt"]), add_special_tokens=False)
+def supervised_loss(student, tokenizer, row, device, max_length, max_prompt_length=None):
+    prompt_ids = tokenizer.encode(render_prompt(tokenizer, row["prompt"], row.get("prompt_format", "auto")), add_special_tokens=False)
+    prompt_ids = prompt_ids[:max_prompt_length] if max_prompt_length else prompt_ids
     response_ids = tokenizer.encode(row.get("response", ""), add_special_tokens=False)
     if not response_ids:
         raise ValueError(f"Missing reference response for CE: {row['id']}; use --kd-rate 1 for prompt-only OPD")
@@ -75,8 +87,10 @@ def supervised_loss(student, tokenizer, row, device, max_length):
 
 
 def main():
-    args = make_parser().parse_args()
-    if min(args.steps, args.grad_accum, args.save_every, args.projector_vocab, args.max_new_tokens,
+    args = apply_recipe(make_parser().parse_args())
+    if args.steps is None and not args.epochs:
+        args.steps = 256
+    if min(args.steps if args.steps is not None else 1, args.grad_accum, args.save_every, args.projector_vocab, args.max_new_tokens,
            args.rollout_retries, args.max_length, args.max_prompt_length, args.top_k) < 1:
         raise ValueError("Step, length, vocabulary and accumulation budgets must be positive")
     if args.temperature <= 0 or not 0 < args.top_p <= 1 or args.bi_tau <= 0 or args.lora_rank < 0:
@@ -107,19 +121,29 @@ def main():
     require_shared_tokenizer(student_tok, teacher_tok)
     eligible, excluded = [], []
     for row in rows:
-        lengths = [len(tok.encode(render_prompt(tok, row["prompt"]), add_special_tokens=False))
+        lengths = [len(tok.encode(render_prompt(tok, row["prompt"], row.get("prompt_format", "auto")), add_special_tokens=False))
                    for tok in (student_tok, teacher_tok)]
-        if max(lengths) > args.max_prompt_length:
+        if max(lengths) > args.max_prompt_length and not args.truncate_prompts:
             excluded.append({"id": row["id"], "reason": "prompt_too_long", "lengths": lengths})
         else:
             eligible.append(row)
     if not eligible:
         raise ValueError("No prompts fit --max-prompt-length")
     rows = eligible
+    updates_per_epoch = len(rows) // args.grad_accum
+    if args.epochs and updates_per_epoch < 1:
+        raise ValueError("Need at least one full effective batch per epoch")
+    epoch_steps = updates_per_epoch * args.epochs
+    if args.steps is None:
+        args.steps = epoch_steps
+    if args.epochs and args.steps > epoch_steps:
+        raise ValueError("--steps exceeds --epochs budget; increase epochs explicitly")
     write_jsonl(out / "excluded_samples.jsonl", excluded)
     dtype = getattr(torch, args.dtype)
     teacher = AutoModelForCausalLM.from_pretrained(args.teacher, revision=args.teacher_revision,
                                 torch_dtype=dtype).to(args.device).eval().requires_grad_(False)
+    teacher = load_teacher_adapter(teacher, args.teacher_adapter)
+    teacher_adapter_sha256 = adapter_signature(args.teacher_adapter)
     student = AutoModelForCausalLM.from_pretrained(args.student, revision=args.student_revision,
                                 torch_dtype=dtype).to(args.device)
     student.config.use_cache = False
@@ -133,7 +157,8 @@ def main():
     if args.lora_rank:
         from peft import LoraConfig, get_peft_model
         student = get_peft_model(student, LoraConfig(task_type="CAUSAL_LM", r=args.lora_rank,
-                    lora_alpha=args.lora_rank * 2, lora_dropout=0.0, target_modules="all-linear"))
+                    lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout,
+                    target_modules="all-linear" if args.lora_targets == "all-linear" else args.lora_targets.split(",")))
     student.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     student.enable_input_require_grads()
     projection, bi_scores = None, None
@@ -141,8 +166,15 @@ def main():
     if args.method == "opd_impact":
         if args.bi_summary:
             bi = json.loads(Path(args.bi_summary).read_text())
+            if bi["metadata"].get("adapter_sha256") != teacher_adapter_sha256:
+                raise ValueError("BI summary teacher adapter differs")
             if bi["metadata"]["model"] != args.teacher or bi["metadata"].get("revision") != args.teacher_revision:
                 raise ValueError("BI summary is from a different teacher/revision")
+            expected_inputs = [teacher_tok.encode(render_prompt(teacher_tok, r["prompt"],
+                r.get("prompt_format", "auto")), add_special_tokens=False)[:args.bi_max_length] for r in calibration]
+            expected_hash = digest("\n".join(digest(str(ids)) for ids in expected_inputs))
+            if bi["metadata"]["inputs_sha256"] != expected_hash:
+                raise ValueError("BI summary prompt/token inputs differ")
             if bi["metadata"]["sample_ids"] != [r["id"] for r in calibration]:
                 raise ValueError("BI summary calibration sample IDs differ")
             if bi["metadata"]["max_length"] != args.bi_max_length or bi["metadata"]["text_mode"] != "prompt":
@@ -152,7 +184,8 @@ def main():
         else:
             bi = collect(teacher, teacher_tok, calibration, out / "bi", args.teacher,
                          max_length=args.bi_max_length, top_k=args.top_k,
-                         tau=args.bi_tau, seed=args.seed, revision=args.teacher_revision)
+                         tau=args.bi_tau, seed=args.seed, revision=args.teacher_revision,
+                         adapter_sha256=teacher_adapter_sha256)
         bi_scores = torch.tensor([r["bi_mean"] for r in bi["layers"]], device=args.device)
         from .projection import compute_vocab_projection
         projection = nn.Parameter(compute_vocab_projection(teacher, student, teacher_tok,
@@ -161,6 +194,9 @@ def main():
     if projection is not None:
         groups.append({"params": [projection], "lr": args.projector_lr})
     optimizer = torch.optim.AdamW(groups, weight_decay=0.01)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer,
+        lambda step: .5 * (1 + math.cos(math.pi * min(step, args.steps) / args.steps))
+        if args.scheduler == "cosine" else 1.)
     order = list(range(len(rows)))
     random.Random(args.seed).shuffle(order)
     pointer, start_step = 0, 0
@@ -172,6 +208,7 @@ def main():
         if projection is not None:
             projection.data.copy_(state["projection"])
         optimizer.load_state_dict(state["optimizer"])
+        scheduler.load_state_dict(state["scheduler"])
         start_step, pointer, order = state["step"], state["pointer"], state["order"]
         random.setstate(state["python_rng"])
         np.random.set_state(state["numpy_rng"])
@@ -182,15 +219,23 @@ def main():
               "calibration_sha256": digest(Path(args.calibration).read_text()),
               "teacher_commit": getattr(teacher.config, "_commit_hash", None),
               "student_commit": getattr(student.config, "_commit_hash", None),
-              "objective_family": "direct_opd", "checkpoint_schema": 2, "torch_version": torch.__version__,
+              "reference_commit": UPSTREAM_COMMIT if args.preset == "dskd-tiny" else None,
+              "bi_summary_sha256": digest(Path(args.bi_summary).read_text()) if args.bi_summary else None,
+              "objective_family": "direct_opd", "checkpoint_schema": 3, "torch_version": torch.__version__,
               "probability_support": "all_actual_shared_tokenizer_ids; unassigned LM-head padding excluded",
               "tokenizer_vocab_size": len(valid_token_ids), "student_head_size": s_vocab, "teacher_head_size": t_vocab,
+              "teacher_adapter_sha256": teacher_adapter_sha256, "updates_per_epoch": updates_per_epoch,
+              "rollout_schedule": "fresh student response from first update; no off-policy warmup",
               "eligible_samples": len(rows), "excluded_samples": len(excluded),
               "loss": "(1-kd_rate)*reference_CE + kd_rate*direct_full_vocab_OPD + optional lambda*response-prefix_IMPACT"}
     if args.resume:
         old = json.loads((Path(args.resume).parent / "config.json").read_text())
+        if args.scheduler == "cosine" and old["steps"] != args.steps:
+            raise ValueError("Cosine resume requires the original total step budget")
         for key in ("objective_family", "method", "student", "teacher", "student_revision", "teacher_revision",
                     "data_sha256", "calibration_sha256", "teacher_commit", "student_commit", "seed",
+                    "preset", "epochs", "scheduler", "bi_summary_sha256", "lora_alpha", "lora_dropout", "lora_targets",
+                    "temperature_squared", "truncate_prompts", "teacher_adapter_sha256",
                     "grad_accum", "kd_objective", "kd_rate", "kd_temperature", "selection", "weighting",
                     "impact_lambda", "top_k", "bi_tau", "bi_max_length", "lora_rank", "lr",
                     "projector_lr", "projector_vocab", "max_length", "max_prompt_length",
@@ -207,9 +252,9 @@ def main():
         student_tok.save_pretrained(path)
         student_state = ({k: v for k, v in student.state_dict().items() if "lora_" in k}
                          if args.lora_rank else student.state_dict())
-        torch.save({"schema_version": 2, "objective_family": "direct_opd", "student": student_state,
+        torch.save({"schema_version": 3, "objective_family": "direct_opd", "student": student_state,
                     "projection": projection.detach() if projection is not None else None,
-                    "optimizer": optimizer.state_dict(), "step": step, "pointer": pointer,
+                    "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "step": step, "pointer": pointer,
                     "order": order, "python_rng": random.getstate(), "numpy_rng": np.random.get_state(),
                     "torch_rng": torch.get_rng_state(),
                     "cuda_rng": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None},
@@ -227,13 +272,20 @@ def main():
     try:
         with (out / "metrics.jsonl").open("a") as metrics, (out / "rollouts.jsonl").open("a") as rollouts:
             for step in range(start_step + 1, args.steps + 1):
+                if args.epochs and (step - 1) % updates_per_epoch == 0:
+                    epoch = (step - 1) // updates_per_epoch
+                    order = list(range(len(rows)))
+                    random.Random(args.seed + epoch).shuffle(order)
+                    pointer = 0
                 optimizer.zero_grad(set_to_none=True)
                 sums = {}
                 for micro in range(args.grad_accum):
                     row = rows[order[pointer % len(order)]]
                     pointer += 1
-                    prompt = render_prompt(student_tok, row["prompt"])
-                    enc = student_tok(prompt, add_special_tokens=False, return_tensors="pt").to(args.device)
+                    prompt = render_prompt(student_tok, row["prompt"], row.get("prompt_format", "auto"))
+                    enc = student_tok(prompt, add_special_tokens=False, return_token_type_ids=False, return_tensors="pt").to(args.device)
+                    if args.truncate_prompts:
+                        enc = {k: v[:, :args.max_prompt_length] for k, v in enc.items()}
                     if enc["input_ids"].shape[1] > args.max_prompt_length:
                         raise ValueError(f"Prompt {row['id']} exceeds --max-prompt-length (no silent truncation)")
                     student.eval()
@@ -248,7 +300,9 @@ def main():
                                                        clean_up_tokenization_spaces=False)
                         try:
                             batch = build_direct_batch(student_tok, [row["prompt"]], [generated],
-                                                       args.device, args.max_length)
+                                                       args.device, args.max_length,
+                                                       prompt_format=row.get("prompt_format", "auto"),
+                                                       max_prompt_length=args.max_prompt_length if args.truncate_prompts else None)
                             break
                         except ValueError as exc:
                             rollouts.write(json.dumps({"step": step, "micro": micro, "sample_id": row["id"],
@@ -259,7 +313,8 @@ def main():
                     student.train()
                     ce = torch.tensor(0., device=args.device)
                     if args.kd_rate < 1:
-                        ce = supervised_loss(student, student_tok, row, args.device, args.max_length)
+                        ce = supervised_loss(student, student_tok, row, args.device, args.max_length,
+                                             args.max_prompt_length if args.truncate_prompts else None)
                         if not torch.isfinite(ce):
                             raise FloatingPointError("Nonfinite supervised loss")
                         # Release the reference forward graph before teacher scoring.
@@ -269,7 +324,8 @@ def main():
                     with torch.no_grad():
                         to = teacher(**batch["op_teacher_input_batch"], output_hidden_states=projection is not None, use_cache=False)
                     kd = direct_opd_loss(so.logits, to.logits, batch["op_label_batch"]["label"],
-                                         args.kd_objective, args.kd_temperature, shared_ids)
+                                         args.kd_objective, args.kd_temperature, shared_ids,
+                                         temperature_squared=args.temperature_squared)
                     log = {"opd_loss": kd}
                     log["nll_loss"] = ce
                     loss = args.kd_rate * kd
@@ -293,7 +349,9 @@ def main():
                     del so, to, loss, kd, log, batch
                 params = [p for g in optimizer.param_groups for p in g["params"]]
                 sums["grad_norm"] = float(torch.nn.utils.clip_grad_norm_(params, 1.0))
+                sums["lr"] = optimizer.param_groups[0]["lr"]
                 optimizer.step()
+                scheduler.step()
                 record = {"step": step, **sums, "elapsed_seconds": time.monotonic() - begin,
                           "generated_tokens_this_session": total_tokens,
                           "cumulative_loop_seconds": prior_seconds + time.monotonic() - begin,

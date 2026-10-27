@@ -1,6 +1,6 @@
 # manager: uv
 # python: 3.11
-# Based on the user's talas-vlm-embed.txt. Text OPD + native math eval only.
+# Based on the user's talas-vlm-embed.txt. LLaMA2 -> TinyLLaMA OPD / OPD + IMPACT on Dolly.
 # setup_b200.sh installs torch from the explicit CUDA 12.8 wheel index first.
 numpy==1.26.4
 torch==2.9.0
@@ -15,5 +15,4 @@ scipy==1.15.3
 pyarrow>=21,<24
 sentencepiece>=0.2,<0.3
 PyYAML>=6,<7
-lm_eval[hf,math]==0.4.13
 pip

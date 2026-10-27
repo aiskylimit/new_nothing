@@ -10,6 +10,40 @@ from urllib.parse import urlparse
 from .data import read_jsonl, write_jsonl, save_json
 
 
+def prepare_reference_dolly(root, calib_n=256):
+    """Preserve bundled MiniLLM prompts/splits, auditing duplicate prompts."""
+    from .data import normalize, digest
+    import random
+    root = Path(root).resolve()
+    source = Path(__file__).resolve().parents[1] / "data/dolly"
+    splits = {s: [dict(normalize(r, "dolly-dskd", f"bundled-dolly/{s}", i),
+                       id=f"dolly-dskd:{s}:{i}", prompt_format="raw")
+                  for i, r in enumerate(read_jsonl(source / f"{s}.jsonl"))]
+              for s in ("train", "dev", "valid")}
+    test_hashes = {r["prompt_sha256"] for r in splits["valid"]}
+    train = [r for r in splits["train"] if r["prompt_sha256"] not in test_hashes]
+    forbidden = test_hashes | {r["prompt_sha256"] for r in train}
+    dev = {r["prompt_sha256"]: r for r in splits["dev"] if r["prompt_sha256"] not in forbidden}
+    if len(dev) < calib_n:
+        raise ValueError("Not enough disjoint Dolly dev prompts")
+    out = root / "data/opd/dolly-dskd"
+    write_jsonl(out / "train.jsonl", train)
+    write_jsonl(out / "test.jsonl", splits["valid"])
+    for seed in (42, 43, 44):
+        rows = sorted(dev.values(), key=lambda r: r["id"])
+        random.Random(seed).shuffle(rows)
+        write_jsonl(out / f"calibration-seed{seed}.jsonl", rows[:calib_n])
+        if seed == 42:
+            write_jsonl(out / "calibration.jsonl", rows[:calib_n])
+    save_json(out / "manifest.json", {"source": "bundled processed Dolly (MiniLLM format)",
+        "source_sha256": {s: digest((source / f"{s}.jsonl").read_text()) for s in splits},
+        "original_counts": {s: len(rows) for s, rows in splits.items()},
+        "train_count": len(train), "removed_train_rows_overlapping_test": len(splits["train"]) - len(train),
+        "unique_disjoint_dev_pool": len(dev), "calibration_count": calib_n,
+        "test_count": len(splits["valid"]), "prompt_format": "raw; no BOS/chat template/extra newline",
+        "note": "Training duplicates retained except test overlap; calibration excludes both train and test."})
+
+
 def parse_manifest(path, project_root):
     root = Path(project_root).resolve()
     entries = []
@@ -37,10 +71,11 @@ def download(manifest, root):
         target = Path(entry["destination"])
         target.mkdir(parents=True, exist_ok=True)
         if entry["kind"] == "--hf":
-            from huggingface_hub import snapshot_download
-            snapshot_download(repo_id=entry["source"], local_dir=target,
+            from huggingface_hub import snapshot_download, HfApi
+            revision = HfApi().model_info(entry["source"]).sha
+            snapshot_download(repo_id=entry["source"], revision=revision, local_dir=target,
                 ignore_patterns=["*.bin", "*.pt", "*.onnx", "*.gguf", "original/*"])
-            records.append(entry)
+            records.append({**entry, "resolved_commit": revision})
         else:
             name = Path(urlparse(entry["source"]).path).name
             dest = target / name
@@ -128,11 +163,15 @@ def main():
     p.add_argument("--manifest", default="download.txt")
     p.add_argument("--train-per-domain", type=int, default=4000)
     p.add_argument("--calib-per-domain", type=int, default=256)
+    p.add_argument("--profile", choices=["llama2-tinyllama", "math-small", "tiny"], default="llama2-tinyllama")
     args = p.parse_args()
     if args.action == "download":
         download(args.manifest, args.project_root)
     else:
-        prepare(args.project_root, args.train_per_domain, args.calib_per_domain)
+        if args.profile == "llama2-tinyllama":
+            prepare_reference_dolly(args.project_root, args.calib_per_domain)
+        else:
+            prepare(args.project_root, args.train_per_domain, args.calib_per_domain)
 
 
 if __name__ == "__main__":

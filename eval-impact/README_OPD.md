@@ -1,3 +1,5 @@
+> Historical notes for the earlier Qwen/math pipeline. Current default: LLaMA2 → TinyLLaMA, OPD vs OPD + IMPACT on Dolly; math evaluation disabled. Follow [README_B200.md](README_B200.md) and [DSKDV2_REFERENCE.md](DSKDV2_REFERENCE.md).
+
 # So sánh OPD với OPD + IMPACT
 
 Bộ env/download/chạy local B200 và báo cáo cuối: [README_B200.md](README_B200.md).

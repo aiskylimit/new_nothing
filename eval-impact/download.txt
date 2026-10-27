@@ -1,10 +1,7 @@
-# Same --hf / --url format as the user's download.txt.
-# @PROJECT@ is replaced by the platform, or use opd.local_assets --project-root.
-# models: default math-small profile
---hf Qwen/Qwen2.5-Math-7B-Instruct /mnt/local/@PROJECT@/impact_opd/models/Qwen2.5-Math-7B-Instruct
---hf Qwen/Qwen2.5-Math-1.5B-Instruct /mnt/local/@PROJECT@/impact_opd/models/Qwen2.5-Math-1.5B-Instruct
-# raw training and evaluation data, all stored on local disk
---url https://huggingface.co/datasets/databricks/databricks-dolly-15k/resolve/main/databricks-dolly-15k.jsonl /mnt/local/@PROJECT@/impact_opd/raw/dolly
---url https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/train-00000-of-00001.parquet /mnt/local/@PROJECT@/impact_opd/raw/gsm8k
---url https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/test-00000-of-00001.parquet /mnt/local/@PROJECT@/impact_opd/raw/gsm8k
---url https://huggingface.co/datasets/HuggingFaceH4/MATH-500/resolve/main/test.jsonl /mnt/local/@PROJECT@/impact_opd/raw/math500
+# Default OPD pair: base checkpoints, shared LLaMA tokenizer.
+# LLaMA-2 requires prior approved Hugging Face access (use HF_TOKEN / hf auth login).
+# Downloader remaps /impact_opd/ suffix into OPD_PROJECT_ROOT.
+--hf meta-llama/Llama-2-7b-hf /mnt/local/@PROJECT@/impact_opd/models/Llama-2-7b-hf
+--hf TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T /mnt/local/@PROJECT@/impact_opd/models/TinyLlama-1.1B-intermediate-step-1431k-3T
+# Processed Dolly train/dev/test are already bundled under data/dolly/.
+# No MATH-500/GSM8K models or data are downloaded by this manifest.

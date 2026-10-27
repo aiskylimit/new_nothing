@@ -1,119 +1,101 @@
-# OPD vs OPD + IMPACT — local B200
+# OPD vs OPD + IMPACT — LLaMA2 → TinyLLaMA trên B200
 
-Ba file chính bám theo ba mẫu bạn vừa lưu:
+Mặc định hiện tại: **LLaMA2-7B → TinyLLaMA-1.1B**, train trên Dolly, giữ cả **OPD** và **OPD + IMPACT**. **Không tải/chạy MATH-500 hoặc GSM8K**, không tạo điểm math giả khi tổng hợp.
 
-| Mẫu gốc | File cho thí nghiệm này |
-|---|---|
-| `talas-vlm-embed.txt` | `impact-opd-b200.txt` — uv, Python 3.11, torch 2.9.0, transformers 4.56.1 |
-| `download.txt` | `download.txt` — cùng cú pháp `--hf` / `--url`, đích `/mnt/local/@PROJECT@/impact_opd/...` |
-| `project_commands.sh` | `project_commands.sh` — activate env, chạy tuần tự, eval và tổng hợp |
-
-Clone repo vào thư mục local trên B200, ví dụ:
+## Chạy trên B200
 
 ```bash
 git clone --branch chi_eval_impact --single-branch \
   https://github.com/aiskylimit/new_nothing.git /mnt/local/PROJECT_NAME/new_nothing
 cd /mnt/local/PROJECT_NAME/new_nothing/eval-impact
-```
-
-Nếu dùng ZIP độc lập, có thể giải nén vào `/mnt/local/<PROJECT>/impact_opd`.
-`@PROJECT@` trong download manifest là placeholder cho hệ thống của bạn. Downloader Python đi kèm tự đổi đích theo `OPD_PROJECT_ROOT`; không cần sửa tay mọi dòng.
-Script chạy lấy thư mục chứa nó làm project root, dùng toàn bộ model/data/output/cache từ local. Không có đường dẫn Mac trong các file chạy B200.
-
-## Chạy
-
-```bash
-cd /mnt/local/PROJECT_NAME/new_nothing/eval-impact
 bash setup_b200.sh
+# HF_TOKEN phải thuộc tài khoản đã được cấp quyền LLaMA-2.
 bash project_commands.sh download
 bash project_commands.sh all
 ```
 
-Nếu hệ thống đã tạo env và download bằng hai file mẫu, chạy thẳng `bash project_commands.sh all`.
-Env mặc định: `/mnt/local/uvenvs/impact-opd-b200`.
-`setup_b200.sh` cài torch 2.9.0 từ wheel CUDA 12.8 theo [lệnh chính thức PyTorch](https://pytorch.org/get-started/previous-versions/#v290), rồi cài phần text train/eval. Không cần build FlashAttention hoặc DeepSpeed.
-Preflight kiểm tra đúng B200, CUDA, BF16 và backward trước khi load model.
+Nếu đã clone, cập nhật branch bằng `git pull --ff-only` trước khi chạy. Có thể dùng token từ môi trường `HF_TOKEN`; không ghi token vào manifest/repo. Nếu dùng `hf auth login`, đặt `HF_HOME="$PWD/cache/huggingface"` để login và script dùng cùng cache. [LLaMA-2](https://huggingface.co/meta-llama/Llama-2-7b-hf) yêu cầu quyền truy cập trước khi tải.
 
-Pilot ngắn trước khi mở rộng:
+Ba file để set máy vẫn là `impact-opd-b200.txt` (env uv/Python 3.11/torch 2.9.0 CUDA 12.8), `download.txt` (model local), `project_commands.sh` (chạy tuần tự). Env mặc định `/mnt/local/uvenvs/impact-opd-b200`; project root tự lấy từ thư mục script. Có thể override `OPD_VENV`, `OPD_PROJECT_ROOT`, `CUDA_VISIBLE_DEVICES`.
 
-```bash
-DOMAINS=gsm8k BI_SEEDS=42 STEPS=64 RUN_NAME=pilot-b200 bash project_commands.sh all
-```
-
-Mặc định đầy đủ: domains `gsm8k mixed dolly`, training seed `42`, calibration subsets `42 43 44`, 256 optimizer updates cho mỗi nhánh.
-Hai nhánh dùng cùng model/data/seed/step/generation cap:
+Preflight kiểm tra B200, BF16 và backward. Từ sau download, các bước dùng model/data/cache local và bật offline. Downloader lưu commit của model trong `download_manifest.json`; preflight kiểm tra tokenizer trước khi bắt đầu teacher SFT. Dolly đã đóng gói trong `data/dolly/`.
 
 ```text
-OPD:          reverse KL trên fresh student rollouts
-OPD + IMPACT: cùng reverse KL + lambda * IMPACT
+prepare Dolly → preflight → teacher SFT → BI ba subsets
+             → OPD → OPD + IMPACT → tổng hợp loss/chi phí/BI
 ```
 
-Không dùng ETA/dual-space hay CE từ reference ở mặc định. `kd_rate=1`, KL temperature=1.
-Teacher/student mặc định Qwen2.5-Math-7B-Instruct → Qwen2.5-Math-1.5B-Instruct, cùng tokenizer đã xác minh.
-
-## Model nhỏ hơn
+Teacher được fine-tune LoRA trước, rồi đóng băng và dùng chung cho hai nhánh. Student bắt đầu từ base TinyLLaMA ở mỗi nhánh. Nếu đã có teacher adapter phù hợp, dùng đường dẫn local để bỏ qua bước SFT:
 
 ```bash
-OPD_PROFILE=tiny bash project_commands.sh download
-OPD_PROFILE=tiny RUN_NAME=tiny-b200 bash project_commands.sh all
+TEACHER_ADAPTER=/mnt/local/PROJECT_NAME/teacher_adapter \
+RUN_NAME=llama2-existing-teacher bash project_commands.sh all
 ```
 
-Profile `tiny`: Qwen2.5-1.5B-Instruct → Qwen2.5-0.5B-Instruct. File `download_tiny.txt` có thêm hai model này.
+## Cấu hình tham chiếu
 
-## Path local
+Đối chiếu [repo DSKDv2](https://github.com/songmzhang/DSKDv2/tree/ae4993e8b857ca001742de651498dc627138dd32) và [paper, Table I / Experimental Setup](https://arxiv.org/html/2504.11426v1#S4.SS1). Chi tiết nguồn và phần khác biệt nằm ở [DSKDV2_REFERENCE.md](DSKDV2_REFERENCE.md).
+
+| Thành phần | Mặc định |
+|---|---|
+| Teacher | `meta-llama/Llama-2-7b-hf` — base + Dolly LoRA |
+| Student | `TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T` — base |
+| Student training | 10 epochs; effective batch 32 = microbatch 1 × accumulation 32 × 1 GPU |
+| Optimizer | AdamW, LR 1e-3, cosine, weight decay 0.01, clip norm 1 |
+| LoRA | rank 256, alpha 8, dropout 0.1; q_proj/v_proj |
+| Context / prompt / rollout | 512 / 256 / tối đa 256 tokens |
+| Prompt | Dolly đã xử lý, giữ nguyên chuỗi; không chat template/BOS/newline thêm |
+| Objective chung | `0.5 * reference CE + 0.5 * forward KL` trên fresh student rollouts; KD temperature 2; không nhân T² |
+| OPD + IMPACT | Cùng objective + `0.25 * IMPACT`; BI Top-6, tau 2 |
+| Rollout | Sample temperature 1, top_p 1, top_k 0; OPD ngay từ update đầu |
+| Training seed / BI subsets | 10 / 42, 43, 44 |
+
+Đây là **OPD với recipe CE+KD tham chiếu**, không phải pure-KD (`kd_rate=1`). Hai nhánh không dùng DSKDv2/ETA/dual-space loss. Cặp này cùng tokenizer; runner kiểm tra vocabulary/tokenizer trước khi train.
+
+Dataset gốc có 11.435 train / 1.000 dev / 500 test. Prepare loại **14 train rows** trùng prompt test, còn **11.421 train**, giữ các train duplicates khác để ít đổi split. BI lấy 256 prompt/subset từ 972 dev prompts duy nhất không trùng train/test. Không dùng test để tune BI. Full run mỗi nhánh có `floor(11421 / 32) × 10 = 3560` optimizer updates; bỏ batch cuối không đủ và shuffle lại mỗi epoch.
+
+Chạy pilot để kiểm tra đường chạy trước khi chạy full:
+
+```bash
+TEACHER_STEPS=2 STEPS=2 BI_SEEDS=42 RUN_NAME=llama2-pilot \
+  bash project_commands.sh all
+```
+
+Pilot dùng teacher mới train 2 updates, chỉ để kiểm tra, không coi là kết quả thực nghiệm. Full run dùng RUN_NAME khác và bỏ `TEACHER_STEPS`/`STEPS`. `STEPS=0` mặc định nghĩa là đủ 10 epochs.
+
+```bash
+SEEDS="10 20 30" RUN_NAME=llama2-three-seeds bash project_commands.sh all
+```
+
+Teacher seed 10 cố định và dùng chung. Đây là nhiều **training seeds**, khác năm **decoding seeds** trong paper.
+
+## Tiếp tục và kết quả
+
+Có thể chạy riêng `prepare`, `preflight`, `teacher`, `bi`, `train`, `report`, `plan`. Khi tách stages, chạy `teacher` trước `bi`/`train`. Lặp lại `all` với cùng cấu hình sẽ bỏ qua job hoàn thành và resume từ checkpoint. Cấu hình/input thay đổi phải dùng RUN_NAME mới. Không kéo dài tổng step budget của một run cosine đã bắt đầu.
+
+`MAX_MINUTES=60` giới hạn mỗi lượt student train tại biên update; không giới hạn teacher SFT. Chạy lại lệnh để tiếp tục. Để chạy lâu trên máy local B200, dùng tmux/session bền vững.
 
 ```text
-impact_opd/
-  models/<model-name>/       # config, tokenizer, safetensors
-  raw/dolly/                # Dolly JSONL
-  raw/gsm8k/                # train/test parquet
-  raw/math500/              # test.jsonl và parquet được chuyển đổi local
-  data/opd/{dolly,gsm8k,mixed}/
-  cache/huggingface/
-  outputs/<RUN_NAME>/
-    plan.json, environment.json, inputs.json, jobs.json
-    bi/<domain>-calib<seed>/
-    <domain>/{opd,opd_impact}/seed42/
-    base/{student,teacher}/eval/
-    logs/
-    final_results/
+outputs/llama2-tinyllama-opd/
+  plan.json, environment.json, inputs.json, jobs.json
+  teacher_sft/checkpoint-*/
+  bi/dolly-dskd-calib{42,43,44}/
+    samples.jsonl            # ID, prompt, input IDs, BI từng sample
+    summary.json, layers.csv # mọi layer, rank, Top-K, weight, bootstrap CI
+  bi/comparisons.json        # score/rank delta từng layer và tương quan
+  dolly-dskd/{opd,opd_impact}/seed10/
+    config.json, metrics.jsonl, rollouts.jsonl, latest.json, checkpoint-*/
+  logs/
+  final_results/
+    FINAL_RESULTS.md, training_cost.csv
+    bi_all_layers.csv, bi_comparisons.csv, final_results.json
 ```
-
-Prepare tạo 4.000 train + 256 calibration/domain; mixed có cùng tổng số mẫu. Các calibration subsets đều tránh tập train. Prepare kiểm tra không trùng prompt với test sets và đúng 500/1319 câu eval.
-MATH-500 nguồn hiện có là `test.jsonl`; script chuyển sang parquet local để dùng native harness task. Cả train và eval bật offline sau download.
-
-Override chung:
 
 ```bash
-OPD_PROJECT_ROOT=/mnt/local/my-project/impact_opd \
-OPD_VENV=/mnt/local/uvenvs/impact-opd-b200 \
-CUDA_VISIBLE_DEVICES=0 RUN_NAME=three-seeds SEEDS="42 43 44" \
-bash project_commands.sh all
+tail -f outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
+bash project_commands.sh report
 ```
 
-Chỉ chạy từng phần bằng `prepare`, `preflight`, `bi`, `train`, `eval`, `report`, hoặc `plan` thay `all`. Dùng cùng các biến cấu hình khi tiếp tục cùng RUN_NAME.
-Mỗi bước có log riêng; ví dụ `tail -f outputs/opd-b200/logs/gsm8k-opd-42.log`.
-Lặp lại cùng lệnh sẽ bỏ qua job đã hoàn thành; train bị ngắt sau checkpoint sẽ resume. Nếu input/model/config đổi, dùng RUN_NAME mới để không trộn kết quả.
-`MAX_MINUTES=60` giới hạn mỗi lượt train ở biên update; eval tự lấy checkpoint trong `latest.json`. Báo cáo ghi rõ số update thực tế và budget chưa đạt nếu dừng sớm.
+Báo cáo ghi loss, updates, token rollout, thời gian training loop, VRAM và trạng thái; BI có score/rank/Top-K/CI, Spearman/Kendall/Top-K overlap giữa các subsets. Hiện các subsets đều từ Dolly dev: chúng đo độ nhạy theo **lấy mẫu**, chưa chứng minh thay đổi giữa các dataset. MATH-500/GSM8K bị tắt nên không báo accuracy hoặc delta accuracy cho run này.
 
-## Eval và tổng hợp cuối
-
-Pipeline eval cả teacher, student ban đầu, OPD và OPD+IMPACT. Nó dùng grader/few-shot native của lm-eval 0.4.13, chỉ đổi nguồn dataset sang file parquet local: MATH-500 4-shot, GSM8K 8-shot, greedy, cap 1024 token, lưu từng prediction.
-
-Kết quả cuối ở `outputs/<RUN_NAME>/final_results/`:
-
-- `FINAL_RESULTS.md`: bảng accuracy theo domain/method, mean/std giữa seeds và delta OPD+IMPACT − OPD.
-- `accuracy_by_run.csv`, `accuracy_summary.csv`: điểm từng run và thống kê.
-- `opd_vs_impact_delta.csv`: chênh lệch theo percentage points, ghép đúng domain/seed/task.
-- `training_cost.csv`: steps, token sinh, giây training loop (cộng qua resume), peak allocated VRAM, loss cuối.
-- `bi_all_layers.csv`: score/rank/Top-K/weight/CI của mọi layer trên mọi calibration subset.
-- `bi_comparisons.csv`: Spearman/Kendall/Top-K overlap giữa các tập calibration.
-- `final_results.json`: toàn bộ số liệu, phạm vi eval, trường hợp còn thiếu và trạng thái complete/incomplete.
-
-Không có kết quả thì báo thiếu, không điền 0. Một seed không có độ lệch chuẩn giữa seeds. Debug eval có `--limit` được ghi rõ `debug_subset`, không coi là benchmark đầy đủ.
-Chi tiết job wall time nằm trong `jobs.json`; vòng training có thể mất số token/thời gian khác nhau dù hai nhánh có cùng update budget.
-
-## Kiểm tra đã thực hiện
-
-Đã kiểm tra syntax shell, plan dùng model/data local, unit tests và native eval **offline** bằng tiny random model trên 1 câu của mỗi tập thật; mục đích xác nhận đường chạy và grader, không đo chất lượng model.
-Máy kiểm tra hiện tại không có CUDA/B200, nên chưa xác nhận tốc độ/VRAM hay accuracy của cặp pretrained trên B200. Script preflight sẽ ghi môi trường thật khi bạn chạy.
+Đã kiểm tra unit tests và đường chạy bằng tiny random LLaMA trên CPU; chưa train cặp pretrained hay đo tốc độ/VRAM trên B200 tại máy hiện tại. Xem [VALIDATION_LLAMA.md](VALIDATION_LLAMA.md).

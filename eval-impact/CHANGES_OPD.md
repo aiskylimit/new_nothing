@@ -1,3 +1,5 @@
+> Historical notes for the earlier Qwen/math pipeline. Current default: LLaMA2 → TinyLLaMA, OPD vs OPD + IMPACT on Dolly; math evaluation disabled. Follow [README_B200.md](README_B200.md) and [DSKDV2_REFERENCE.md](DSKDV2_REFERENCE.md).
+
 # Corrected experiment: OPD versus OPD + IMPACT
 
 The new active runner uses direct response-masked KL on fresh student-sampled prefixes. Method names are opd and opd_impact. No DSKDv2 criterion, ETA alignment, logit projectors or pseudo-label objective is imported or optimized. The baseline has student parameters only; the augmented method adds the IMPACT hidden-state projection and auxiliary loss.

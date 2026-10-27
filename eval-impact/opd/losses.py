@@ -21,7 +21,7 @@ def require_shared_tokenizer(student_tok, teacher_tok):
                 raise ValueError(f"Direct OPD tokenizer mismatch: {key}")
 
 
-def direct_opd_loss(student_logits, teacher_logits, labels, objective="reverse_kl", temperature=1.0, token_ids=None):
+def direct_opd_loss(student_logits, teacher_logits, labels, objective="reverse_kl", temperature=1.0, token_ids=None, temperature_squared=True):
     """Mean full-vocabulary divergence at response prediction positions.
 
     Labels are already shifted once by the batch builder. Their values only
@@ -55,10 +55,11 @@ def direct_opd_loss(student_logits, teacher_logits, labels, objective="reverse_k
                            (t.exp() * (t - mixture)).sum(-1))
     else:
         raise ValueError(f"Unknown divergence {objective}")
-    return token_loss.mean() * temperature ** 2
+    return token_loss.mean() * (temperature ** 2 if temperature_squared else 1.)
 
 
-def build_direct_batch(tokenizer, prompts, sampled_ids, device, max_length=2048):
+def build_direct_batch(tokenizer, prompts, sampled_ids, device, max_length=2048,
+                       prompt_format="auto", max_prompt_length=None):
     """Teacher and student consume exactly the same sampled IDs and prompt.
 
     A common student chat prefix is used for both models. EOS is preserved even
@@ -67,7 +68,8 @@ def build_direct_batch(tokenizer, prompts, sampled_ids, device, max_length=2048)
     from .bi import render_prompt
     rows, starts = [], []
     for prompt, ids in zip(prompts, sampled_ids):
-        prefix = tokenizer.encode(render_prompt(tokenizer, prompt), add_special_tokens=False)
+        prefix = tokenizer.encode(render_prompt(tokenizer, prompt, prompt_format), add_special_tokens=False)
+        prefix = prefix[:max_prompt_length] if max_prompt_length else prefix
         if not prefix or not ids:
             raise ValueError("OPD requires a nonempty prompt and sampled continuation")
         rows.append(prefix + list(ids))

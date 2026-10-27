@@ -65,6 +65,7 @@ def training_cost(case):
     return {"domain": case["domain"], "method": case["method"], "seed": case["seed"],
             "optimizer_steps": last["step"], "loop_seconds": elapsed, "generated_tokens": tokens,
             "peak_allocated_gb": max(peak) if peak else None,
+            "last_reference_ce": last.get("nll_loss"), "last_total_loss": last.get("loss"),
             "last_opd_loss": last.get("opd_loss"), "last_impact_loss": last.get("impact_loss"),
             "state": status.get("state", "unknown")}
 
@@ -74,7 +75,7 @@ def aggregate(plan_file, out):
     out = Path(out)
     rows, missing, costs = [], [], []
     for case in plan["cases"]:
-        observed = evaluation(case)
+        observed = evaluation(case) if case.get("eval_dir") else []
         if observed is None:
             missing.append(case["name"])
         else:
@@ -120,32 +121,42 @@ def aggregate(plan_file, out):
         for label, metrics in json.loads(pair_file.read_text()).items():
             bi_pairs.append({"comparison": label, **{k: v for k, v in metrics.items() if k != "per_layer"}})
     missing_artifacts = [j["name"] for j in plan.get("jobs", []) if not Path(j["artifact"]).is_file()]
-    budget_complete = all(c["optimizer_steps"] >= plan.get("arguments", {}).get("steps", 0) for c in costs)
+    budget_complete = (len(costs) == sum(bool(c.get("train_dir")) for c in plan["cases"])
+                       and all(c["state"] == "completed" for c in costs)) if plan.get("jobs") else True
     payload = {"schema_version": 1, "comparison": plan["comparison"], "profile": plan["profile"],
                "state": "complete" if not missing and not missing_artifacts and budget_complete else "incomplete",
                "missing_evaluations": missing, "missing_artifacts": missing_artifacts,
-               "training_budget_complete": budget_complete,
+               "training_budget_complete": budget_complete, "math_eval_enabled": plan.get("math_eval_enabled", True),
                "accuracy": rows, "summary": summary, "paired_deltas": deltas,
                "training_cost": costs, "bi_comparisons": bi_pairs,
                "cost_note": "Loop seconds and generated tokens include resumed training sessions; total job wall time is in jobs.json."}
     save_json(out / "final_results.json", payload)
-    write_csv(out / "accuracy_by_run.csv", [{k: v for k, v in r.items() if k != "protocol"} for r in rows])
-    write_csv(out / "accuracy_summary.csv", summary)
-    write_csv(out / "opd_vs_impact_delta.csv", deltas)
+    if plan.get("math_eval_enabled", True):
+        write_csv(out / "accuracy_by_run.csv", [{k: v for k, v in r.items() if k != "protocol"} for r in rows])
+        write_csv(out / "accuracy_summary.csv", summary)
+        write_csv(out / "opd_vs_impact_delta.csv", deltas)
     write_csv(out / "training_cost.csv", costs)
     write_csv(out / "bi_all_layers.csv", bi_layers)
     write_csv(out / "bi_comparisons.csv", bi_pairs)
-    lines = ["# OPD vs OPD + IMPACT — final results", "", f"Status: {payload['state']}",
-             f"Profile: {plan['profile']}", "", "Domain | Method | Task | Seeds | Accuracy (%) | Std | Scope",
-             "--- | --- | --- | --- | --- | --- | ---"]
-    for row in summary:
-        std = f"{row['std_accuracy_percent']:.3f}" if row['std_accuracy_percent'] is not None else "n/a"
-        lines.append(f"{row['domain']} | {row['method']} | {row['task']} | {row['n_seeds']} | {row['mean_accuracy_percent']:.3f} | {std} | {row['scope']}")
-    lines += ["", "Domain | Seed | Task | OPD (%) | OPD+IMPACT (%) | Delta (pp)", "--- | --- | --- | --- | --- | ---"]
-    for row in deltas:
-        lines.append(f"{row['domain']} | {row['seed']} | {row['task']} | {row['opd_percent']:.3f} | {row['opd_impact_percent']:.3f} | {row['delta_percentage_points']:+.3f}")
+    lines = ["# " + " vs ".join(plan["comparison"]) + " — final results", "",
+             f"Status: {payload['state']}", f"Profile: {plan['profile']}"]
+    if plan.get("math_eval_enabled", True):
+        lines += ["", "Domain | Method | Task | Seeds | Accuracy (%) | Std | Scope",
+                  "--- | --- | --- | --- | --- | --- | ---"]
+        for row in summary:
+            std = f"{row['std_accuracy_percent']:.3f}" if row['std_accuracy_percent'] is not None else "n/a"
+            lines.append(f"{row['domain']} | {row['method']} | {row['task']} | {row['n_seeds']} | {row['mean_accuracy_percent']:.3f} | {std} | {row['scope']}")
+        lines += ["", "Domain | Seed | Task | OPD (%) | OPD+IMPACT (%) | Delta (pp)", "--- | --- | --- | --- | --- | ---"]
+        for row in deltas:
+            lines.append(f"{row['domain']} | {row['seed']} | {row['task']} | {row['opd_percent']:.3f} | {row['opd_impact_percent']:.3f} | {row['delta_percentage_points']:+.3f}")
+    else:
+        lines += ["", "MATH-500/GSM8K disabled for this run. No benchmark accuracy is reported."]
+    lines += ["", "Domain | Method | Seed | Updates | OPD loss | IMPACT loss | State",
+              "--- | --- | --- | --- | --- | --- | ---"]
+    for cost in costs:
+        lines.append(f"{cost['domain']} | {cost['method']} | {cost['seed']} | {cost['optimizer_steps']} | {cost['last_opd_loss']} | {cost['last_impact_loss']} | {cost['state']}")
     lines += ["", f"BI calibration sets: {len({r['calibration'] for r in bi_layers})}; paired BI comparisons: {len(bi_pairs)}.",
-              "Detailed costs, all BI layer ranks/weights and per-run accuracy are in the adjacent CSV/JSON files.",
+              "Detailed training costs, all BI layer ranks/weights and any enabled evaluations are in the adjacent CSV/JSON files.",
               "One training seed has no across-seed variability estimate. Missing results are never filled with zero."]
     if missing:
         lines += ["", "Missing evaluations: " + ", ".join(missing)]

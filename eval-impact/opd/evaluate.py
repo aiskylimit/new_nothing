@@ -10,7 +10,7 @@ from .local_assets import write_eval_tasks
 
 
 def command(args):
-    model_args = f"pretrained={args.model},dtype={args.dtype},enable_thinking=False"
+    model_args = f"pretrained={args.model},dtype={args.dtype}"
     if args.adapter:
         model_args += f",peft={args.adapter}"
     if args.revision:
@@ -20,8 +20,9 @@ def command(args):
            "--tasks", ",".join(mapping.values()), "--batch_size", str(args.batch_size),
            "--device", args.device, "--output_path", args.out, "--log_samples",
            "--seed", ",".join([str(args.seed)] * 4),
-           "--gen_kwargs", f"max_gen_toks={args.max_new_tokens},do_sample=False",
-           "--apply_chat_template", "--fewshot_as_multiturn"]
+           "--gen_kwargs", f"max_gen_toks={args.max_new_tokens},do_sample=False"]
+    if getattr(args, "use_chat_template", False):
+        cmd += ["--apply_chat_template", "--fewshot_as_multiturn"]
     if getattr(args, "local_data_root", None):
         cmd += ["--include_path", str(Path(args.out).resolve() / "local_tasks")]
     if args.num_fewshot is not None:
@@ -44,6 +45,7 @@ def main():
     p.add_argument("--num-fewshot", type=int, default=None, help="Omit to keep task defaults: MATH=4, GSM=8")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--limit", type=int, default=None, help="Debug subset; never label this full benchmark")
+    p.add_argument("--prompt-format", choices=["auto", "plain", "chat"], default="auto")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--local-data-root", default=None, help="Local raw/ directory containing math500 and gsm8k test parquet")
     args = p.parse_args()
@@ -55,6 +57,11 @@ def main():
         args.task_map = write_eval_tasks(args.local_data_root, Path(args.out) / "local_tasks")
     else:
         args.task_map = {"minerva_math500": "minerva_math500", "gsm8k_cot": "gsm8k_cot"}
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
+    args.use_chat_template = bool(tokenizer.chat_template) if args.prompt_format == "auto" else args.prompt_format == "chat"
+    if args.use_chat_template and not tokenizer.chat_template:
+        raise ValueError("Selected model has no chat template; use --prompt-format plain")
     cmd = command(args)
     try:
         version = importlib.metadata.version("lm_eval")
@@ -64,7 +71,7 @@ def main():
               {**vars(args), "command": cmd, "lm_eval_version": version,
                "scope": "debug_subset" if args.limit is not None else "full_test_splits",
                "math500_samples": 500, "gsm8k_samples": 1319,
-               "decoding": "greedy; chat template; enable_thinking=False; native task graders"})
+               "decoding": f"greedy; {'chat template' if args.use_chat_template else 'plain completion'}; native task graders"})
     print(" ".join(cmd), flush=True)
     if not args.dry_run:
         if version is None:

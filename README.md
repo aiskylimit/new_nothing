@@ -2,7 +2,7 @@
 
 ## eval-impact
 
-Local B200 pipeline for **OPD vs OPD + IMPACT**, including train/calibration data preparation, BI analysis, offline MATH-500/GSM8K evaluation and final Markdown/CSV/JSON reports.
+Local B200 pipeline for **OPD vs OPD + IMPACT**, using **LLaMA2-7B → TinyLLaMA-1.1B** on Dolly, with teacher LoRA preparation, BI analysis and final training/BI reports. MATH-500/GSM8K are disabled in the current default run.
 
 - Code and run instructions: [eval-impact/README.md](eval-impact/README.md)
 - Environment template: [impact-opd-b200.txt](impact-opd-b200.txt)

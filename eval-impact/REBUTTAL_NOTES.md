@@ -1,3 +1,5 @@
+> Historical notes for the earlier Qwen/math pipeline. Current default: LLaMA2 → TinyLLaMA, OPD vs OPD + IMPACT on Dolly; math evaluation disabled. Follow [README_B200.md](README_B200.md) and [DSKDV2_REFERENCE.md](DSKDV2_REFERENCE.md).
+
 # Evidence for OPD + IMPACT and BI calibration questions
 
 The comparison is direct OPD versus the same OPD objective plus IMPACT. DSKDv2 informs setup only; it is not the baseline objective.
