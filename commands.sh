@@ -1,5 +1,5 @@
 #1 +10
-#uni2
+#uni3
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -39,7 +39,8 @@ export NCCL_DEBUG=WARN
 cd ./unified-ie
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
-bash ./run2.sh
+# bash ./run2.sh
+bash ./run3.sh
 # bash ./project_commands.sh
 
 # cd ./eval-impact
