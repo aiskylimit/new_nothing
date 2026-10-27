@@ -1,9 +1,10 @@
 #! /bin/bash
-# Starts every SFT run (teacher Qwen3-4B LoRA, student Qwen3-0.6B full) and returns; the runs keep going
-# after logout. Teachers are trained one per source dataset (script:dataset passes the dataset to the
-# script, which keeps only its rows); students one per task. One queue per GPU, so each GPU runs one job
-# at a time, teachers first. The queues are balanced on rough cost (train rows x epochs, the 4B teacher
-# about 5x the student), about 850k-980k row-epoch units each.
+# Starts SFT runs (teacher Qwen3-4B LoRA, student Qwen3-0.6B full) and returns; the runs keep going after
+# logout. Teachers are trained one per source dataset (script:dataset passes the dataset to the script,
+# which keeps only its rows); students one per task. One queue per GPU, so each GPU runs one job at a time.
+# Now, on GPUs 4-6 (GPU 7 runs run2.sh): teachers go to 5 epochs. The 3 EE teachers whose 2026-10-26 run used
+# the old EE data (no arguments) train again from scratch; the other 9 teachers go on from their 3-epoch
+# checkpoint for 2 more. The full plan of the first round is kept below, commented out.
 # EE = events with arguments on ACE/MAVEN/RAMS/GENEVA (ee_v1, ee_v2; MAVEN/RAMS have no arguments, so the
 # loss skips their []), NER = CoNLL-2003 + OntoNotes (ner_v2), RE = TACRED, FewRel.
 # Console output: logs/<script>[_<dataset>].log. Training log with the RESULT lines:
@@ -51,14 +52,20 @@ done
 
 # one queue per GPU: the jobs in a queue run one after the other on that GPU, all on torchrun port
 # 29500 + 10 x GPU (one job at a time per queue, so no two live runs share a port)
-start () {  # $1 = GPU, then jobs: script path under scripts/general_domain/, optionally :<dataset>
+start () {  # $1 = GPU, then jobs: script path under scripts/general_domain/, optionally :<dataset>, optionally
+            # @<teacher checkpoint> to train that LoRA on for MORE_EPOCHS (log name gets _cont)
     local gpu=$1; shift
     local mark=logs/.gpu${gpu}_started
     local cmd=": > ${mark}; "
     for j in "$@"; do
+        local ckpt="" env="GPU=${gpu} PORT=$((29500 + 10 * gpu))"
+        if [ "${j}" != "${j%@*}" ]; then
+            ckpt=${j#*@} j=${j%@*}
+            env+=" PEFT_PATH=${ckpt} EPOCHS=${MORE_EPOCHS}"
+        fi
         local s=${j%%:*} ds=""
         [ "${j}" != "${s}" ] && ds=${j#*:}
-        cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu)) bash scripts/general_domain/${s}.sh ${ds} > logs/$(basename ${s})${ds:+_${ds}}.log 2>&1; "
+        cmd+="${env} bash scripts/general_domain/${s}.sh ${ds} > logs/$(basename ${s})${ds:+_${ds}}${ckpt:+_cont}.log 2>&1; "
     done
     rm -f ${mark}
     nohup bash -c "${cmd}" > /dev/null 2>&1 &
@@ -74,11 +81,44 @@ start () {  # $1 = GPU, then jobs: script path under scripts/general_domain/, op
     fi
 }
 
-start 4 ner/sft_teacher_4B_ner:ontonotes re/sft_student_0.6B_re_tacred
-start 5 ee/sft_teacher_4B_ee_v1:maven re/sft_teacher_4B_re_fewrel ee/sft_teacher_4B_ee_v1:rams
-start 6 ee/sft_teacher_4B_ee_v2:maven ner/sft_teacher_4B_ner:conll03 ner/sft_student_0.6B_ner
-start 7 ee/sft_teacher_4B_ee_v2:rams re/sft_teacher_4B_re_tacred \
-    ee/sft_teacher_4B_ee_v1:ace ee/sft_teacher_4B_ee_v2:ace ee/sft_teacher_4B_ee_v1:geneva ee/sft_teacher_4B_ee_v2:geneva \
-    ee/sft_student_0.6B_ee_v1 ee/sft_student_0.6B_ee_v2 re/sft_student_0.6B_re_fewrel
+# the full plan (all 17 runs, queues balanced on train rows x epochs, the 4B teacher about 5x the student):
+# start 4 ner/sft_teacher_4B_ner:ontonotes re/sft_student_0.6B_re_tacred
+# start 5 ee/sft_teacher_4B_ee_v1:maven re/sft_teacher_4B_re_fewrel ee/sft_teacher_4B_ee_v1:rams
+# start 6 ee/sft_teacher_4B_ee_v2:maven ner/sft_teacher_4B_ner:conll03 ner/sft_student_0.6B_ner
+# start 7 ee/sft_teacher_4B_ee_v2:rams re/sft_teacher_4B_re_tacred \
+#     ee/sft_teacher_4B_ee_v1:ace ee/sft_teacher_4B_ee_v2:ace ee/sft_teacher_4B_ee_v1:geneva ee/sft_teacher_4B_ee_v2:geneva \
+#     ee/sft_student_0.6B_ee_v1 ee/sft_student_0.6B_ee_v2 re/sft_student_0.6B_re_fewrel
+
+# rerun on the current EE data. The old-data runs save to the same folders, so they are moved aside first:
+# otherwise the new checkpoints overwrite theirs step by step and log.txt mixes old and new RESULT lines.
+for r in sft_4B_ee_v1_maven sft_4B_ee_v2_maven sft_4B_ee_v1_rams; do
+    src=results/qwen3/general_domain/${r}
+    if [ -d "${src}" ] && [ ! -e results/qwen3/general_domain/_old_ee_data/${r} ]; then
+        mkdir -p results/qwen3/general_domain/_old_ee_data
+        mv "${src}" results/qwen3/general_domain/_old_ee_data/ && echo "moved ${src} to results/qwen3/general_domain/_old_ee_data/"
+    fi
+done
+
+# teachers now train 5 epochs (the scripts' default). Those 3 start from scratch; the other 9 trained 3 epochs
+# on the current data and go on from their last checkpoint for 2 more, saved apart in
+# <settings e2-...>-from<step>/ (fresh optimizer and lr schedule, epochs in its log count from 0 again).
+MORE_EPOCHS=2
+cont () {  # $1 = job, $2 = run folder: "$1@<highest step of its 3-epoch run>", nothing if there is none
+    local c
+    c=$(ls -d results/qwen3/general_domain/$2/e3-*/[0-9]* 2>/dev/null | sort -t/ -k6,6n | tail -1)
+    if [ -z "${c}" ]; then echo "no 3-epoch checkpoint for $2: not continued" >&2; return; fi
+    echo "$1@${c}"
+}
+# queues balanced on the time the runs took (MAVEN ~85 min for 3 epochs, OntoNotes ~155, FewRel ~95, ...),
+# about 3.2-3.6 h each
+start 4 ee/sft_teacher_4B_ee_v1:maven \
+    $(cont re/sft_teacher_4B_re_tacred sft_4B_re_tacred) \
+    $(cont ee/sft_teacher_4B_ee_v1:ace sft_4B_ee_v1_ace) $(cont ee/sft_teacher_4B_ee_v2:ace sft_4B_ee_v2_ace)
+start 5 ee/sft_teacher_4B_ee_v2:maven \
+    $(cont re/sft_teacher_4B_re_fewrel sft_4B_re_fewrel)
+start 6 ee/sft_teacher_4B_ee_v1:rams \
+    $(cont ner/sft_teacher_4B_ner:ontonotes sft_4B_ner_v2_ontonotes) $(cont ner/sft_teacher_4B_ner:conll03 sft_4B_ner_v2_conll03) \
+    $(cont ee/sft_teacher_4B_ee_v1:geneva sft_4B_ee_v1_geneva) $(cont ee/sft_teacher_4B_ee_v2:geneva sft_4B_ee_v2_geneva) \
+    $(cont ee/sft_teacher_4B_ee_v2:rams sft_4B_ee_v2_rams)
 
 echo "follow: tail -f logs/*.log    results: grep -rh RESULT results/qwen3/general_domain --include=log.txt"
