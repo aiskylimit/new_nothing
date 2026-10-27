@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#1 +10
 #uni
 #v2
 
@@ -36,7 +36,8 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./unified-ie
+cd ./unified-ie
+bash pack_checkpoints.sh
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
 # bash ./run2.sh
