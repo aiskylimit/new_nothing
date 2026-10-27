@@ -85,6 +85,11 @@ def add_data_args(parser: argparse.ArgumentParser):
     group.add_argument("--balance-alpha", type=float, default=None,
                        help="each epoch takes rows of source dataset d prop. to n_d**alpha (0.5 = square root), "
                             "no row twice in an epoch, every row used before any repeats (BalancedSampler)")
+    group.add_argument("--subset-alpha", type=float, default=None,
+                       help="train on a fixed subset: source dataset d keeps rows prop. to n_d**alpha (0.5 = square "
+                            "root; the dataset with the fewest rows per share is kept whole), chosen once with --seed, "
+                            "the rest dropped. Epochs then run over the subset as usual, so no row is repeated more "
+                            "than in full-data training (unlike --balance-alpha)")
     group.add_argument("--dynamic-pad", action="store_true",
                        help="pad each batch to its longest row (rounded up to 64) instead of --max-length; "
                             "ignored with the span loss or --student-gen")
@@ -169,6 +174,11 @@ def add_hp_args(parser: argparse.ArgumentParser):
     group.add_argument("--scheduler-name", type=str, default="constant_trm")
 
     group.add_argument("--w-span-loss", type=float, default=1.0)
+    group.add_argument("--span-locate", type=str, default="legacy", choices=["legacy", "response"],
+                       help="where the span loss finds each span string (EE trigger/type/argument/role, NER "
+                            "entity/type, RE subject/relation/object): legacy = the original EventKD search, each "
+                            "string after the previous one starting at the top of the prompt; response = each string "
+                            "where the answer JSON writes it")
 
     return parser
 

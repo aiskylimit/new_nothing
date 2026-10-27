@@ -8,9 +8,11 @@
 # Each part is a switch (env variable, default = BAM); the run dir is named after them:
 #   KD_SCHEDULE=anneal    BAM teacher annealing (KD weight 1 -> 0); constant = fixed KD_RATIO
 #   KD_TYPE=fkl           forward KL, BAM's loss; sfkl = skewed forward KL of EventKD
-#   W_SPAN=0              span loss off; 1.0 = EventKD span loss on teacher layers 33/36 (EE rows only:
-#                         NER and RE rows have no spans yet)
-#   BALANCE=              every row once per epoch; 0.5 = square-root balancing, more epochs (as the SFT student)
+#   W_SPAN=0              span loss off; 1.0 = EventKD span loss on teacher layers 33/36 (spans: EE trigger,
+#                         type, argument, role; NER entity, type; RE subject, relation, object)
+#   SPAN_LOCATE=response  with W_SPAN > 0: every span where the answer JSON writes it; legacy = the original
+#                         EventKD search (first span usually in the input sentence, the rest in the answer)
+#   SUBSET=               all train rows; 0.5 = fixed square-root subset (same rows as the SFT student's SUBSET=0.5)
 #   TEACHERS=             name=lora_dir,...; empty = best dev epoch of each teacher run in results/ below
 # e.g. KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh ee_v1
 # Standalone; run.sh-style GPU and PORT (defaults below).
@@ -29,20 +31,18 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE                   --nnodes $NN
 DATA=${1:-mt_v2}
 BASE_PATH=.
 MAPS=${BASE_PATH}/data/general_domain
-# per data folder: teacher runs (dataset=results dir), label maps, prompt width, balanced epochs
+# per data folder: teacher runs (dataset=results dir), label maps, prompt width
 case ${DATA} in
     ee_v1|ee_v2)
         TEACHER_RUNS="ace=sft_4B_${DATA}_ace geneva=sft_4B_${DATA}_geneva maven=sft_4B_${DATA}_maven rams=sft_4B_${DATA}_rams"
         LABEL_MAP=${MAPS}/ee_label_map.tsv
-        MAX_PROMPT=460
-        BALANCED_EPOCHS=13;;
+        MAX_PROMPT=460;;
     mt_v2)
         TEACHER_RUNS="ace=sft_4B_ee_v2_ace geneva=sft_4B_ee_v2_geneva maven=sft_4B_ee_v2_maven rams=sft_4B_ee_v2_rams"
         TEACHER_RUNS+=" conll03=sft_4B_ner_v2_conll03 ontonotes=sft_4B_ner_v2_ontonotes"
         TEACHER_RUNS+=" tacred=sft_4B_re_tacred fewrel=sft_4B_re_fewrel"
         LABEL_MAP=${MAPS}/ee_label_map.tsv,${MAPS}/ner_label_map.tsv
-        MAX_PROMPT=480
-        BALANCED_EPOCHS=18;;
+        MAX_PROMPT=480;;
     *)
         echo "unknown data folder ${DATA} (ee_v1, ee_v2, mt_v2)"
         exit 1;;
@@ -52,7 +52,8 @@ KD_SCHEDULE=${KD_SCHEDULE:-anneal}
 KD_RATIO=${KD_RATIO:-0.9}
 KD_TYPE=${KD_TYPE:-fkl}
 W_SPAN=${W_SPAN:-0}
-BALANCE=${BALANCE:-}
+SPAN_LOCATE=${SPAN_LOCATE:-response}
+SUBSET=${SUBSET:-}
 TEACHERS=${TEACHERS:-}
 if [ -z "${TEACHERS}" ]; then
     for t in ${TEACHER_RUNS}; do
@@ -77,11 +78,11 @@ BATCH_SIZE=8
 LR=0.00005
 GRAD_ACC=4
 EVAL_BATCH_SIZE=128
-EPOCHS=${EPOCHS:-$([ -n "${BALANCE}" ] && echo ${BALANCED_EPOCHS} || echo 5)}
+EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}${BALANCE:+_balance${BALANCE}}
+RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")${SUBSET:+_subset${SUBSET}}
 SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}/${RUN}"
 # seed
 SEED=42
@@ -101,7 +102,7 @@ OPTS+=" --n-gpu ${GPUS_PER_NODE}"
 OPTS+=" --data-dir ${DATA_DIR}"
 OPTS+=" --num-workers 0"
 OPTS+=" --dev-num -1"
-[ -n "${BALANCE}" ] && OPTS+=" --balance-alpha ${BALANCE}"
+[ -n "${SUBSET}" ] && OPTS+=" --subset-alpha ${SUBSET}"
 # score each source dataset in its own labels; dev answers every epoch, test answers when the dev score
 # (mean per-dataset F1; for mt_v2 the mean of the EE, NER and RE scores) improves
 OPTS+=" --label-map ${LABEL_MAP}"
@@ -142,6 +143,7 @@ OPTS+=" --deepspeed_config ${BASE_PATH}/configs/deepspeed/ds_config_bf16.json"
 OPTS+=" --type ${KD_TYPE}"
 # span loss
 OPTS+=" --w-span-loss ${W_SPAN}"
+OPTS+=" --span-locate ${SPAN_LOCATE}"
 OPTS+=" --teacher_layer_mapping 33 36"
 OPTS+=" --student_layer_mapping 25 28"
 # gen: greedy (no --do-sample)

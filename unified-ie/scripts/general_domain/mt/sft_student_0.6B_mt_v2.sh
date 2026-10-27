@@ -4,9 +4,10 @@
 # Baseline of the multi-teacher students. Dev/test are scored per task; the checkpoint is picked on the mean
 # of the EE, NER and RE dev scores.
 #   bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh
-#   BALANCE=0.5 bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh   # square-root balancing
-# BALANCE=a: each epoch takes dataset d's rows prop. to n_d^a (BalancedSampler); at 0.5 an epoch is 41.2k
-# rows, so 18 epochs ~ 5 plain epochs of updates. EPOCHS=... overrides.
+#   SUBSET=0.5 bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh    # square-root subset
+# SUBSET=a: train on a fixed subset where dataset d keeps rows prop. to n_d^a, drawn once with the seed (the
+# same rows in every run, BAM included); at 0.5 that's 41,183 of the 148,583 rows. Same 5 epochs over it, so
+# no row is seen more often than in full-data training.
 # Standalone: run.sh-style GPU and PORT (defaults below).
 
 GPUS=(${GPU:-7})
@@ -22,7 +23,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE                   --nnodes $NN
 
 DATA=mt_v2
 BASE_PATH=.
-BALANCE=${BALANCE:-}
+SUBSET=${SUBSET:-}
 # model
 CKPT_NAME="qwen3-0.6B"
 CKPT="Qwen/Qwen3-0.6B"
@@ -35,11 +36,11 @@ BATCH_SIZE=16
 LR=0.00005
 GRAD_ACC=2
 EVAL_BATCH_SIZE=128
-EPOCHS=${EPOCHS:-$([ -n "${BALANCE}" ] && echo 18 || echo 5)}
+EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_0.6B_${DATA}${BALANCE:+_balance${BALANCE}}"
+SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_0.6B_${DATA}${SUBSET:+_subset${SUBSET}}"
 # seed
 SEED=42
 
@@ -55,7 +56,7 @@ OPTS+=" --n-gpu ${GPUS_PER_NODE}"
 OPTS+=" --data-dir ${DATA_DIR}"
 OPTS+=" --num-workers 0"
 OPTS+=" --dev-num -1"
-[ -n "${BALANCE}" ] && OPTS+=" --balance-alpha ${BALANCE}"
+[ -n "${SUBSET}" ] && OPTS+=" --subset-alpha ${SUBSET}"
 # score each source dataset in its own labels (EE and NER maps); dev answers every epoch, test answers when
 # the mean of the three task scores on dev improves
 OPTS+=" --label-map ${BASE_PATH}/data/general_domain/ee_label_map.tsv,${BASE_PATH}/data/general_domain/ner_label_map.tsv"

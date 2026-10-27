@@ -85,8 +85,8 @@ OPTS+=" --peft-lora-alpha 64"
 OPTS+=" --peft-lora-dropout 0.1"
 # PEFT_PATH=<teacher checkpoint, e.g. results/.../sft_4B_ee_v1_ace/e3-.../288> (EPOCHS=<n> for how many more):
 # training goes on from that adapter (its own rank, alpha, target modules; fresh optimizer and lr schedule),
-# saved next to the first run with the suffix -from<step>
-[ -n "${PEFT_PATH:-}" ] && OPTS+=" --peft-path ${PEFT_PATH} --save-additional-suffix -from$(basename ${PEFT_PATH})"
+# saved next to the first run with the suffix -from<step> (passed as --opt=value: argparse takes a bare "-from..." for a flag)
+[ -n "${PEFT_PATH:-}" ] && OPTS+=" --peft-path ${PEFT_PATH} --save-additional-suffix=-from$(basename ${PEFT_PATH})"
 # deepspeed
 OPTS+=" --deepspeed"
 OPTS+=" --deepspeed_config ${BASE_PATH}/configs/deepspeed/ds_config_bf16.json"
