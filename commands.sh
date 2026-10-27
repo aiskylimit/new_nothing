@@ -1,6 +1,6 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #uni
-#v2
+#v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
 
