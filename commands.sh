@@ -1,10 +1,5 @@
-#d
-#datasets
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data.zip /mnt/local/@PROJECT@/unified-ie
---url https://huggingface.co/datasets/datht/unified-ie/resolve/main/mt_v2.zip /mnt/local/@PROJECT@/unified-ie
-
-
-#impact
+#1 +30
+#uni
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -41,15 +36,15 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-# cd ./unified-ie
+cd ./unified-ie
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
 # bash ./run2.sh
-# bash ./run3.sh
+bash ./run4.sh
 # bash ./project_commands.sh
 
-cd ./eval-impact
-CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
+# cd ./eval-impact
+# CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands.sh
