@@ -1,4 +1,8 @@
-#1 +30
+#d
+#models
+--hf meta-llama/Llama-2-7b-hf /mnt/local/@PROJECT@/eval-impact/models/Llama-2-7b-hf
+--hf TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T /mnt/local/@PROJECT@/eval-impact/models/TinyLlama-1.1B-intermediate-step-1431k-3T
+
 #impact
 #v1
 
@@ -37,7 +41,6 @@ export NCCL_DEBUG=WARN
 # bash ./project_command.sh
 
 # cd ./unified-ie
-# tree results
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
 # bash ./run2.sh
