@@ -1,5 +1,5 @@
-#2 +a
-#log
+#1 +30
+#impact
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -36,16 +36,16 @@ export NCCL_DEBUG=WARN
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./unified-ie
-tree results
+# cd ./unified-ie
+# tree results
 # tar -czf logs.tar.gz logs/
 # ls -lh logs.tar.gz
 # bash ./run2.sh
 # bash ./run3.sh
 # bash ./project_commands.sh
 
-# cd ./eval-impact
-# CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
+cd ./eval-impact
+CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands.sh
