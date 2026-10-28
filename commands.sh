@@ -1,5 +1,5 @@
-#2
-#impact
+#1 +10
+#gpu
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -43,8 +43,8 @@ export NCCL_DEBUG=WARN
 # bash ./run4.sh
 # bash ./project_commands.sh
 
-cd ./eval-impact
-CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
+# cd ./eval-impact
+# CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands.sh
