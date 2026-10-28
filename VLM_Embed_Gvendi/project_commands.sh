@@ -26,7 +26,7 @@ unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/InfographicsVQ
 unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
 unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
 unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip -q /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/vlm2vec_external/flickr30k/flickr30k-images.zip -d ./vlm2vec_external/flickr30k/
+unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/vlm2vec_external/flickr30k/flickr30k-images.zip -d ./vlm2vec_external/flickr30k/
 
 # #
 # # 4. Unzip the cache
@@ -38,10 +38,23 @@ tar -xzf /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/B3_Qwen2_7B
 
 
 
-# CUDA_VISIBLE_DEVICES=0 bash ./baseline_scripts/train_distill_pga_cls.sh &
-# CUDA_VISIBLE_DEVICES=1 bash ./baseline_scripts/train_distill_pga_vqa.sh &
-# CUDA_VISIBLE_DEVICES=2 bash ./baseline_scripts/train_distill_ov_pga_cls.sh &
-# CUDA_VISIBLE_DEVICES=3 bash ./baseline_scripts/train_distill_ov_pga_vqa.sh &
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_cls.sh &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_grounding.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_vqa.sh &
+
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_cls.sh &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_grounding.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_vqa.sh &
+
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_cls.sh &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_grounding.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_vqa.sh &
+
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_cls.sh &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_grounding.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_vqa.sh &
+
+wait 
 
 # bash run_time_mem.sh &
 # CUDA_VISIBLE_DEVICES=6 bash ./baseline_scripts/train_distill_span_attn_vqa.sh
