@@ -1,0 +1,16 @@
+{
+  "fixture_only": true,
+  "resume_cumulative_cost_passed": true,
+  "observed": {
+    "domain": "fixture",
+    "method": "opd",
+    "seed": 42,
+    "optimizer_steps": 2,
+    "loop_seconds": 0.07620025000005626,
+    "generated_tokens": 16,
+    "peak_allocated_gb": null,
+    "last_opd_loss": 0.008283038623631,
+    "last_impact_loss": null,
+    "state": "completed"
+  }
+}

@@ -10,6 +10,7 @@
 #   task*/**/log.txt     dist runs: one "dev | ..." / "test | ..." line per eval, F1 inside
 #   cl_results.json      CL-LoRA runs: {"task<t>": {"trigger": {"f1": ...}}, ...}
 #   run_config.txt, run_manifest.json, .complete   which config, how far it got, finished or not
+#   pl_task*.log         PL runs: PL_QUALITY lines, pseudo-label precision/recall per task
 # With WITH_LOGS=1 (the default), the last LOG_LINES lines of every logs/*.log / *.out, every
 # ./logs_<run>.log (ours_queue.sh's per-run stdout) and the newest task*/train.log of each
 # unfinished run: where a crashed run leaves its traceback or OOM. Progress-bar updates (\r) count
@@ -33,7 +34,7 @@ while IFS= read -r -d '' f; do
     cp -p "$f" "${OUT}/$f"
     n=$((n + 1))
 done < <(find results -path '*/merged' -prune -o -type f \( -name log.txt -o -name cl_results.json \
-    -o -name run_config.txt -o -name run_manifest.json -o -name .complete \) -print0)
+    -o -name run_config.txt -o -name run_manifest.json -o -name .complete -o -name 'pl_task*.log' \) -print0)
 
 m=0
 tail_into () {  # $1 = file: its last LOG_LINES lines, \r split, at the same path under OUT

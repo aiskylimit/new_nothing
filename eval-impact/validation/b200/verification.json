@@ -1,0 +1,10 @@
+{
+  "fixture_only": true,
+  "b200_pretrained_run": false,
+  "entrypoints_have_no_mac_paths": true,
+  "shell_syntax_passed": true,
+  "raw_data_prepared_offline": true,
+  "native_offline_eval_per_task": 1,
+  "resume_cumulative_cost_passed": true,
+  "test_count": 20
+}

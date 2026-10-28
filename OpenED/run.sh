@@ -5,10 +5,10 @@
 # Tokenizes each requested permutation, then launches the distillation queue (7 methods)
 # and the CL-LoRA queue (8 methods) each on its own GPU set, in the background.
 #
-# Rule enforced by the per-family runners: at most ONE queue per GPU. This script respects
-# that by giving the distillation queue and the CL-LoRA queue separate GPUs and running each
-# one's permutations sequentially inside a single background process, so a GPU never has two
-# queues racing for its memory between tasks.
+# By default one queue per GPU: this script gives the distillation queue and the CL-LoRA queue
+# separate GPUs and runs each one's permutations sequentially inside a single background
+# process, so a GPU never has two queues racing for its memory between tasks. A card with room
+# for more (H200) can take several queues by repeating its id in a GPU list (see below).
 #
 # Each family gets a comma-separated GPU list (GPU_DIST_ALL / GPU_CLLORA_ALL below). With
 # more than one GPU the methods are split round-robin, one single-GPU sub-queue per GPU, so
@@ -32,7 +32,7 @@
 # marker per method+perm), so a dataset whose range is listed in full only trains the gaps,
 # and the plan stays correct as runs land. Datasets run ONE AT A TIME (dist+CL-LoRA
 # concurrently within a dataset, next dataset only after both queues of the current one
-# finish) so at most one queue ever sits on a given GPU. Override the whole thing with
+# finish), so two datasets' queues never share a GPU. Override the whole thing with
 # MISSING_PLAN="ds:perms:queue;..." or, for a plain list at all perms and both queues,
 # RUN_ALL_DATASETS="ds1 ds2 ...".
 #
@@ -78,6 +78,10 @@ cd "$(dirname "$0")"
 export CLLORA_METHODS="inclora olora tree inflora epi migu gainlora_o gainlora_inf"
 export DIST_METHODS="kd rkl sfkl srkl csd distillm amid"   # labels dist_queue.sh knows
 export RESUME=${RESUME:-0}   # both CED queues read this
+# PHYS_BS and the runners' memory guards by card size: the values measured on 1x H200 NVL on
+# H200-class cards, the runners' own (PHYS_BS = --bs) on smaller ones (scripts/qwen/lib.sh)
+source scripts/qwen/lib.sh
+apply_card_defaults
 
 # What is still missing, dataset by dataset (checked 2026-09-26). One entry per dataset,
 # entries separated by ";", fields by ":" -> <dataset>:<perms>:<queue>.
@@ -109,8 +113,10 @@ fi
 export MODEL_PATH=${MODEL_PATH:-Qwen/Qwen3-0.6B}
 
 # GPUs per family, comma-separated. Both modes use these; the single-dataset form can still
-# override them with arguments 3 and 4. The two lists must not overlap.
-# One queue per GPU, always: the memory guards in the runners are snapshots, not reservations.
+# override them with arguments 3 and 4. An id may repeat within a list (one sub-queue per entry,
+# sharing that card; each sub-queue gets its own torchrun port); the two lists must not share ids.
+# Repeat an id only when the card fits that many runs: the memory guards in the runners are
+# snapshots, not reservations.
 export GPU_DIST_ALL=${GPU_DIST_ALL:-0,1,2,3}
 export GPU_CLLORA_ALL=${GPU_CLLORA_ALL:-4,5,6,7}
 
@@ -177,13 +183,13 @@ run_dist_queue () {   # $1=family $2=dataset $3=gpus (comma list) $4..=perms
         else
             # Shared task0 first, on one GPU: every method starts from it, and parallel
             # sub-queues would each try to create it (the loser dies on the partial dir).
-            PERM=${p} GPU=${gpus[0]} PROTOCOL="$(protocol_of "${ds}")" DIST_METHODS="" \
+            PERM=${p} GPU=${gpus[0]} PROTOCOL="$(protocol_of "${ds}")" DIST_METHODS="" MASTER_PORT=29599 \
                 DATA_PREFIX="${ds}_b10_perm" bash scripts/qwen/ced/dist_queue.sh
             rc=$?
             if [ "${rc}" -eq 0 ]; then
                 pids=()
                 for i in "${!gpus[@]}"; do
-                    PERM=${p} GPU=${gpus[i]} PROTOCOL="$(protocol_of "${ds}")" \
+                    PERM=${p} GPU=${gpus[i]} PROTOCOL="$(protocol_of "${ds}")" MASTER_PORT=$((29600 + i)) \
                         DIST_METHODS="$(split_methods "${i}" "${#gpus[@]}" ${DIST_METHODS})" \
                         DATA_PREFIX="${ds}_b10_perm" bash scripts/qwen/ced/dist_queue.sh &
                     pids+=($!)

@@ -38,7 +38,14 @@ EXTRA_ARGS=""   # raw extra flags appended to the ced_finetune step (e.g. DistiL
 TASK0_SOURCE_RUN=""
 TRAIN_NUM=-1; DEV_NUM=-1
 SMOKE_ROWS=0
-EVAL_BS=32
+EVAL_BS=${EVAL_BS:-128}                 # generation batch; the loss pass keeps 32-row chunks
+PHYS_BS=${PHYS_BS:-}                    # physical batch target, empty = --bs (scripts/qwen/lib.sh phys_split)
+EVAL_GEN_MODE=${EVAL_GEN_MODE:-final}   # final: test answers after each task's last update only
+DYNAMIC_PAD=${DYNAMIC_PAD:-1}           # the trainer keeps fixed padding with a span loss or DistiLLM
+STRICT_GEN=${STRICT_GEN:-0}             # 1 = generation configs used as written (gen_config.py): changes results
+GEN_BACKEND=${GEN_BACKEND:-hf}         # vllm = answers and pseudo-labels from vLLM (gen_backend.py), same settings
+COMPILE_GEN=${COMPILE_GEN:-0}          # 1 = sample inside training steps with a static, compiled cache
+GRAD_CKPT=${GRAD_CKPT:-0}              # 1 = recompute layer activations in the backward: less memory, same loss
 RESUME=0
 
 while [[ $# -gt 0 ]]; do
@@ -94,12 +101,22 @@ while [[ $# -gt 0 ]]; do
         --dev-num) DEV_NUM=$2; shift 2;;
         --smoke-rows) SMOKE_ROWS=$2; shift 2;;
         --eval-bs) EVAL_BS=$2; shift 2;;
+        --phys-bs) PHYS_BS=$2; shift 2;;
+        --eval-gen-mode) EVAL_GEN_MODE=$2; shift 2;;
+        --dynamic-pad) DYNAMIC_PAD=$2; shift 2;;
+        --strict-gen) STRICT_GEN=$2; shift 2;;
+        --gen-backend) GEN_BACKEND=$2; shift 2;;
+        --compile-gen) COMPILE_GEN=$2; shift 2;;
+        --grad-ckpt) GRAD_CKPT=$2; shift 2;;
         --resume) RESUME=1; shift;;
         *) echo "unknown flag $1"; exit 1;;
     esac
 done
 [ -z "${RUN_NAME}" ] && { echo "--run-name required"; exit 1; }
 [ -z "${LR_LATER}" ] && LR_LATER=${LR}
+source scripts/qwen/lib.sh
+read -r PBS PACC <<< "$(phys_split "${BS}" "${ACC}" "${PHYS_BS:-${BS}}")"
+[ "${SELECT_BEST}" = "1" ] && EVAL_GEN_MODE=every   # pick_best_ckpt.py reads the per-epoch dev F1
 
 GPUS=(${GPUS_ARG})
 export CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${GPUS[*]}")
@@ -108,11 +125,14 @@ if [ -x "${ENV_BIN}/nvcc" ]; then
     export CUDA_HOME=$(dirname "${ENV_BIN}")
 fi
 export PATH=${ENV_BIN}:$PATH
+vllm_check "${ENV_BIN}/python" || exit 1   # GEN_BACKEND=vllm without vLLM: stop before the run directory exists
 
 BASE_PATH=.
 # local copy from download.txt when present (see run.sh), else the hub name
 [ -f models/Qwen3-0.6B/config.json ] && MODEL_PATH=${MODEL_PATH:-models/Qwen3-0.6B}
 BASE_MODEL=${MODEL_PATH:-Qwen/Qwen3-0.6B}
+# qwen | llama | gemma (chat_format.py): the tokenizer's processed_data/<dir>/<MODEL_TYPE>/ subdir
+MODEL_TYPE=${MODEL_TYPE:-qwen}
 GPUS_PER_NODE=${#GPUS[@]}
 
 RUN_ROOT="${BASE_PATH}/results/qwen3/ced/${RUN_NAME}"
@@ -139,7 +159,7 @@ fi
 mkdir -p ${RUN_ROOT}
 MANIFEST="${RUN_ROOT}/run_manifest.json"
 MANIFEST_METHOD=${KD_TYPE}; [ "${MODE}" = "sft" ] && MANIFEST_METHOD=sft
-MANIFEST_CONFIG="mode=${MODE};kd_ratio=${KD_RATIO};w_span=${W_SPAN};kd_type=${KD_TYPE};skew=${SKEW};span_metric=${SPAN_METRIC};layers=${LAYERS};pl=${PL};pl_dedup=${PL_DEDUP};pl_conf=${PL_CONF}/${PL_CONF_PCT}/${PL_CONF_THRESH};pl_lexicon=${PL_LEXICON};boost=${BOOST};kd_scope=${KD_SCOPE};balance=${BAL}/${BAL_PT}/${BAL_LR}/${BAL_DIST};select_best=${SELECT_BEST};kd_new=${KDNEW};sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP}/omask=${SD_OMASK};lr=${LR}/${LR_LATER};train_num=${TRAIN_NUM};dev_num=${DEV_NUM};smoke_rows=${SMOKE_ROWS};eval_bs=${EVAL_BS};extra=${EXTRA_ARGS}"
+MANIFEST_CONFIG="mode=${MODE};kd_ratio=${KD_RATIO};w_span=${W_SPAN};kd_type=${KD_TYPE};skew=${SKEW};span_metric=${SPAN_METRIC};layers=${LAYERS};pl=${PL};pl_dedup=${PL_DEDUP};pl_conf=${PL_CONF}/${PL_CONF_PCT}/${PL_CONF_THRESH};pl_lexicon=${PL_LEXICON};boost=${BOOST};kd_scope=${KD_SCOPE};balance=${BAL}/${BAL_PT}/${BAL_LR}/${BAL_DIST};select_best=${SELECT_BEST};kd_new=${KDNEW};sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP}/omask=${SD_OMASK};lr=${LR}/${LR_LATER};train_num=${TRAIN_NUM};dev_num=${DEV_NUM};smoke_rows=${SMOKE_ROWS};eval_bs=${EVAL_BS};phys=${PBS}x${PACC};eval_gen=${EVAL_GEN_MODE};dyn_pad=${DYNAMIC_PAD};strict_gen=${STRICT_GEN};gen=${GEN_BACKEND};cgen=${COMPILE_GEN};extra=${EXTRA_ARGS}"
 MANIFEST_ARGS=(
     init --output "${MANIFEST}" --run "${RUN_NAME}" --method "${MANIFEST_METHOD}"
     --permutation "${PERM}" --seed "${SEED}" --data-root "${BASE_PATH}/data/${DATA_PREFIX}${PERM}"
@@ -149,11 +169,17 @@ MANIFEST_ARGS=(
     --runtime-file "${BASE_PATH}/finetune.py"
     --runtime-file "${BASE_PATH}/ced_finetune.py"
     --runtime-file "${BASE_PATH}/ced_omask.py"
+    --runtime-file "${BASE_PATH}/ced_losses.py"
+    --runtime-file "${BASE_PATH}/ced_step.py"
+    --runtime-file "${BASE_PATH}/ced_eval.py"
+    --runtime-file "${BASE_PATH}/gen_config.py"
+    --runtime-file "${BASE_PATH}/scripts/qwen/lib.sh"
     --runtime-file "${BASE_PATH}/data_utils/lm_datasets.py"
     --runtime-file "${BASE_PATH}/distillm/buffer.py"
     --runtime-file "${BASE_PATH}/distillm/losses.py"
     --runtime-file "${BASE_PATH}/distillm/sampler.py"
     --runtime-file "${BASE_PATH}/utils.py"
+    --runtime-file "${BASE_PATH}/chat_format.py"
     --runtime-file "${BASE_PATH}/ed_eval.py"
     --runtime-file "${BASE_PATH}/configs/deepspeed/ds_config_bf16.json"
     --runtime-file "${BASE_PATH}/scripts/qwen/ced/run_ced_v2.sh"
@@ -172,7 +198,7 @@ if [ "${RESUME}" = "1" ]; then
         rm -rf "${RUN_ROOT}/task${STALE_TASK}"
     done
 fi
-echo "run=${RUN_NAME} mode=${MODE} perm=${PERM} data=${DATA_PREFIX} pl=${PL} boost=${BOOST} kd_scope=${KD_SCOPE} bal=${BAL}/${BAL_PT}/${BAL_LR} kd_ratio=${KD_RATIO} w_span=${W_SPAN} ${KD_TYPE}/${SKEW}/${SPAN_METRIC} layers='${LAYERS}' bs=${BS}x${ACC} lr=${LR}/${LR_LATER} ep=${EPOCHS} seed=${SEED} lora=${RANK}/${ALPHA} greedy=${GREEDY} sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP}/omask=${SD_OMASK} task0_source=${TASK0_SOURCE_RUN:-none}" \
+echo "run=${RUN_NAME} mode=${MODE} perm=${PERM} data=${DATA_PREFIX} pl=${PL} boost=${BOOST} kd_scope=${KD_SCOPE} bal=${BAL}/${BAL_PT}/${BAL_LR} kd_ratio=${KD_RATIO} w_span=${W_SPAN} ${KD_TYPE}/${SKEW}/${SPAN_METRIC} layers='${LAYERS}' bs=${BS}x${ACC} lr=${LR}/${LR_LATER} ep=${EPOCHS} seed=${SEED} lora=${RANK}/${ALPHA} greedy=${GREEDY} sd=${SD}/${W_SD}/${SD_MU}/${SD_TEMP}/${SD_DIV}/top_p=${SD_TOP_P}/skip_unparsed=${SD_SKIP_UNPARSED}/warmup=${SD_WARMUP}/omask=${SD_OMASK} task0_source=${TASK0_SOURCE_RUN:-none} phys=${PBS}x${PACC} eval_gen=${EVAL_GEN_MODE} dyn_pad=${DYNAMIC_PAD} strict_gen=${STRICT_GEN} gen=${GEN_BACKEND} cgen=${COMPILE_GEN}" \
     | tee ${RUN_ROOT}/run_config.txt
 
 tokenize () {  # $1=raw dir  $2=processed dir  [$3=teacher prompt cap, default 640]
@@ -180,15 +206,21 @@ tokenize () {  # $1=raw dir  $2=processed dir  [$3=teacher prompt cap, default 6
         --data-dir $1/ --processed-data-dir $2 \
         --model-path ${BASE_MODEL} --data-process-workers 4 \
         --max-prompt-length 460 --t-max-prompt-length ${3:-640} \
-        --dev-num 1000 --model-type qwen
+        --dev-num 1000 --model-type ${MODEL_TYPE}
 }
 
 train_once () {  # $1=engine $2=init $3=data_dir $4=save $5=lr $6=epochs $7=extra opts
     local MASTER_PORT=${MASTER_PORT:-66$(($RANDOM%90+10))}   # project_commands.sh pins one per GPU
     local OPTS=""
-    OPTS+=" --base-path ${BASE_PATH} --model-path $2 --ckpt-name qwen3-0.6B --model-type qwen --n-gpu ${GPUS_PER_NODE}"
+    OPTS+=" --base-path ${BASE_PATH} --model-path $2 --ckpt-name qwen3-0.6B --model-type ${MODEL_TYPE} --n-gpu ${GPUS_PER_NODE}"
     OPTS+=" --data-dir $3 --num-workers 0 --train-num ${TRAIN_NUM} --dev-num ${DEV_NUM} --ced-smoke-rows ${SMOKE_ROWS}"
-    OPTS+=" --lr $5 --batch-size ${BS} --eval-batch-size ${EVAL_BS} --gradient-accumulation-steps ${ACC}"
+    OPTS+=" --lr $5 --batch-size ${PBS} --eval-batch-size ${EVAL_BS} --gradient-accumulation-steps ${PACC}"
+    OPTS+=" --loss-group-size ${BS} --eval-gen-mode ${EVAL_GEN_MODE} --eval-loss-batch-size 32"
+    [ "${DYNAMIC_PAD}" = "1" ] && OPTS+=" --dynamic-pad"
+    [ "${STRICT_GEN}" = "1" ] && OPTS+=" --strict-generation"
+    OPTS+=" --gen-backend ${GEN_BACKEND}"
+    [ "${COMPILE_GEN}" = "1" ] && OPTS+=" --compile-generation"
+    [ "${GRAD_CKPT}" = "1" ] && OPTS+=" --gradient-checkpointing"
     OPTS+=" --warmup-iters 0 --warmup-ratio 0.1 --lr-decay-style wrmup_cosine --weight-decay 1e-2 --clip-grad 1.0"
     OPTS+=" --epochs $6 --max-length 768 --max-prompt-length 460"
     OPTS+=" --do-train --do-valid --eval-gen --save-interval -1 --eval-interval -1 --log-interval 20 --mid-log-num -1"
@@ -231,7 +263,7 @@ fi
 for T in $(seq ${START_TASK} ${END_TASK})
 do
     RAW_DIR="${BASE_PATH}/data/${DATA_PREFIX}${PERM}/${T}"
-    DATA_DIR="${BASE_PATH}/processed_data/${DATA_PREFIX}${PERM}/${T}/qwen/"
+    DATA_DIR="${BASE_PATH}/processed_data/${DATA_PREFIX}${PERM}/${T}/${MODEL_TYPE}/"
     SAVE_PATH="${RUN_ROOT}/task${T}"
     TASK_LR=${LR}; [ ${T} -gt 0 ] && TASK_LR=${LR_LATER}
     STAGE=${RAW_DIR}
@@ -245,6 +277,7 @@ do
             PL_BS=64; [ "${PL_CONF}" != "none" ] && PL_BS=32
             PL_OPTS="--conflict-dedup ${PL_DEDUP} --conf-filter ${PL_CONF} --conf-percentile ${PL_CONF_PCT}"
             PL_OPTS+=" --lexicon-filter ${PL_LEXICON}"
+            PL_OPTS+=" --gen-backend ${GEN_BACKEND}"
             [ -n "${PL_CONF_THRESH}" ] && PL_OPTS+=" --conf-thresh ${PL_CONF_THRESH}"
             ${ENV_BIN}/python ${BASE_PATH}/tools/ced_pseudo_label.py \
                 --teacher ${INIT_MODEL} --data-dir ${STAGE} \
@@ -279,7 +312,7 @@ do
         if [ "${STAGE}" != "${RAW_DIR}" ]; then
             PROC="${BASE_PATH}/processed_data/stage_${RUN_NAME}/${T}"
             tokenize ${STAGE} ${PROC} ${T_CAP} >> ${RUN_ROOT}/pl_task${T}.log 2>&1
-            DATA_DIR="${PROC}/qwen/"
+            DATA_DIR="${PROC}/${MODEL_TYPE}/"
         fi
     fi
 
@@ -332,7 +365,7 @@ do
             --out ${POOL_RAW} > ${RUN_ROOT}/bal_task${T}.log 2>&1
         tokenize ${POOL_RAW} ${POOL_PROC} >> ${RUN_ROOT}/bal_task${T}.log 2>&1
         BAL_SAVE="${SAVE_PATH}_bal"
-        train_once finetune.py ${INIT_MODEL} ${POOL_PROC}/qwen/ ${BAL_SAVE} ${BAL_LR} 1 \
+        train_once finetune.py ${INIT_MODEL} ${POOL_PROC}/${MODEL_TYPE}/ ${BAL_SAVE} ${BAL_LR} 1 \
             " --type lm --peft-path ${LAST_CKPT}"
         BAL_CKPT=$(last_adapter ${BAL_SAVE})
         [ -n "${BAL_CKPT}" ] && LAST_CKPT=${BAL_CKPT}

@@ -40,6 +40,7 @@ from transformers.utils.generic import maybe_autocast, merge_with_config_default
 from transformers.utils.output_capturing import capture_outputs
 from transformers.video_utils import VideoInput
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
+from src.model.scva_attention import capture_response_to_vision_attention
 from src.model.vlm_backbone.qwen2_5_vl.modeling_qwen2_5_vl import (
     Qwen2_5_VLCausalLMOutputWithPast,
     Qwen2_5_VLForConditionalGeneration,
@@ -414,6 +415,8 @@ class Qwen3VLTextRotaryEmbedding(LlamaRotaryEmbedding):
 
 
 class Qwen3VLTextAttention(Qwen3Attention):
+    supports_scva_sparse_capture = True
+
     def __init__(self, config: Qwen3VLTextConfig, layer_idx: int):
         super().__init__(config, layer_idx)
         del self.sliding_window
@@ -456,6 +459,11 @@ class Qwen3VLTextAttention(Qwen3Attention):
             scaling=self.scaling,
             **kwargs,
         )
+
+        if getattr(self, "_scva_capture_enabled", False):
+            self._scva_attention = capture_response_to_vision_attention(
+                self, query_states, key_states, attention_mask, self.scaling
+            )
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)

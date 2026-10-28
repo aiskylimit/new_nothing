@@ -106,7 +106,10 @@ class DWAKDCriterion(VariousDivergence):
         self.dtw_band_source = getattr(args, "dtw_band_source", "cma")
         self.only_save_projector = bool(getattr(args, "only_save_projector", False))
         self._global_step = 0
-        self.dtw = SoftDTW(use_cuda=False, gamma=float(getattr(args, "dtw_gamma", 2.0))) if self.dtw_rate > 0 else None
+        self.dtw = SoftDTW(
+            use_cuda=torch.cuda.is_available(),
+            gamma=float(getattr(args, "dtw_gamma", 2.0)),
+        ) if self.dtw_rate > 0 else None
         self.last_align = None
 
     def forward(self, distiller: Any, batch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -115,12 +118,18 @@ class DWAKDCriterion(VariousDivergence):
         if teacher_inputs is None:
             raise RuntimeError("teacher_inputs are missing while running DWA-KD.")
 
-        student_outputs = distiller.student(**student_inputs)
+        # CE is computed explicitly below; avoid computing it a second time in
+        # the model's own forward method.
+        student_model_inputs = dict(student_inputs)
+        student_model_inputs.pop("labels", None)
+        student_outputs = distiller.student(**student_model_inputs)
         labels = student_inputs["labels"].to(device=student_outputs.logits.device)
         supervised_loss = self.compute_cross_entropy_loss(student_outputs.logits, labels)
 
         with torch.no_grad():
-            teacher_outputs = distiller.teacher(**teacher_inputs)
+            teacher_model_inputs = dict(teacher_inputs)
+            teacher_model_inputs.pop("labels", None)
+            teacher_outputs = distiller.teacher(**teacher_model_inputs)
 
         teacher_labels, teacher_mask = self.teacher_targets(teacher_inputs, student_outputs.logits.device)
         kd_loss, extra = self._dual_space_kd_loss(
@@ -325,6 +334,27 @@ class DWAKDCriterion(VariousDivergence):
         for index in range(student_embs.shape[0]):
             student_positions = student_mask[index].nonzero(as_tuple=False).flatten()
             teacher_positions = teacher_mask[index].nonzero(as_tuple=False).flatten()
+
+            # Keep the CUDA Soft-DTW launch below its practical per-block
+            # resource limit while preserving coverage of the full sequence.
+            max_dtw_tokens = 768
+            if student_positions.numel() > max_dtw_tokens:
+                selected = torch.linspace(
+                    0,
+                    student_positions.numel() - 1,
+                    steps=max_dtw_tokens,
+                    device=student_positions.device,
+                ).round().long()
+                student_positions = student_positions.index_select(0, selected)
+            if teacher_positions.numel() > max_dtw_tokens:
+                selected = torch.linspace(
+                    0,
+                    teacher_positions.numel() - 1,
+                    steps=max_dtw_tokens,
+                    device=teacher_positions.device,
+                ).round().long()
+                teacher_positions = teacher_positions.index_select(0, selected)
+
             student_len = int(student_positions.numel())
             teacher_len = int(teacher_positions.numel())
             if student_len == 0 or teacher_len == 0:

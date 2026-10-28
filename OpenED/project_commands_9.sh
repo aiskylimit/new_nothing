@@ -135,15 +135,15 @@ ensure_b0 () {  # $1 = perm: memory-0 ACE split, built as project_commands.sh st
     [ -f data/ace/0/train.jsonl ] || { log "  no data/ace raw splits to build ace_b0_perm$1 from"; return 1; }
     log "  building data/ace_b0_perm$1 (--cap 0)"
     [ "${DRY}" = "1" ] && return 0
-    mkdir data/ace_b0_build.lock 2>/dev/null || {   # another slot is building one, wait for it
-        while [ -d data/ace_b0_build.lock ]; do sleep 30; done
+    claim data/ace_b0_build.lock || {   # another slot is building one, wait for it
+        while [ -e data/ace_b0_build.lock ]; do sleep 30; done
         [ -s "data/ace_b0_perm$1/streams.json" ] && return 0
-        mkdir data/ace_b0_build.lock 2>/dev/null || return 1
+        claim data/ace_b0_build.lock || return 1
     }
     OPENED_BASE=$(pwd) HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 "${PY}" tools/build_ced_perms.py \
         --cap 0 --perms "$1" --out-prefix ace_b0_perm >> "${LOG}" 2>&1
     local rc=$?
-    rmdir data/ace_b0_build.lock
+    rm -f data/ace_b0_build.lock
     [ "${rc}" -eq 0 ] && [ -s "data/ace_b0_perm$1/streams.json" ]
 }
 
@@ -187,12 +187,16 @@ run_job () {  # $1 gpu $2 port $3 job -> 0 done or skipped, 1 failed
     return 1
 }
 
-worker () {  # $1 = gpu $2 = slot: take the next unclaimed job; mkdir is the atomic claim
+# Atomic claim, as in project_commands_6.sh: bash creates the file with O_EXCL. Not `mkdir`: the
+# Rust coreutils mkdir of newer Ubuntu (26.04, uutils 0.8) lets two racing callers both succeed.
+claim () { ( set -o noclobber; : > "$1" ) 2>/dev/null; }
+
+worker () {  # $1 = gpu $2 = slot: take the next unclaimed job
     local g=$1 s=$2 port=$((30100 + 10 * $1 + $2)) j n=0 i=0
     [ "${DRY}" = "1" ] || sleep $(( (s - 1) * 300 ))   # later slots see the earlier job's memory
     for j in "${JOBS[@]}"; do
         i=$((i + 1))
-        mkdir "${CLAIMS}/${i}" 2>/dev/null || continue
+        claim "${CLAIMS}/${i}" || continue
         run_job "${g}" "${port}" "${j}" || n=$((n + 1))
     done
     log "worker gpu${g}/slot${s} finished, ${n} failed"

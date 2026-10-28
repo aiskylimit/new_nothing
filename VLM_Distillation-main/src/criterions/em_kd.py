@@ -122,7 +122,9 @@ class EMKDCriterion(nn.Module):
 
         student_outputs = distiller.student(**student_inputs)
         with torch.no_grad():
-            teacher_outputs = distiller.teacher(**teacher_inputs)
+            teacher_model_inputs = dict(teacher_inputs)
+            teacher_model_inputs.pop("labels", None)
+            teacher_outputs = distiller.teacher(**teacher_model_inputs)
 
         return self.compute_losses(distiller, student_outputs, teacher_outputs, student_inputs, teacher_inputs)
 

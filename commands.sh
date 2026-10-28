@@ -1,16 +1,15 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
-#log
-#v1
+#1 +10
+#gpu
+#v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/collected_logs.tar.gz +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-iepenED/logs.tar.gz +a
 
 # nvidia-smi
 # kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
-# kill -9 756059 789827
 # sleep 2
 nvidia-smi
 
@@ -31,17 +30,24 @@ export NCCL_DEBUG=WARN
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
 
+# cd ./grit
+# bash ./project_commands.sh
+
 # cd ./cypher-extract
 # bash ./project_command.sh
 
-cd ./OpenED
-bash gather_logs.sh all3
-tar -czf collected_logs.tar.gz collected_logs/all3/
-ls -lh collected_logs.tar.gz
-# bash ./project_commands_9.sh
-
-# cd ./opsd
+# cd ./unified-ie
+# tar -czf logs.tar.gz logs/
+# ls -lh logs.tar.gz
+# bash ./run2.sh
+# bash ./run4.sh
 # bash ./project_commands.sh
 
-# cd ./offline_olmo7b_b200
+# cd ./eval-impact
+# CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
+
+# cd VLM_Distillation-main
 # bash ./project_commands.sh
+# bash ./project_commands_collect_eval_summary.sh
+# bash ./project_commands_eval_base_model_1.sh
+# pwd && ls

@@ -23,12 +23,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-${PROJECT_ROOT}/outputs}"
 RESULTS_ROOT="${RESULTS_ROOT:-${PROJECT_ROOT}/results}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.9}"
 
-DATASETS=(
-    # aime24
-    aime25
-    aime26
-    hmmt25
-)
+read -r -a DATASETS <<< "${EVAL_DATASETS:-aime24 aime25 aime26 hmmt25}"
 SFT_EVAL_STEPS="${SFT_EVAL_STEPS:-100}"
 OPSD_EVAL_STEPS="${OPSD_EVAL_STEPS:-25 50 75 100}"
 GRPO_EVAL_STEPS="${GRPO_EVAL_STEPS:-400 425 450 500}"
@@ -54,6 +49,10 @@ evaluate_checkpoint() {
         if [[ -n "${checkpoint_path}" ]]; then
             checkpoint_args=(--checkpoint_dir "${checkpoint_path}")
         fi
+        local pass_args=()
+        if [[ "${EVAL_PASS_ONLY:-0}" == "1" ]]; then
+            pass_args=(--pass_only)
+        fi
 
         python "${PROJECT_ROOT}/eval/evaluate_math.py" \
             --base_model "${model_path}" \
@@ -66,9 +65,11 @@ evaluate_checkpoint() {
             --min_p 0 \
             --presence_penalty 0 \
             --val_n "${EVAL_VAL_N}" \
+            --seed "${EVAL_SEED}" \
             --tensor_parallel_size "${EVAL_TENSOR_PARALLEL_SIZE}" \
             --gpu_memory_utilization "${GPU_MEMORY_UTILIZATION}" \
             --output_file "${output_file}" \
+            "${pass_args[@]}" \
             "${checkpoint_args[@]}"
     done
 }
@@ -122,6 +123,12 @@ for model_size in 4b 8b olmo7b; do
     done
 done
 
+summary_metric=average
+if [[ "${EVAL_PASS_ONLY:-0}" == "1" ]]; then
+    summary_metric=pass
+fi
 python "${PROJECT_ROOT}/eval/summarize_results.py" \
     --results_root "${RESULTS_ROOT}/raw" \
-    --output_dir "${RESULTS_ROOT}"
+    --output_dir "${RESULTS_ROOT}" \
+    --metric "${summary_metric}" \
+    --datasets "${EVAL_DATASETS:-aime24 aime25 aime26 hmmt25}"

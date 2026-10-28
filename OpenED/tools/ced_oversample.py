@@ -37,7 +37,11 @@ def main():
         out_rows.append(r)
         events = json.loads(r["response"]).get("events", [])
         types = {e[1] for e in events}
-        if types and types <= old_types:
+        if "is_memory" in r:  # sentence-level CRE marks its memory rows (build_cre_sent.py)
+            is_replay = r["is_memory"]
+        else:
+            is_replay = bool(types) and types <= old_types
+        if is_replay:
             n_replay += 1
             out_rows.extend([r] * (args.boost - 1))
 

@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
+.cache/
+# Generated data, checkpoints and run outputs never go into the repo
+data/
+artifacts/
+outputs/
+checkpoints/
+logs/
+*.pt
+*.safetensors
+*.log
+# Run results live on the server; fetch them with a #2 job instead of committing
+results_*/
+# Dev-only files, not used by project_commands.sh (kept locally, not in the repo)
+tests/
+pytest.ini
+config/
+scripts/verify_artifacts.py
+kaggle_smoke.ipynb

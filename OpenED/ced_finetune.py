@@ -48,6 +48,15 @@ from rouge_metric import compute_metrics
 from peft import PeftModel
 from ed_eval import ed_evaluate
 import ced_omask
+from ced_step import ced_step_loss, distillm_replace_groups, first_global_step, group_slices, updates_per_epoch
+from ced_losses import (
+    get_distil_loss, select_batch_rows, replace_batch_rows, generate_replay_rows,
+    SD_EOS_IDS, sd_lora_params, sd_ema_init, sd_ema_update, sd_ema_weights, sd_left_pad,
+    sd_pack, sd_gather, sd_teacher_entropy, sd_parses, sd_prepare, sd_omission_mask,
+    sd_loss_fn, compute_token_weights, prepare_span_indices_and_weights, get_span_loss,
+    compute_overall_span_loss, CKA_MIN_SPANS, cka_span_loss, compute_hidden_span_loss)
+from gen_config import generation_kwargs
+from ced_eval import check_gen_backend, evaluate, eval_plan, final_test_missing
 
 torch.set_num_threads(4)
 
@@ -175,81 +184,6 @@ def pt_loss(args, model, model_batch, no_model_batch):
     return lm_loss
 
 
-def get_distil_loss(args, teacher_logits, no_model_batch, logits):
-    if args.model_parallel:
-        raise NotImplementedError
-    else:
-        if "sfkl" in args.type:
-            distil_loss = skewed_forward_kl(logits, teacher_logits, no_model_batch, lam=args.skew_alpha)
-        elif "srkl" in args.type:
-            distil_loss = skewed_reverse_kl(logits, teacher_logits, no_model_batch, lam=args.skew_alpha)
-        elif "jsd" in args.type:
-            distil_loss = js_distance(logits, teacher_logits, no_model_batch)
-        elif "tvd" in args.type:
-            distil_loss = tv_distance(logits, teacher_logits, no_model_batch)
-        elif "fkl" in args.type or args.type == "kd":
-            distil_loss = forward_kl(logits, teacher_logits, no_model_batch)
-        elif "rkl" in args.type:
-            distil_loss = reverse_kl(logits, teacher_logits, no_model_batch)
-        elif "csd" in args.type:
-            distil_loss = csd(logits, teacher_logits, no_model_batch)
-        elif "amid" in args.type:
-            distil_loss = amid(logits, teacher_logits, no_model_batch, args)
-        elif "no" in args.type:
-            # a tensor, not 0.0: the caller all_reduces this, and with --w-span 0 nothing
-            # downstream would turn a float back into one
-            distil_loss = torch.tensor(0.0, device=logits.device)
-        else:
-            raise NotImplementedError
-    return distil_loss
-
-
-def select_batch_rows(batch, indices):
-    if batch is None:
-        return None
-    index_list = indices.detach().cpu().tolist()
-    selected = {}
-    for key, value in batch.items():
-        if isinstance(value, torch.Tensor):
-            selected[key] = value.index_select(0, indices.to(value.device))
-        elif isinstance(value, (list, tuple)):
-            selected[key] = [copy.deepcopy(value[index]) for index in index_list]
-        else:
-            selected[key] = copy.deepcopy(value)
-    return selected
-
-
-def replace_batch_rows(batch, replacement, indices):
-    index_list = indices.detach().cpu().tolist()
-    merged = {}
-    for key, value in batch.items():
-        if key not in replacement:
-            merged[key] = value
-        elif isinstance(value, torch.Tensor):
-            merged[key] = value.clone()
-            merged[key].index_copy_(0, indices.to(value.device), replacement[key].to(value.device))
-        elif isinstance(value, (list, tuple)):
-            merged[key] = copy.deepcopy(value)
-            for source_index, target_index in enumerate(index_list):
-                merged[key][target_index] = copy.deepcopy(replacement[key][source_index])
-        else:
-            merged[key] = copy.deepcopy(replacement[key])
-    return merged
-
-
-def generate_replay_rows(args, student_generator, model, gen_data, no_model_batch, indices):
-    replay_gen_data = select_batch_rows(gen_data, indices)
-    generated_model = student_generator.run_sample(model, replay_gen_data)
-    generated_label = generated_model.pop("no_model_batch")
-    if args.model_type == "opt":
-        generated_model.pop("position_ids", None)
-    replay_metadata = select_batch_rows(no_model_batch, indices)
-    replay_metadata["label"] = generated_label
-    replay_metadata["loss_mask"] = (generated_label != -100).float()
-    replay_metadata["is_replay"] = torch.ones(
-        len(indices), dtype=torch.bool, device=generated_label.device
-    )
-    return generated_model, replay_metadata, replay_gen_data
 
 
 def get_teacher_lm_loss(args, tokenizer, model, teacher_model, model_batch):
@@ -294,202 +228,6 @@ def get_teacher_lm_loss(args, tokenizer, model, teacher_model, model_batch):
     return lm_loss
 
 
-# ---------------- on-policy self-distillation (SDFT) ----------------
-# The student's frozen base is the merged previous-task model and only the LoRA
-# tensors train, so the EMA teacher is that same base plus an EMA copy of the
-# LoRA tensors, swapped in for the teacher forward. The teacher reads the
-# augmented answer (gold + pseudo-labels) in its prompt; both models score the
-# same sampled response tokens.
-
-SD_EOS_IDS = (151645, 151643)  # <|im_end|>, <|endoftext|> (same stop set as evaluate())
-
-
-def sd_lora_params(model):
-    return {n: p for n, p in model.module.named_parameters() if p.requires_grad}
-
-
-def sd_ema_init(model):
-    return {n: p.detach().float().clone() for n, p in sd_lora_params(model).items()}
-
-
-def sd_ema_update(model, ema, mu):
-    with torch.no_grad():
-        for n, p in sd_lora_params(model).items():
-            ema[n].mul_(mu).add_(p.detach().float(), alpha=1.0 - mu)
-
-
-@contextmanager
-def sd_ema_weights(model, ema):
-    # in-place swap: must run before any grad-tracking forward of the same step,
-    # or autograd sees the LoRA tensors modified after being saved for backward
-    params = sd_lora_params(model)
-    saved = {n: p.detach().clone() for n, p in params.items()}
-    with torch.no_grad():
-        for n, p in params.items():
-            p.copy_(ema[n].to(p.dtype))
-    try:
-        yield
-    finally:
-        with torch.no_grad():
-            for n, p in params.items():
-                p.copy_(saved[n])
-
-
-def sd_left_pad(seqs, pad_id, device):
-    L = max(len(s) for s in seqs)
-    ids = torch.full((len(seqs), L), pad_id, dtype=torch.long, device=device)
-    mask = torch.zeros((len(seqs), L), dtype=torch.long, device=device)
-    for i, s in enumerate(seqs):
-        ids[i, L - len(s):] = s
-        mask[i, L - len(s):] = 1
-    return {"input_ids": ids, "attention_mask": mask}
-
-
-def sd_pack(prefixes, responses, pad_id, device):
-    """Right-padded [prefix, response] rows, plus the logit positions that predict
-    each response token (pos[i, j] predicts responses[i][j]) and a label tensor
-    holding the response tokens (-100 past each row's end)."""
-    bs = len(prefixes)
-    L = max(len(p) + len(r) for p, r in zip(prefixes, responses))
-    R = max(len(r) for r in responses)
-    ids = torch.full((bs, L), pad_id, dtype=torch.long, device=device)
-    mask = torch.zeros((bs, L), dtype=torch.long, device=device)
-    pos = torch.zeros((bs, R), dtype=torch.long, device=device)
-    label = torch.full((bs, R), -100, dtype=torch.long, device=device)
-    for i, (p, r) in enumerate(zip(prefixes, responses)):
-        n = len(p) + len(r)
-        ids[i, :n] = torch.cat([p, r])
-        mask[i, :n] = 1
-        pos[i, :len(r)] = torch.arange(len(p) - 1, n - 1, device=device)
-        label[i, :len(r)] = r
-    return ids, mask, pos, label
-
-
-def sd_gather(logits, pos):
-    return logits.gather(1, pos.unsqueeze(-1).expand(-1, -1, logits.size(-1)))
-
-
-def sd_teacher_entropy(t_logits, label):
-    """Mean H(teacher) over the distilled positions. `forward_kl` in distillm is the
-    soft cross-entropy, which is KL(teacher||student) + H(teacher); only the KL part
-    carries a gradient, so the logged value moves with the teacher's confidence unless
-    this is subtracted. Measured on GENEVA: H was 1.35 of a 1.67 soft-CE, i.e. 81%."""
-    lt = F.log_softmax(t_logits, dim=-1, dtype=torch.float32)
-    return (-(lt.exp() * lt).sum(-1)[label != -100]).mean().item()
-
-
-def sd_parses(text):
-    """Strict JSON, the same bar ed_eval.py scores a prediction against."""
-    try:
-        json.loads(text.strip())
-        return True
-    except Exception:
-        return False
-
-
-def sd_prepare(args, tokenizer, model, ema, gen_data, no_model_batch, device):
-    """Sample one response per prompt from the current student, then score it
-    with the EMA teacher under the teacher prompt. Runs before the step's
-    grad-tracking forwards (see sd_ema_weights).
-
-    Returns (sd_batch, stats). sd_batch is None when no row survives, and the
-    caller must then skip the SD loss: forward_kl/reverse_kl divide by the
-    number of unmasked tokens, so an empty batch would give NaN."""
-    gen_config = GenerationConfig(
-        do_sample=True, top_p=args.ced_sd_top_p, top_k=0, temperature=args.ced_sd_temperature,
-        eos_token_id=list(SD_EOS_IDS), pad_token_id=SD_EOS_IDS[0],
-        return_dict_in_generate=True, output_scores=False)
-    P = gen_data["input_ids"].size(1)
-    model.eval()
-    with torch.no_grad():
-        seqs = model.generate(**gen_data, generation_config=gen_config,
-                              max_new_tokens=args.max_length - P).sequences
-
-    # real prompt tokens come from the attention mask: pad == eos == <|im_end|>,
-    # which also appears inside the chat prompt, so filtering by pad id is wrong
-    t_prompt_ids = no_model_batch["t_prompt_ids"]
-    stats = {"rows": seqs.size(0), "truncated": 0, "unparsed": 0, "kept": 0, "masked_rec": 0, "masked_tok": 0}
-    prompts, responses, t_prompts, kept_rows = [], [], [], []
-    for i in range(seqs.size(0)):
-        r = seqs[i, P:]
-        stop = (r == SD_EOS_IDS[0]) | (r == SD_EOS_IDS[1])
-        if not stop.any():
-            # Cut off by the token budget, so it ends mid-object. Distilling it
-            # could only teach the student to leave its JSON unterminated.
-            stats["truncated"] += 1
-            continue
-        r = r[:stop.nonzero()[0].item() + 1]
-        if args.ced_sd_skip_unparsed and not sd_parses(tokenizer.decode(r, skip_special_tokens=True)):
-            stats["unparsed"] += 1
-            continue
-        prompts.append(gen_data["input_ids"][i][gen_data["attention_mask"][i].bool()])
-        responses.append(r)
-        t_prompts.append(t_prompt_ids[i].to(device))
-        kept_rows.append(i)
-    stats["kept"] = len(responses)
-    if not responses:
-        model.train()
-        return None, stats
-
-    t_ids, t_mask, t_pos, label = sd_pack(t_prompts, responses, SD_EOS_IDS[0], device)
-    with torch.no_grad(), sd_ema_weights(model, ema):
-        t_logits = model(input_ids=t_ids, attention_mask=t_mask, use_cache=False).logits
-        t_logits = sd_gather(t_logits, t_pos)
-    model.train()
-
-    s_ids, s_mask, s_pos, _ = sd_pack(prompts, responses, SD_EOS_IDS[0], device)
-    # both gathers must point at the logit that predicts the same response token
-    valid = label != -100
-    assert torch.equal(t_ids.gather(1, t_pos + 1)[valid], label[valid])
-    assert torch.equal(s_ids.gather(1, s_pos + 1)[valid], label[valid])
-    if args.ced_sd_omission_mask:
-        sd_omission_mask(args, tokenizer, prompts, responses, label, kept_rows, no_model_batch["label"], stats)
-        if not (label != -100).any():
-            return None, stats
-    if args.ced_sd_skip_tokens > 0:
-        # SDFT num_loss_tokens_to_skip: label row k holds response k from its first token
-        label[:, :args.ced_sd_skip_tokens] = -100
-        if not (label != -100).any():
-            return None, stats
-    return {"ids": s_ids, "mask": s_mask, "pos": s_pos, "label": label, "t_logits": t_logits,
-            "t_entropy": sd_teacher_entropy(t_logits, label),
-            "resp_len": sum(len(r) for r in responses) / len(responses)}, stats
-
-
-_OLD_TYPES = {}
-
-
-def sd_omission_mask(args, tokenizer, prompts, responses, label, kept_rows, ref_label, stats):
-    """Drop from the SD loss (label -> -100) the tokens of sampled old-type records that are
-    grounded in the sentence but absent from the reference y~. See ced_omask.py."""
-    key = (args.ced_streams_file, args.ced_task_id)
-    if key not in _OLD_TYPES:
-        with open(args.ced_streams_file) as f:
-            streams = json.load(f)
-        _OLD_TYPES[key] = {t for s in streams[:args.ced_task_id] for t in s}
-    old_types = _OLD_TYPES[key]
-    for k, (p, r, row) in enumerate(zip(prompts, responses, kept_rows)):
-        ids = r.tolist()
-        ref = ref_label[row]
-        reference = tokenizer.decode(ref[ref != -100].tolist(), skip_special_tokens=True)
-        sentence = ced_omask.input_sentence(tokenizer.decode(p.tolist(), skip_special_tokens=True))
-        spans = ced_omask.masked_spans(tokenizer.decode(ids, skip_special_tokens=True), reference,
-                                       sentence, old_types)
-        if not spans:
-            continue
-        drop = torch.tensor(ced_omask.token_mask(tokenizer, ids, spans), device=label.device)
-        label[k, :len(ids)][drop] = -100
-        stats["masked_rec"] += len(spans)
-        stats["masked_tok"] += int(drop.sum())
-
-
-def sd_loss_fn(args, model, sd):
-    logits = model(input_ids=sd["ids"], attention_mask=sd["mask"], use_cache=False).logits
-    logits = sd_gather(logits, sd["pos"])
-    batch = {"label": sd["label"]}
-    if args.ced_sd_div == "rkl":
-        return reverse_kl(logits, sd["t_logits"], batch)
-    return forward_kl(logits, sd["t_logits"], batch)
 
 
 def sd_probe(args, tokenizer, model, ema, dataset, device):
@@ -509,7 +247,8 @@ def sd_probe(args, tokenizer, model, ema, dataset, device):
         batch = sd_left_pad([s.to(device) for s in prompt_seqs], SD_EOS_IDS[0], device)
         with torch.no_grad(), sd_ema_weights(model, ema):
             seqs = model.generate(**batch, generation_config=gen_config,
-                                  max_new_tokens=args.max_length - args.max_prompt_length).sequences
+                                  max_new_tokens=args.max_length - args.max_prompt_length,
+                                  **generation_kwargs(args)).sequences
         return tokenizer.batch_decode(seqs[:, batch["input_ids"].size(1):], skip_special_tokens=True)
 
     s_prompts = [gen_data["input_ids"][i][gen_data["attention_mask"][i].bool()] for i in range(n)]
@@ -552,249 +291,6 @@ def sd_probe(args, tokenizer, model, ema, dataset, device):
         save_rank(warn, os.path.join(args.save, "log.txt"))
 
 
-def compute_token_weights(hidden_state, attention_mask):
-    std = hidden_state.std(dim=-1, keepdim=True) + 1e-5
-    Q = hidden_state / std
-    K = hidden_state / std
-    scores = torch.matmul(Q, K.transpose(-1, -2)) / (hidden_state.size(-1) ** 0.5)
-
-    mask = attention_mask.unsqueeze(1).expand(-1, scores.size(-2), -1)
-    scores = scores.masked_fill(mask == 0, float('-inf'))
-    diag_mask = torch.eye(scores.size(-1), device=scores.device, dtype=torch.bool)
-    scores = scores.masked_fill(diag_mask.unsqueeze(0), float('-inf'))
-
-    attn_weights = F.softmax(scores, dim=-1)  # [1, L, L]
-    attn_weights = attn_weights * mask
-    attn_weights = attn_weights / attn_weights.sum(dim=-1, keepdim=True)
-
-    token_weights = attn_weights.mean(dim=1).squeeze(0)  # [L]
-    return token_weights.detach()
-
-def prepare_span_indices_and_weights(t_layer_weights, s_layer_weights, 
-                                     attention_mask, offsets_mapping, spans_offsets):
-    device = attention_mask.device
-    B_size, SeqLen = attention_mask.shape
-
-    max_spans = max(len(s) for s in spans_offsets)
-    if max_spans == 0:
-        print(f"No spans found in the batch.")
-        return None, None, None, None, None, None
-
-    # (B_size, max_spans)
-    padded_span_starts = torch.zeros(B_size, max_spans, dtype=torch.long, device=device)
-    padded_span_ends = torch.zeros(B_size, max_spans, dtype=torch.long, device=device)
-    padded_span_mask = torch.zeros(B_size, max_spans, dtype=torch.bool, device=device)
-
-    for i in range(B_size):
-        num_spans_i = len(spans_offsets[i])
-        if num_spans_i > 0:
-            spans_i = torch.tensor(spans_offsets[i], device=device, dtype=torch.long)
-            padded_span_starts[i, :num_spans_i] = spans_i[:, 0]
-            padded_span_ends[i, :num_spans_i] = spans_i[:, 1]
-            padded_span_mask[i, :num_spans_i] = True
-    
-    if offsets_mapping.shape[1] != SeqLen:
-        current_offsets_mapping = offsets_mapping[:, :SeqLen, :]
-    else:
-        current_offsets_mapping = offsets_mapping
-
-    # (B_size, SeqLen, 1)
-    offsets_start_expanded = current_offsets_mapping[..., 0].unsqueeze(2).to(device)
-    offsets_end_expanded = current_offsets_mapping[..., 1].unsqueeze(2).to(device)
-    
-    # (B_size, 1, max_spans)
-    span_starts_expanded = padded_span_starts.unsqueeze(1)
-    span_ends_expanded = padded_span_ends.unsqueeze(1)
-
-    token_in_span_map = (offsets_start_expanded + 1 >= span_starts_expanded) & \
-                        (offsets_end_expanded <= span_ends_expanded)
-
-    attention_mask_expanded = attention_mask.unsqueeze(2).bool()
-    span_mask_expanded = padded_span_mask.unsqueeze(1) 
-
-    final_token_to_span_map = token_in_span_map & attention_mask_expanded & span_mask_expanded
-
-    if not final_token_to_span_map.any():
-        print(f"No valid tokens found for any spans in the batch.")
-        return torch.tensor(0.0, device=device)
-
-    nonzero_indices = final_token_to_span_map.nonzero(as_tuple=False)
-    
-    batch_indices = nonzero_indices[:, 0] # (T_total)
-    token_indices = nonzero_indices[:, 1] # (T_total)
-    local_span_indices = nonzero_indices[:, 2] # (T_total)
-
-    All_Indices = batch_indices * SeqLen + token_indices
-
-    global_span_ids_flat = batch_indices * max_spans + local_span_indices
-    _, Span_IDs = torch.unique(global_span_ids_flat, return_inverse=True) # (T_total)
-    Max_Spans = Span_IDs.max().item() + 1 # Tổng số span duy nhất
-
-    Batch_ID_for_Spans = torch.empty(Max_Spans, device=device, dtype=torch.long)
-    Batch_ID_for_Spans.scatter_(0, Span_IDs, batch_indices)
-
-    def gather_layer_weights(layer_weights):
-        B_size, SeqLen = attention_mask.shape
-        num_layers = layer_weights.shape[0]
-        layer_weights_flat = layer_weights.view(num_layers, B_size * SeqLen)
-        token_weights_unnorm = layer_weights_flat[:, All_Indices].float()
-        batch_indices_expanded = batch_indices.unsqueeze(0).expand(num_layers, -1)
-        sample_weight_sums = torch.zeros(num_layers, B_size, device=device, dtype=torch.float)
-        sample_weight_sums.scatter_add_(1, batch_indices_expanded, token_weights_unnorm)
-        sample_weight_sums = sample_weight_sums.clamp(min=1e-5)
-        sample_weight_sums_gathered = torch.gather(sample_weight_sums, 1, batch_indices_expanded)
-        Token_Weights_all = token_weights_unnorm / sample_weight_sums_gathered
-
-        return Token_Weights_all
-
-    T_Token_Weights_all = gather_layer_weights(t_layer_weights)
-    S_Token_Weights_all = gather_layer_weights(s_layer_weights)
-
-    return All_Indices, T_Token_Weights_all, S_Token_Weights_all, Span_IDs, Max_Spans, Batch_ID_for_Spans
-
-def get_span_loss(attention_mask, s_hidden_states, t_hidden_states, 
-                  offsets_mapping, spans_offsets, teacher_layer_mapping, student_layer_mapping, metric="cosine"):
-    
-    t_layer_weights = []
-    s_layer_weights = []
-    for i in teacher_layer_mapping:
-        weights = compute_token_weights(t_hidden_states[i], attention_mask)  # (B, SeqLen)
-        t_layer_weights.append(weights)
-    for i in student_layer_mapping:
-        weights = compute_token_weights(s_hidden_states[i], attention_mask)  # (B, SeqLen)
-        s_layer_weights.append(weights)
-
-    t_layer_weights = torch.stack(t_layer_weights)  # (num_layers, B, SeqLen)
-    s_layer_weights = torch.stack(s_layer_weights)  # (num_layers, B, SeqLen)
-
-    (All_Indices, T_Token_Weights_all, S_Token_Weights_all, 
-     Span_IDs, Max_Spans, Batch_ID_for_Spans) =  prepare_span_indices_and_weights(t_layer_weights, s_layer_weights, 
-                                                                                  attention_mask, offsets_mapping, spans_offsets)
-    if All_Indices is None:
-        return torch.tensor(0.0, device=attention_mask.device)
-    
-    final_loss = 0.0
-    for i, (s_idx, t_idx) in enumerate(zip(student_layer_mapping, teacher_layer_mapping)):
-        s_hidden = s_hidden_states[s_idx]
-        t_hidden = t_hidden_states[t_idx]
-        span_loss = compute_hidden_span_loss(s_hidden, t_hidden, All_Indices,
-                                             S_Token_Weights_all[i], T_Token_Weights_all[i], 
-                                             Span_IDs, Max_Spans, Batch_ID_for_Spans, metric=metric)
-        final_loss += span_loss
-
-    return final_loss
-
-def compute_overall_span_loss(attention_mask, s_hidden_states, t_hidden_states, 
-                              offsets_mapping, spans_offsets, args):
-    
-    s_span_mapping = args.student_layer_mapping
-    t_span_mapping = args.teacher_layer_mapping
-    span_loss = get_span_loss(attention_mask, s_hidden_states, t_hidden_states, 
-                              offsets_mapping, spans_offsets, t_span_mapping, s_span_mapping, metric=args.span_metric)
-    
-    overall_loss = span_loss / len(args.student_layer_mapping)
-    return overall_loss
-
-CKA_MIN_SPANS = 4  # centering kills one rank; below this the Gram matrix carries no structure
-
-
-def cka_span_loss(S_span, T_span, Batch_ID_for_Spans):
-    """1 - linear CKA between the student's and the teacher's span representations,
-    per batch item, averaged. Unlike the pairwise-distance metrics this compares the
-    two Gram matrices as a whole, so it only asks the two similarity structures to be
-    linearly related instead of equal — a looser constraint, and one that cannot carry
-    the per-pair importance weights omega_ik. Items with fewer than CKA_MIN_SPANS spans
-    are skipped: after centering they leave a rank-1 Gram and CKA is degenerate."""
-    losses = []
-    for b in Batch_ID_for_Spans.unique():
-        idx = (Batch_ID_for_Spans == b).nonzero(as_tuple=True)[0]
-        if idx.numel() < CKA_MIN_SPANS:
-            continue
-        X = S_span[idx].float()
-        Y = T_span[idx].float()
-        X = X - X.mean(dim=0, keepdim=True)
-        Y = Y - Y.mean(dim=0, keepdim=True)
-        num = (Y.T @ X).pow(2).sum()
-        den = (X.T @ X).norm() * (Y.T @ Y).norm()
-        losses.append(1.0 - num / den.clamp(min=1e-6))
-    if not losses:
-        return torch.zeros((), device=S_span.device)
-    return torch.stack(losses).mean()
-
-
-def compute_hidden_span_loss(s_hidden_state, t_hidden_state, All_Indices,
-                             S_Token_Weights_all, T_Token_Weights_all, Span_IDs, Max_Spans, Batch_ID_for_Spans, metric="cosine"):
-    D_hidden_s = s_hidden_state.size(-1)
-    D_hidden_t = t_hidden_state.size(-1)
-    device = t_hidden_state.device
-
-    T_Hidden_Flat = t_hidden_state.flatten(0, 1) # (B*SeqLen, D_hidden_t)
-    S_Hidden_Flat = s_hidden_state.flatten(0, 1) # (B*SeqLen, D_hidden_s)
-
-    # 1. Trích xuất và Áp dụng Trọng số
-    T_span_all = T_Hidden_Flat[All_Indices] # (T_total, D_hidden_t)
-    S_span_all = S_Hidden_Flat[All_Indices] # (T_total, D_hidden_s)
-    
-    T_Token_Weights_expanded = T_Token_Weights_all.unsqueeze(-1) 
-    S_Token_Weights_expanded = S_Token_Weights_all.unsqueeze(-1)
-    
-    T_span_weighted = T_span_all * T_Token_Weights_expanded # (T_total, D_hidden_t)
-    S_span_weighted = S_span_all * S_Token_Weights_expanded # (T_total, D_hidden_s)
-
-    Span_IDs_expanded_t = Span_IDs.unsqueeze(-1).expand(-1, D_hidden_t) 
-    Span_IDs_expanded_s = Span_IDs.unsqueeze(-1).expand(-1, D_hidden_s) 
-
-    T_span_sum = torch.zeros(Max_Spans, D_hidden_t, device=device)
-    S_span_sum = torch.zeros(Max_Spans, D_hidden_s, device=device)
-    T_Weight_sum_1d = torch.zeros(Max_Spans, device=device)
-    S_Weight_sum_1d = torch.zeros(Max_Spans, device=device)
-
-    T_span_sum.scatter_add_(0, Span_IDs_expanded_t, T_span_weighted)
-    S_span_sum.scatter_add_(0, Span_IDs_expanded_s, S_span_weighted)
-
-    T_Weight_sum_1d.scatter_add_(0, Span_IDs, T_Token_Weights_all) 
-    T_Weight_sum = T_Weight_sum_1d.clamp(min=1e-5).unsqueeze(-1) # (Max_Spans, 1)
-    S_Weight_sum_1d.scatter_add_(0, Span_IDs, S_Token_Weights_all)
-    S_Weight_sum = S_Weight_sum_1d.clamp(min=1e-5).unsqueeze(-1) # (Max_Spans, 1)
-
-    # Tính Trung bình (Mean)
-    T_span_hidden_mean = T_span_sum / T_Weight_sum 
-    S_span_hidden_mean = S_span_sum / S_Weight_sum
-
-    if metric == "cka":
-        return cka_span_loss(S_span_hidden_mean, T_span_hidden_mean, Batch_ID_for_Spans)
-
-    if metric == "cosine":
-        S_normalized = F.normalize(S_span_hidden_mean, p=2, dim=-1)
-        T_normalized = F.normalize(T_span_hidden_mean, p=2, dim=-1)
-        S_Full_Sim_Matrix = S_normalized @ S_normalized.T
-        T_Full_Sim_Matrix = T_normalized @ T_normalized.T
-    elif metric == "dot":
-        S_Full_Sim_Matrix = S_span_hidden_mean @ S_span_hidden_mean.T
-        T_Full_Sim_Matrix = T_span_hidden_mean @ T_span_hidden_mean.T
-    elif metric == "l2":
-        S_Full_Sim_Matrix = torch.cdist(S_span_hidden_mean, S_span_hidden_mean, p=2)
-        T_Full_Sim_Matrix = torch.cdist(T_span_hidden_mean, T_span_hidden_mean, p=2)
-
-    else:
-        raise ValueError(f"unknown span_metric: {metric}")
-
-    Batch_IDs_col = Batch_ID_for_Spans.unsqueeze(1)
-    Batch_IDs_row = Batch_ID_for_Spans.unsqueeze(0)
-    Same_Batch_Mask = (Batch_IDs_col == Batch_IDs_row)
-    Not_Self_Mask = ~torch.eye(Max_Spans, dtype=torch.bool, device=device)
-    Final_Mask = Same_Batch_Mask & Not_Self_Mask
-
-    S_intra_batch_similarities_flat = torch.masked_select(S_Full_Sim_Matrix, Final_Mask)
-    T_intra_batch_similarities_flat = torch.masked_select(T_Full_Sim_Matrix, Final_Mask)
-
-    Pair_Weights_Matrix = T_Weight_sum_1d.unsqueeze(1) * T_Weight_sum_1d.unsqueeze(0)
-    Valid_Pair_Weights = torch.masked_select(Pair_Weights_Matrix, Final_Mask)
-
-    span_loss = F.mse_loss(S_intra_batch_similarities_flat, T_intra_batch_similarities_flat, reduction='none')
-    span_loss = (span_loss * Valid_Pair_Weights).sum() / Valid_Pair_Weights.sum().clamp(min=1e-5)
-
-    return span_loss
 
 
 def evaluate_loss(args, model, dataset, device):
@@ -806,7 +302,7 @@ def evaluate_loss(args, model, dataset, device):
     # materialises batch x seq x vocab (32 x 768 x 151936 x 4B = 14.9 GB at
     # eval_batch_size 32), which OOMs a 46 GB card before the first step.
     dataloader = DataLoader(
-        dataset, sampler=sampler, batch_size=args.batch_size,
+        dataset, sampler=sampler, batch_size=args.loss_group_size,
         num_workers=args.num_workers, collate_fn=dataset.collate
     )
     loss_func = nn.CrossEntropyLoss()
@@ -853,15 +349,18 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
         
     student_generator = SampleGenerator(args, tokenizer)
 
-    step, global_step = 1, 1
+    # one physical batch per update counts as the --bs/--acc run it splits (ced_step.first_global_step)
+    step, global_step = 1, first_global_step(args.gradient_accumulation_steps,
+                                             args.batch_size * args.gradient_accumulation_steps // args.loss_group_size)
     total_loss, total_distil_loss, total_time = 0.0, 0.0, 0.0
-    
+
     adaptive_threshold = args.init_threshold if "adaptive" in args.type else -1.0
     prev_avg_loss = (
         evaluate_loss(args, model, dataset["dev"], device)
         if "adaptive" in args.type else 0.0
     )
     replay_buffer = ReplayBuffer(args)
+    final_test_done = False
 
     student_captured_hidden = []
     hook_handles = []
@@ -928,56 +427,12 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                 else:
                     samp_threshold = adaptive_threshold * (1 - global_step / args.total_iters)
             
-            # DistiLLM generation is restricted to replay rows. New-task rows keep
-            # their gold CE targets and remain in the same mixed training batch.
+            # DistiLLM/AMiD: 4257d86's per-micro-batch generation decisions, one per loss group
             if args.student_gen:
-                r = np.random.uniform(0, 1)
-                replay_indices = no_model_batch["is_replay"].nonzero(as_tuple=False).flatten()
-                replay_count = len(replay_indices)
-                should_generate = (
-                    ("mixed" in args.type and r < args.mixed_alpha)
-                    or ("adaptive" in args.type and (
-                        r < samp_threshold
-                        or (r < adaptive_threshold and len(replay_buffer) < args.capacity)
-                    ))
-                )
-                should_sample = (
-                    "adaptive" in args.type
-                    and r < adaptive_threshold
-                    and len(replay_buffer) >= replay_count
-                )
-                if replay_count and should_generate:
-                    generated_model, generated_metadata, replay_gen_data = generate_replay_rows(
-                        args, student_generator, model, gen_data, no_model_batch, replay_indices
-                    )
-                    replay_buffer.move_to_memory(
-                        generated_model, generated_metadata, replay_gen_data
-                    )
-                    if "mixed" in args.type:
-                        generated_model, generated_metadata, _ = replay_buffer.sample(replay_count)
-                        generated_model, generated_metadata, _ = replay_buffer.move_to_device(
-                            generated_model, generated_metadata, None, device
-                        )
-                    model_batch = replace_batch_rows(model_batch, generated_model, replay_indices)
-                    no_model_batch = replace_batch_rows(
-                        no_model_batch, generated_metadata, replay_indices
-                    )
-                    print_rank(
-                        f"student-gen replay insert: {replay_count}, buffer={len(replay_buffer)}"
-                    )
-                elif replay_count and should_sample:
-                    sampled_model, sampled_metadata, sampled_gen = replay_buffer.sample(replay_count)
-                    sampled_model, sampled_metadata, sampled_gen = replay_buffer.move_to_device(
-                        sampled_model, sampled_metadata, sampled_gen, device
-                    )
-                    model_batch = replace_batch_rows(model_batch, sampled_model, replay_indices)
-                    no_model_batch = replace_batch_rows(
-                        no_model_batch, sampled_metadata, replay_indices
-                    )
-                    print_rank(
-                        f"student-gen replay sample: {replay_count}, buffer={len(replay_buffer)}"
-                    )
-                model.train()
+                model_batch, no_model_batch = distillm_replace_groups(
+                    args, group_slices(model_batch["input_ids"].size(0), args.loss_group_size), model,
+                    student_generator, replay_buffer, model_batch, no_model_batch, gen_data,
+                    samp_threshold, adaptive_threshold, device, log=print_rank)
 
             # --ced-sd-mix random: one KL term per update, token KD against the old-task model
             # or SD against the EMA teacher. Seeded by global_step so all micro-steps of an
@@ -990,136 +445,25 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             # SD sampling + EMA-teacher scoring come before the grad-tracking forwards
             sd_batch = None
             if args.ced_sd:
-                sd_win["steps"] += 1
+                sd_win["steps"] += -(-model_batch["input_ids"].size(0) // args.loss_group_size)   # a short last group counts
                 # warmup is an ablation knob (default 0); EMA keeps tracking the student during it
                 if use_sd and global_step > args.ced_sd_warmup * args.total_iters:
                     sd_batch, st = sd_prepare(args, tokenizer, model, sd_ema, gen_data, no_model_batch, device)
                     for k in ("rows", "truncated", "unparsed", "kept", "masked_rec", "masked_tok"):
                         sd_win[k] += st[k]
-                    sd_win["active"] += int(sd_batch is not None)
-
-            # --ced-sd-only: nothing trains on this forward (the SD term runs its own), so skip it
-            logits = None if args.ced_sd_only else model(**model_batch, use_cache=False).logits
-
-            # CED: route losses by replay flag. Replay samples (exemplars of old
-            # tasks) get KD + span loss against the previous-task teacher; new-task
-            # samples get plain CE. --ced-replay-mode kd_only drops CE on replay.
-            # --ced-kd-scope pl additionally applies KD on old-event token positions
-            # of pseudo-labeled rows (the only region where the old teacher is
-            # reliable on new-task data) — LwF adapted to generation.
-            is_replay = no_model_batch["is_replay"]  # (bs,) bool
-            has_replay = bool(is_replay.any().item())
-
-            old_token_mask = no_model_batch.get("old_token_mask")
-            use_pl_kd = (getattr(args, "ced_kd_scope", "replay") == "pl"
-                         and old_token_mask is not None)
-            pl_rows = None
-            has_kd = has_replay
-            if use_pl_kd:
-                pl_rows = old_token_mask.any(dim=1) & ~is_replay
-                has_kd = has_replay or bool(pl_rows.any().item())
-
-            # LwF: distill the old teacher on NEW-task rows' non-new-type tokens,
-            # with a small capped weight added ON TOP of the replay KD (never stealing
-            # from CE). Off by default (--ced-kd-ratio-new 0).
-            new_token_mask = no_model_batch.get("new_token_mask")
-            kd_ratio_new = getattr(args, "ced_kd_ratio_new", 0.0)
-            new_rows = ~is_replay
-            lwf_active = (teacher_model is not None and kd_ratio_new > 0.0
-                          and new_token_mask is not None and bool(new_rows.any().item()))
 
             if args.model_parallel:
                 raise NotImplementedError
 
-            ce_label = no_model_batch["label"]
-            if args.ced_replay_mode == "kd_only" and has_replay:
-                ce_label = ce_label.clone()
-                ce_label[is_replay] = -100
-            if logits is not None and (ce_label != -100).any():
-                lm_loss = loss_func(logits.float().reshape(-1, logits.shape[-1]), ce_label.view(-1))
-            else:
-                lm_loss = torch.tensor(0.0, device=device)
-
-            distil_loss = torch.tensor(0.0, device=device)
-            distil_loss_new = torch.tensor(0.0, device=device)
-            if teacher_model is not None and (has_kd or lwf_active) and not args.ced_sd_only:
-                with torch.no_grad():
-                    teacher_model.eval()
-                    teacher_outputs = teacher_model(
-                        **model_batch,
-                        output_hidden_states=(args.w_span_loss != 0),
-                        use_cache=False,
-                    )
-                    teacher_logits = teacher_outputs.logits
-
-                if has_kd:
-                    kd_no_model_batch = dict(no_model_batch)
-                    kd_label = no_model_batch["label"].clone()
-                    keep = torch.zeros_like(kd_label, dtype=torch.bool)
-                    keep[is_replay] = True
-                    if use_pl_kd:
-                        keep |= old_token_mask[:, :kd_label.size(1)].to(keep.device) & pl_rows.unsqueeze(1)
-                    kd_label[~keep] = -100
-                    kd_no_model_batch["label"] = kd_label
-                    if use_token_kd and (kd_label != -100).any():
-                        distil_loss = get_distil_loss(args, teacher_logits, kd_no_model_batch, logits)
-
-                    if args.w_span_loss != 0:
-                        old_spans = no_model_batch.get("old_span_offsets")
-                        spans_offsets = []
-                        for i, (spans, flag) in enumerate(zip(
-                            no_model_batch["span_offsets"], is_replay.tolist()
-                        )):
-                            if flag:
-                                spans_offsets.append(spans)
-                            elif use_pl_kd and old_spans is not None:
-                                spans_offsets.append(old_spans[i])
-                            else:
-                                spans_offsets.append([])
-                        span_loss = compute_overall_span_loss(
-                            model_batch["attention_mask"],
-                            student_captured_hidden,
-                            teacher_outputs.hidden_states,
-                            no_model_batch["offset_mapping"],
-                            spans_offsets,
-                            args,
-                        )
-                        distil_loss = distil_loss + args.w_span_loss * span_loss
-
-                if lwf_active:
-                    # KD on new-task rows' answer tokens EXCEPT new-type-event tokens
-                    # (the teacher is unreliable exactly where the new types appear).
-                    lwf_no_model_batch = dict(no_model_batch)
-                    lwf_label = no_model_batch["label"].clone()
-                    keep_new = (new_rows.unsqueeze(1)
-                                & (lwf_label != -100)
-                                & ~new_token_mask[:, :lwf_label.size(1)].to(lwf_label.device))
-                    lwf_label[~keep_new] = -100
-                    lwf_no_model_batch["label"] = lwf_label
-                    if (lwf_label != -100).any():
-                        distil_loss_new = get_distil_loss(args, teacher_logits, lwf_no_model_batch, logits)
-
-            if has_kd:
-                loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
-            else:
-                loss = lm_loss
-            if lwf_active:
-                w_new = min(kd_ratio_new, getattr(args, "ced_kd_new_cap", 0.3))
-                loss = loss + w_new * distil_loss_new
-            if args.ced_sd_only:
-                # SDFT: the SD term below is the whole update. A step with nothing to distil
-                # still needs a loss attached to the trainable weights for backward().
-                loss = sum(p.sum() for p in model.parameters() if p.requires_grad) * 0.0
-
-            if sd_batch is not None:
-                capture["on"] = False
-                sd_loss = sd_loss_fn(args, model, sd_batch)
-                capture["on"] = True
-                loss = loss + args.ced_sd_weight * sd_loss
-            elif args.ced_sd:
-                # nothing to distill this step (warmup, or every sample dropped); keep a
-                # tensor so the all_reduce below runs on every rank and cannot hang
-                sd_loss = torch.zeros((), device=loss.device)
+            # CED loss per logical micro-batch (ced_step.py): replay rows get KD + span loss
+            # against the previous-task teacher, new-task rows plain CE, as before
+            step_loss = ced_step_loss(args, model, teacher_model, model_batch, no_model_batch,
+                                      student_captured_hidden, capture, sd_batch, use_token_kd)
+            loss = step_loss.loss
+            distil_loss = step_loss.distil_loss
+            if args.ced_sd:
+                sd_win["active"] += step_loss.sd_groups
+                sd_loss = step_loss.sd_loss_sum
 
             if args.lm_data_dir is not None:
                 assert args.lm_coef is not None
@@ -1137,9 +481,9 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             if args.ced_sd:
                 dist.all_reduce(sd_loss, dist.ReduceOp.SUM, group=dp_group)
                 total_sd_loss += sd_loss.item() / dp_world_size
-                if sd_batch is not None:
-                    total_sd_len += sd_batch["resp_len"]
-                    total_sd_ent += sd_batch["t_entropy"]
+                if sd_batch is not None and step_loss.sd_groups:
+                    total_sd_len += sd_batch["resp_len"] * step_loss.sd_groups
+                    total_sd_ent += sd_batch["t_entropy"] * step_loss.sd_groups
 
             global_distil_loss = 0
             if teacher_model is not None:
@@ -1233,15 +577,19 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
 
             # Evaluation
             if args.eval_interval and global_step % args.eval_interval == 0 and step % args.gradient_accumulation_steps == 0:
-                curr_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device, adaptive_threshold)
-                if "adaptive" in args.type:
-                    if curr_avg_loss >= prev_avg_loss + args.loss_eps:
-                        adaptive_threshold += 0.1
-                        adaptive_threshold = min(adaptive_threshold, 1.0)
-                        prev_avg_loss = curr_avg_loss
-
-                evaluate(args, tokenizer, model, dataset["test"], "test", epoch, device)
-                    
+                plan = eval_plan(args.eval_gen_mode, is_last=(global_step >= args.total_iters),
+                                 adaptive=("adaptive" in args.type))
+                if plan.dev:
+                    curr_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device,
+                                             adaptive_threshold, generate=plan.dev_generate)
+                    if "adaptive" in args.type:
+                        if curr_avg_loss >= prev_avg_loss + args.loss_eps:
+                            adaptive_threshold += 0.1
+                            adaptive_threshold = min(adaptive_threshold, 1.0)
+                            prev_avg_loss = curr_avg_loss
+                if plan.test:
+                    evaluate(args, tokenizer, model, dataset["test"], "test", epoch, device)
+                    final_test_done = True
                 model.train()
                 
             step += 1
@@ -1253,124 +601,25 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
 
     for h in hook_handles:
         h.remove()
-            
+
+    if final_test_missing(args, final_test_done):
+        evaluate(args, tokenizer, model, dataset["test"], "test", max(args.epochs - 1, 0), device)
     return model
-
-
-def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, device, adaptive_threshold=None):
-    
-    collate_fn = dataset.collate
-
-    if args.model_parallel:
-        raise NotImplementedError
-    else:
-        dp_world_size = dist.get_world_size()
-        dp_rank = dist.get_rank()
-        dp_group = None
-        loss_func = nn.CrossEntropyLoss()
-
-    print_rank("dp size", dp_world_size)
-
-    generation_config = GenerationConfig(
-        do_sample=args.do_sample,
-        top_p=args.top_p,
-        top_k=args.top_k,
-        temperature=args.temperature,
-        repetition_penalty=args.repetition_penalty,
-        max_length=args.max_length,
-        min_length=None,
-        eos_token_id=[tokenizer.eos_token_id, 151643],
-        pad_token_id=tokenizer.eos_token_id,
-        return_dict_in_generate=True,
-        output_scores=False
-    )
-
-    sampler = DistributedSampler(dataset, shuffle=False, drop_last=False, rank=dp_rank, num_replicas=dp_world_size)
-    dataloader = DataLoader(
-        dataset, sampler=sampler, batch_size=args.eval_batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
-
-    model.eval()
-    all_loss = 0.0
-    step = 0
-    
-    all_response_ids = []
-    
-    with torch.no_grad():
-        for it, (model_batch, no_model_batch, gen_data, _, _) in enumerate(tqdm(dataloader, desc="Evaluating", disable=(dist.get_rank() != 0))):
-            print_rank(f"{it}/{len(dataloader)}")
-            dataset.move_to_device(model_batch, no_model_batch, gen_data, device)
-            logits = model(**model_batch).logits
-            if args.model_parallel:
-                raise NotImplementedError
-            else:
-                loss = loss_func(logits.view(-1, logits.shape[-1]), no_model_batch["label"].view(-1))
-            
-            max_new_tokens = args.max_length - gen_data["input_ids"].size(1)
-            
-            if args.eval_gen:            
-                gen_out = model.generate(
-                    **gen_data,
-                    generation_config=generation_config,
-                    max_new_tokens=max_new_tokens)
-                
-                full_ids = gen_out.sequences
-                
-                full_ids = F.pad(
-                    full_ids,
-                    (0, args.max_length - full_ids.shape[1]),
-                    value=tokenizer.pad_token_id,
-                )
-                
-                response_ids = full_ids[:, gen_data["input_ids"].size(1):]
-                all_response_ids.append(response_ids)
-                    
-            dist.all_reduce(loss, dist.ReduceOp.SUM, group=dp_group)
-            loss = loss / dp_world_size
-            all_loss += loss.item()
-            step += 1
-    
-    if args.eval_gen:
-        all_response_ids = torch.cat(all_response_ids, dim=0)
-        all_response_ids = all_gather(all_response_ids, dim=1, world_size=dp_world_size, group=dp_group, op="stack")
-        all_response_ids = all_response_ids.view(-1, all_response_ids.size(-1))
-        
-        responses = tokenizer.batch_decode(all_response_ids, skip_special_tokens=True)
-    
-    if get_rank() == 0:
-        if args.eval_gen:
-            references = dataset.answers
-            responses = responses[:len(references)]
-            
-            res = compute_metrics(responses, references)
-
-            ed_metrics = ed_evaluate(responses, references)
-            res.update(ed_metrics)
-        
-            eval_dir = os.path.join(args.save, "eval", str(epoch))
-            print_rank(eval_dir)
-            os.makedirs(eval_dir, exist_ok=True)
-            with open(os.path.join(eval_dir, "answers.jsonl"), "w") as f:
-                for resp in responses:
-                    f.write(json.dumps({"text": resp}) + "\n")
-        else:
-            res = {}
-    
-        avg_loss = all_loss / step
-        
-        if "adaptive" in args.type:
-            log_str = f"{split} | avg_loss: {avg_loss} | {res} | threshold: {adaptive_threshold}"
-        else:
-            log_str = f"{split} | avg_loss: {avg_loss} | {res}"
-        print_rank(log_str)
-        save_rank(log_str, os.path.join(args.save, "log.txt"))
-        
-    return all_loss / step
 
 
 def main():
     torch.backends.cudnn.enabled = False
     
     args = get_args()
+    if args.loss_group_size is None:
+        args.loss_group_size = args.batch_size
+    if args.batch_size % args.loss_group_size:
+        raise ValueError(f"--batch-size {args.batch_size} is not a multiple of --loss-group-size {args.loss_group_size}")
+    if args.loss_group_size != args.batch_size and args.lm_data_dir is not None:
+        raise ValueError("--lm-data-dir needs --loss-group-size equal to --batch-size")
+    # padding length changes the span loss (its token weights average over padded queries), and the
+    # DistiLLM replay buffer stores --max-length-wide rows: both keep fixed padding
+    args.dynamic_pad_effective = args.dynamic_pad and args.w_span_loss == 0 and not args.student_gen
     initialize(args)
     
     if dist.get_rank() == 0:
@@ -1409,7 +658,8 @@ def main():
     dp_world_size = dist.get_world_size()
     
     if args.do_train:
-        args.train_iters_per_epoch = int(len(dataset["train"]) / (args.batch_size * dp_world_size * args.gradient_accumulation_steps))
+        args.train_iters_per_epoch = updates_per_epoch(len(dataset["train"]), args.batch_size, dp_world_size,
+                                                       args.gradient_accumulation_steps)
         print_rank("Train iters per epoch", args.train_iters_per_epoch)
         if args.total_iters is None:
             args.total_iters = args.train_iters_per_epoch * args.epochs
@@ -1427,6 +677,7 @@ def main():
             args.eval_interval = args.total_iters
     
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args, ds_config, device, set_optim=args.do_train)
+    check_gen_backend(args, model, tokenizer)     # --gen-backend vllm: refuse before the first update
     
     if args.teacher_model_type is None:
         args.teacher_model_type = args.model_type

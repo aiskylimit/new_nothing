@@ -417,6 +417,101 @@ class KDPlumbingTests(unittest.TestCase):
         self.assertFalse(encoder.forward_kwargs["output_attentions"])
         self.assertTrue(encoder.forward_kwargs["output_hidden_states"])
 
+    def test_attention_backend_defaults_to_sdpa_except_fastvlm(self):
+        from src.model.model import VLMModel
+
+        def make_config():
+            return SimpleNamespace(
+                use_cache=True,
+                output_attentions=True,
+                output_hidden_states=False,
+                text_config=SimpleNamespace(
+                    model_type="text",
+                    use_cache=True,
+                    output_attentions=True,
+                    output_hidden_states=False,
+                ),
+                vision_config=SimpleNamespace(
+                    model_type="vision",
+                    use_cache=True,
+                    output_attentions=True,
+                    output_hidden_states=False,
+                ),
+            )
+
+        regular_config = VLMModel._configure_attention_backend(
+            make_config(),
+            output_attentions=False,
+            vision_output_attentions=False,
+        )
+        self.assertEqual(regular_config._attn_implementation, "sdpa")
+        self.assertEqual(regular_config.text_config._attn_implementation, "sdpa")
+        self.assertEqual(regular_config.vision_config._attn_implementation, "sdpa")
+        self.assertFalse(regular_config.output_attentions)
+
+        fastvlm_config = VLMModel._configure_attention_backend(
+            make_config(),
+            output_attentions=False,
+            vision_output_attentions=False,
+            force_eager=True,
+        )
+        self.assertEqual(fastvlm_config._attn_implementation, "eager")
+        self.assertEqual(fastvlm_config.text_config._attn_implementation, "eager")
+        self.assertEqual(fastvlm_config.vision_config._attn_implementation, "eager")
+        self.assertFalse(fastvlm_config.output_attentions)
+
+    def test_attention_output_requirement_overrides_sdpa_default(self):
+        from src.model.model import VLMModel
+
+        config = SimpleNamespace(
+            use_cache=True,
+            output_attentions=False,
+            output_hidden_states=False,
+            text_config=SimpleNamespace(
+                model_type="text",
+                use_cache=True,
+                output_attentions=False,
+                output_hidden_states=False,
+            ),
+            vision_config=SimpleNamespace(
+                model_type="vision",
+                use_cache=True,
+                output_attentions=False,
+                output_hidden_states=False,
+            ),
+        )
+        config = VLMModel._configure_attention_backend(
+            config,
+            output_attentions=True,
+            vision_output_attentions=False,
+        )
+
+        self.assertEqual(config._attn_implementation, "eager")
+        self.assertEqual(config.text_config._attn_implementation, "eager")
+        self.assertEqual(config.vision_config._attn_implementation, "sdpa")
+        self.assertTrue(config.output_attentions)
+
+    def test_attention_backend_runtime_verification_rejects_loader_override(self):
+        from src.model.model import VLMModel
+
+        valid_model = SimpleNamespace(
+            config=SimpleNamespace(
+                _attn_implementation="sdpa",
+                text_config=SimpleNamespace(_attn_implementation="sdpa"),
+                vision_config=SimpleNamespace(_attn_implementation="sdpa"),
+            )
+        )
+        VLMModel._verify_attention_backend(valid_model, "sdpa", "qwen3_vl")
+
+        overridden_model = SimpleNamespace(
+            config=SimpleNamespace(
+                _attn_implementation="sdpa",
+                text_config=SimpleNamespace(_attn_implementation="eager"),
+            )
+        )
+        with self.assertRaisesRegex(RuntimeError, "expected sdpa"):
+            VLMModel._verify_attention_backend(overridden_model, "sdpa", "qwen3_vl")
+
     def test_dskd_forward_backpropagates_through_student_and_both_projectors(self):
         from src.criterions.dskd_v2 import DSKDv2Criterion
 
@@ -533,7 +628,7 @@ class KDPlumbingTests(unittest.TestCase):
 
         distiller.init_dskd_projectors_if_needed()
 
-        self.assertEqual(tuple(distiller.part_teacher_head_pinv.shape), (3, 6))
+        self.assertEqual(tuple(distiller.cached_s2t_projection.shape), (4, 6))
         self.assertFalse(any(parameter.requires_grad for parameter in distiller.projectors["s2t"].parameters()))
 
     def test_dskd_auto_creates_projectors_without_json(self):
@@ -617,6 +712,39 @@ class KDPlumbingTests(unittest.TestCase):
         self.assertEqual(criterion.kmeans_iters, 15)
         self.assertEqual(criterion.attention_layer, -2)
         self.assertEqual(criterion.min_vision_tokens, 8)
+
+    def test_scva_resolves_layer_pairs_once(self):
+        from src.model.scva_attention import resolve_layer_pairs
+
+        self.assertEqual(
+            resolve_layer_pairs(36, 36, n_pairs=4, low_pct=0.4, high_pct=0.7),
+            [(14, 14), (18, 18), (21, 21), (25, 25)],
+        )
+        self.assertEqual(
+            resolve_layer_pairs(36, 40, n_pairs=4, low_pct=0.4, high_pct=0.7),
+            [(14, 16), (18, 20), (21, 23), (25, 28)],
+        )
+
+    def test_scva_sparse_capture_returns_only_response_to_vision(self):
+        from src.model.scva_attention import capture_response_to_vision_attention
+
+        module = SimpleNamespace(
+            _scva_capture_enabled=True,
+            _scva_response_mask=torch.tensor([[False, False, False, True, True]]),
+            _scva_vision_mask=torch.tensor([[False, True, True, False, False]]),
+            num_key_value_groups=2,
+        )
+        query = torch.randn(1, 4, 5, 3)
+        key = torch.randn(1, 2, 5, 3)
+        causal_mask = torch.triu(torch.full((1, 1, 5, 5), float("-inf")), diagonal=1)
+
+        captured = capture_response_to_vision_attention(
+            module, query, key, causal_mask, scaling=3 ** -0.5
+        )
+
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(tuple(captured[0].shape), (2, 2))
+        torch.testing.assert_close(captured[0].sum(dim=-1), torch.ones(2))
 
     def test_cgkd_reads_arguments(self):
         from src.criterions.cgkd import CGKDCriterion

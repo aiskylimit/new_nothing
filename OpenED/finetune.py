@@ -45,6 +45,9 @@ from rouge_metric import compute_metrics
 
 from peft import PeftModel
 from ed_eval import ed_evaluate
+from gen_config import generation_kwargs
+from ced_eval import check_gen_backend, evaluate, eval_plan, final_test_missing
+from ced_step import first_global_step, grouped_ce_loss, updates_per_epoch
 
 torch.set_num_threads(4)
 
@@ -266,11 +269,20 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
         
     student_generator = SampleGenerator(args, tokenizer)
 
-    step, global_step = 1, 1
+    # one physical batch per update counts as the --bs/--acc run it splits (ced_step.first_global_step)
+    step, global_step = 1, first_global_step(args.gradient_accumulation_steps,
+                                             args.batch_size * args.gradient_accumulation_steps // args.loss_group_size)
     total_loss, total_distil_loss, total_time = 0.0, 0.0, 0.0
     
     adaptive_threshold = args.init_threshold if "adaptive" in args.type else -1.0
-    prev_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", 0, device, adaptive_threshold)
+    final_test_done = False
+    if args.eval_gen_mode == "every":
+        prev_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", 0, device, adaptive_threshold)
+    elif "adaptive" in args.type:
+        prev_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", 0, device, adaptive_threshold,
+                                 generate=False)
+    else:
+        prev_avg_loss = 0.0
     replay_buffer = ReplayBuffer(args)
     
     for epoch in range(args.epochs):
@@ -331,12 +343,14 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                     
                 model.train()
 
-            outputs = model(**model_batch, use_cache=False)
-            
-            logits = outputs.logits
             if args.model_parallel:
                 raise NotImplementedError
+            if teacher_model is None and not args.student_gen:
+                # CE per logical micro-batch (ced_step.grouped_ce_loss), logits over the label window
+                lm_loss = grouped_ce_loss(model, model_batch, no_model_batch["label"], args.loss_group_size,
+                                          args.batch_size // args.loss_group_size)
             else:
+                logits = model(**model_batch, use_cache=False).logits
                 lm_loss = loss_func(logits.float().view(-1, logits.shape[-1]), no_model_batch["label"].view(-1))
             
             if teacher_model is not None:
@@ -416,15 +430,19 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
 
             # Evaluation
             if args.eval_interval and global_step % args.eval_interval == 0 and step % args.gradient_accumulation_steps == 0:
-                curr_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device, adaptive_threshold)
-                if "adaptive" in args.type:
-                    if curr_avg_loss >= prev_avg_loss + args.loss_eps:
-                        adaptive_threshold += 0.1
-                        adaptive_threshold = min(adaptive_threshold, 1.0)
-                        prev_avg_loss = curr_avg_loss
-
-                evaluate(args, tokenizer, model, dataset["test"], "test", epoch, device)
-                    
+                plan = eval_plan(args.eval_gen_mode, is_last=(global_step >= args.total_iters),
+                                 adaptive=("adaptive" in args.type))
+                if plan.dev:
+                    curr_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device,
+                                             adaptive_threshold, generate=plan.dev_generate)
+                    if "adaptive" in args.type:
+                        if curr_avg_loss >= prev_avg_loss + args.loss_eps:
+                            adaptive_threshold += 0.1
+                            adaptive_threshold = min(adaptive_threshold, 1.0)
+                            prev_avg_loss = curr_avg_loss
+                if plan.test:
+                    evaluate(args, tokenizer, model, dataset["test"], "test", epoch, device)
+                    final_test_done = True
                 model.train()
                 
             step += 1
@@ -433,124 +451,23 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             
             if global_step > args.total_iters:
                 break
-            
+
+    if final_test_missing(args, final_test_done):
+        evaluate(args, tokenizer, model, dataset["test"], "test", max(args.epochs - 1, 0), device)
     return model
-
-
-def evaluate(args, tokenizer, model, dataset: LMTrainDataset, split, epoch, device, adaptive_threshold=None):
-    
-    collate_fn = dataset.collate
-
-    if args.model_parallel:
-        raise NotImplementedError
-    else:
-        dp_world_size = dist.get_world_size()
-        dp_rank = dist.get_rank()
-        dp_group = None
-        loss_func = nn.CrossEntropyLoss()
-
-    print_rank("dp size", dp_world_size)
-
-    generation_config = GenerationConfig(
-        do_sample=args.do_sample,
-        top_p=args.top_p,
-        top_k=args.top_k,
-        temperature=args.temperature,
-        repetition_penalty=args.repetition_penalty,
-        max_length=args.max_length,
-        min_length=None,
-        eos_token_id=[tokenizer.eos_token_id, 151643],
-        pad_token_id=tokenizer.eos_token_id,
-        return_dict_in_generate=True,
-        output_scores=False
-    )
-
-    sampler = DistributedSampler(dataset, shuffle=False, drop_last=False, rank=dp_rank, num_replicas=dp_world_size)
-    dataloader = DataLoader(
-        dataset, sampler=sampler, batch_size=args.eval_batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
-
-    model.eval()
-    all_loss = 0.0
-    step = 0
-    
-    all_response_ids = []
-    
-    with torch.no_grad():
-        for it, (model_batch, no_model_batch, gen_data, _, _) in enumerate(tqdm(dataloader, desc="Evaluating", disable=(dist.get_rank() != 0))):
-            print_rank(f"{it}/{len(dataloader)}")
-            dataset.move_to_device(model_batch, no_model_batch, gen_data, device)
-            logits = model(**model_batch).logits
-            if args.model_parallel:
-                raise NotImplementedError
-            else:
-                loss = loss_func(logits.view(-1, logits.shape[-1]), no_model_batch["label"].view(-1))
-            
-            max_new_tokens = args.max_length - gen_data["input_ids"].size(1)
-            
-            if args.eval_gen:            
-                gen_out = model.generate(
-                    **gen_data,
-                    generation_config=generation_config,
-                    max_new_tokens=max_new_tokens)
-                
-                full_ids = gen_out.sequences
-                
-                full_ids = F.pad(
-                    full_ids,
-                    (0, args.max_length - full_ids.shape[1]),
-                    value=tokenizer.pad_token_id,
-                )
-                
-                response_ids = full_ids[:, gen_data["input_ids"].size(1):]
-                all_response_ids.append(response_ids)
-                    
-            dist.all_reduce(loss, dist.ReduceOp.SUM, group=dp_group)
-            loss = loss / dp_world_size
-            all_loss += loss.item()
-            step += 1
-    
-    if args.eval_gen:
-        all_response_ids = torch.cat(all_response_ids, dim=0)
-        all_response_ids = all_gather(all_response_ids, dim=1, world_size=dp_world_size, group=dp_group, op="stack")
-        all_response_ids = all_response_ids.view(-1, all_response_ids.size(-1))
-        
-        responses = tokenizer.batch_decode(all_response_ids, skip_special_tokens=True)
-    
-    if get_rank() == 0:
-        if args.eval_gen:
-            references = dataset.answers
-            responses = responses[:len(references)]
-            
-            res = compute_metrics(responses, references)
-
-            ed_metrics = ed_evaluate(responses, references)
-            res.update(ed_metrics)
-        
-            eval_dir = os.path.join(args.save, "eval", str(epoch))
-            print_rank(eval_dir)
-            os.makedirs(eval_dir, exist_ok=True)
-            with open(os.path.join(eval_dir, "answers.jsonl"), "w") as f:
-                for resp in responses:
-                    f.write(json.dumps({"text": resp}) + "\n")
-        else:
-            res = {}
-    
-        avg_loss = all_loss / step
-        
-        if "adaptive" in args.type:
-            log_str = f"{split} | avg_loss: {avg_loss} | {res} | threshold: {adaptive_threshold}"
-        else:
-            log_str = f"{split} | avg_loss: {avg_loss} | {res}"
-        print_rank(log_str)
-        save_rank(log_str, os.path.join(args.save, "log.txt"))
-        
-    return all_loss / step
 
 
 def main():
     torch.backends.cudnn.enabled = False
     
     args = get_args()
+    if args.loss_group_size is None:
+        args.loss_group_size = args.batch_size
+    if args.batch_size % args.loss_group_size:
+        raise ValueError(f"--batch-size {args.batch_size} is not a multiple of --loss-group-size {args.loss_group_size}")
+    if args.loss_group_size != args.batch_size and (args.teacher_model_path or args.student_gen or args.lm_data_dir):
+        raise ValueError("--loss-group-size below --batch-size is only implemented for plain CE training")
+    args.dynamic_pad_effective = args.dynamic_pad and not args.student_gen
     initialize(args)
     
     if dist.get_rank() == 0:
@@ -589,7 +506,8 @@ def main():
     dp_world_size = dist.get_world_size()
     
     if args.do_train:
-        args.train_iters_per_epoch = int(len(dataset["train"]) / (args.batch_size * dp_world_size * args.gradient_accumulation_steps))
+        args.train_iters_per_epoch = updates_per_epoch(len(dataset["train"]), args.batch_size, dp_world_size,
+                                                       args.gradient_accumulation_steps)
         print_rank("Train iters per epoch", args.train_iters_per_epoch)
         if args.total_iters is None:
             args.total_iters = args.train_iters_per_epoch * args.epochs
@@ -602,8 +520,12 @@ def main():
         
         if args.eval_interval == -1:
             args.eval_interval = args.train_iters_per_epoch
+        elif args.eval_interval == -2:
+            # only the evaluation after the last update: the one the result tables read
+            args.eval_interval = args.total_iters
     
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args, ds_config, device, set_optim=args.do_train)
+    check_gen_backend(args, model, tokenizer)     # --gen-backend vllm: refuse before the first update
     
     if args.teacher_model_type is None:
         args.teacher_model_type = args.model_type

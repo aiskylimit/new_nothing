@@ -23,8 +23,9 @@ Assumptions:
   - Teacher vision tokens are clustered by semantic + spatial distance, then
     each teacher cluster is projected onto the student patch grid by normalized
     patch coordinates. This allows teacher/student vision-token counts to differ.
-  - ``output.attentions`` is populated (forced by ``_force_eager_attention`` in
-    src/model/model.py).
+  - Qwen2.5-VL/Qwen3-VL capture only response-to-vision attention on selected
+    layers while the regular decoder forward stays on SDPA. Other backbones
+    retain the full-attention eager fallback.
   - Instead of a single attention layer, SCVA selects N_LAYER_PAIRS evenly-spaced
     student layers in [LAYER_LOW_PCT, LAYER_HIGH_PCT] of the stack and maps each
     to its teacher counterpart by the layer-count ratio. The per-layer losses are
@@ -40,8 +41,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import hdbscan
 from sklearn.cluster import DBSCAN
+
+from src.model.scva_attention import resolve_layer_pairs
 
 
 IGNORE_INDEX = -100
@@ -89,39 +91,7 @@ def _resolve_layer_pairs(
         sorted by student index.  May be shorter than n_pairs if the index
         range collapses (e.g. very shallow models).
     """
-    n_s = len(s_attns)
-    n_t = len(t_attns)
-    if n_s == 0 or n_t == 0:
-        return []
-
-    # Inclusive index range within the student stack
-    lo = int(math.floor(low_pct * n_s))
-    hi = int(math.floor(high_pct * n_s))
-    lo = max(0, min(lo, n_s - 1))
-    hi = max(lo, min(hi, n_s - 1))
-
-    # n_pairs evenly-spaced indices inside [lo, hi]
-    if n_pairs == 1 or lo == hi:
-        student_indices = [lo]
-    else:
-        step = (hi - lo) / (n_pairs - 1)
-        student_indices = sorted(
-            {min(int(round(lo + i * step)), hi) for i in range(n_pairs)}
-        )
-
-    # Map each student index to the teacher index by layer-count ratio.
-    # teacher_layer = round(student_layer * n_t / n_s), clamped to [0, n_t-1].
-    ratio = n_t / n_s
-    pairs: list[tuple[int, int]] = []
-    seen_s: set[int] = set()
-    for s_idx in student_indices:
-        if s_idx in seen_s:
-            continue
-        seen_s.add(s_idx)
-        t_idx = min(int(round(s_idx * ratio)), n_t - 1)
-        pairs.append((s_idx, t_idx))
-
-    return pairs
+    return resolve_layer_pairs(len(s_attns), len(t_attns), n_pairs, low_pct, high_pct)
 
 
 def _factor_grid(n_tokens: int, aspect: float = 1.0) -> tuple[int, int]:
@@ -279,6 +249,7 @@ class SCVACriterion(nn.Module):
         # and uses density clusters instead of fixed-k Lloyd k-means.
         self.n_clusters = max(int(getattr(args, "scva_n_clusters", 16)), 1)
         self.kmeans_iters = max(int(getattr(args, "scva_kmeans_iters", 10)), 1)
+        self.attention_layer = int(getattr(args, "scva_attention_layer", -1))
         self.min_vision_tokens = max(int(getattr(args, "scva_min_vision_tokens", 4)), 1)
         self.spatial_weight = float(getattr(args, "scva_spatial_weight", 0.1))
         self.dbscan_min_samples = max(int(getattr(args, "scva_dbscan_min_samples", 8)), 1)
@@ -312,7 +283,13 @@ class SCVACriterion(nn.Module):
         if ce is None:
             raise RuntimeError("Student model did not return CE loss; labels may be missing.")
 
-        scva_kd = self._scva_loss(student_outputs, teacher_outputs, student_inputs, teacher_inputs)
+        scva_kd = self._scva_loss(
+            student_outputs,
+            teacher_outputs,
+            student_inputs,
+            teacher_inputs,
+            layer_pairs=getattr(distiller, "scva_layer_pairs", None),
+        )
         total = self.alpha * ce + (1.0 - self.alpha) * self.weight * scva_kd
         out: Dict[str, torch.Tensor] = {
             "loss": total,
@@ -334,6 +311,7 @@ class SCVACriterion(nn.Module):
         teacher_outputs,
         student_inputs: Dict[str, Any],
         teacher_inputs: Dict[str, Any],
+        layer_pairs: Optional[list[tuple[int, int]]] = None,
     ) -> torch.Tensor:
         counts: Dict[str, int] = {
             "valid": 0,
@@ -354,22 +332,26 @@ class SCVACriterion(nn.Module):
             counts["skipped_mask"] = int(teacher_hidden.shape[0])
             return teacher_hidden.new_zeros(())
 
+        t_sparse = getattr(teacher_outputs, "scva_attentions", None)
+        s_sparse = getattr(student_outputs, "scva_attentions", None)
+        use_sparse = isinstance(t_sparse, dict) and isinstance(s_sparse, dict)
         t_attns = getattr(teacher_outputs, "attentions", None)
         s_attns = getattr(student_outputs, "attentions", None)
-        if not t_attns or not s_attns:
-            counts["skipped_attention"] = int(teacher_hidden.shape[0])
-            return teacher_hidden.new_zeros(())
 
-        # Select n_layer_pairs evenly-spaced student layers in [layer_low_pct,
-        # layer_high_pct] of the stack; map each to its teacher counterpart by
-        # the ratio n_teacher_layers / n_student_layers.
-        layer_pairs = _resolve_layer_pairs(
-            s_attns,
-            t_attns,
-            n_pairs=self.n_layer_pairs,
-            low_pct=self.layer_low_pct,
-            high_pct=self.layer_high_pct,
-        )
+        if use_sparse:
+            if layer_pairs is None:
+                common_layers = sorted(set(s_sparse).intersection(t_sparse))
+                layer_pairs = [(index, index) for index in common_layers]
+        elif t_attns and s_attns:
+            layer_pairs = _resolve_layer_pairs(
+                s_attns,
+                t_attns,
+                n_pairs=self.n_layer_pairs,
+                low_pct=self.layer_low_pct,
+                high_pct=self.layer_high_pct,
+            )
+        else:
+            layer_pairs = []
         if not layer_pairs:
             counts["skipped_attention"] = int(teacher_hidden.shape[0])
             return teacher_hidden.new_zeros(())
@@ -437,14 +419,27 @@ class SCVACriterion(nn.Module):
             # attns[layer][batch] to avoid loading all heads into memory at once.
             pair_losses: list[torch.Tensor] = []
             for s_layer, t_layer in layer_pairs:
-                # Head-averaged attention rows for this sample. Use float for KL stability.
-                t_attn_b = t_attns[t_layer].float().mean(dim=1)[b]   # [L_t, L_t]
-                s_attn_b = s_attns[s_layer].float().mean(dim=1)[b]   # [L_s, L_s]
+                # Sparse captures are already response-to-vision distributions;
+                # the fallback path slices head-averaged full attention below.
+                if use_sparse:
+                    if s_layer not in s_sparse or t_layer not in t_sparse:
+                        continue
+                    if b >= len(s_sparse[s_layer]) or b >= len(t_sparse[t_layer]):
+                        continue
+                    t_resp_to_vis = t_sparse[t_layer][b].float()
+                    s_resp_to_vis = s_sparse[s_layer][b].float()
+                    if t_resp_to_vis.shape[-1] != n_t_v or s_resp_to_vis.shape[-1] != n_s_v:
+                        continue
+                else:
+                    t_attn_b = t_attns[t_layer].float().mean(dim=1)[b]
+                    s_attn_b = s_attns[s_layer].float().mean(dim=1)[b]
 
-                # Slice response→vision sub-matrix and renormalize to a distribution.
-                t_resp_to_vis = t_attn_b[t_r_idx][:, t_v_idx]       # [T_t, n_t_v]
+                # Normalize both paths before cluster aggregation.
+                if not use_sparse:
+                    t_resp_to_vis = t_attn_b[t_r_idx][:, t_v_idx]
                 t_resp_to_vis = t_resp_to_vis / t_resp_to_vis.sum(dim=-1, keepdim=True).clamp_min(1e-8)
-                s_resp_to_vis = s_attn_b[s_r_idx][:, s_v_idx]       # [T_s, n_s_v]
+                if not use_sparse:
+                    s_resp_to_vis = s_attn_b[s_r_idx][:, s_v_idx]
                 s_resp_to_vis = s_resp_to_vis / s_resp_to_vis.sum(dim=-1, keepdim=True).clamp_min(1e-8)
 
                 # Crop to the shorter response length defensively.
@@ -466,6 +461,9 @@ class SCVACriterion(nn.Module):
                 pair_losses.append((u * kl).sum() / u.sum().clamp_min(1e-6))
 
             # Average across the selected layer pairs for this sample.
+            if not pair_losses:
+                counts["skipped_attention"] += 1
+                continue
             sample_losses.append(torch.stack(pair_losses).mean())
             counts["valid"] += 1
 

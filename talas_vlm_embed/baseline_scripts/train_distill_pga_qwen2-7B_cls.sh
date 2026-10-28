@@ -14,8 +14,8 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name "apple/FastVLM-0.5B" \
-    --teacher_model_name "raghavlite/B3_Qwen2_7B" \
+    --model_name "models/FastVLM-0.5B" \
+    --teacher_model_name "models/B3_Qwen2_7B" \
     --teacher_hidden_dim 3584 \
     --lora True \
     --teacher_lora True \
@@ -26,7 +26,7 @@ torchrun --standalone \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_qwen2_old" \
     --pooling "eos" \
-    --dataset_name "TIGER-Lab/MMEB-train" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -78,7 +78,7 @@ python eval_mmeb_2.py \
   --model_backbone llava_qwen2_old \
   --normalize True \
   --bf16 \
-  --dataset_name TIGER-Lab/MMEB-eval \
+  --dataset_name vlm2vec_eval/MMEB-eval \
   --subset_name "${EVAL_SUBSETS[@]}" \
   --dataset_split test \
   --per_device_eval_batch_size 4 \

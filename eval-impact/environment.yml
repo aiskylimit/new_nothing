@@ -1,0 +1,14 @@
+# Optional: one-shot conda env (same as install_impact.sh).
+#   conda env create -f environment.yml
+#   conda activate impact
+name: impact
+channels:
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13
+  - cuda-nvcc=12.4
+  - pip
+  - pip:
+      - -r requirements.txt

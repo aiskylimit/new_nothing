@@ -104,6 +104,7 @@ def load_vllm_model(
     tensor_parallel_size: int = 1,
     max_model_len: int = None,
     enable_thinking: bool = True,
+    seed: int = 42,
 ):
     """
     Load a model using vLLM for fast inference.
@@ -140,6 +141,7 @@ def load_vllm_model(
         "max_model_len": max_model_len,
         "distributed_executor_backend": "mp",
         "enforce_eager": True,
+        "seed": seed,
     }
 
     if lora_adapter_path is not None:
@@ -199,6 +201,8 @@ def evaluate_math500(
     enable_thinking: bool = True,
     val_n: int = 12,
     dataset_dir: str = None,
+    seed: int = 42,
+    pass_only: bool = False,
 ):
     """
     Evaluate model on MATH500 or other datasets using Qwen3 thinking mode with best practices.
@@ -231,6 +235,7 @@ def evaluate_math500(
     print(f"Presence Penalty: {presence_penalty}")
     print(f"Max New Tokens: {max_new_tokens}")
     print(f"Val-N (solutions per problem): {val_n}")
+    print(f"Seed: {seed}")
     print(f"{'='*70}\n")
 
     if not dataset_dir:
@@ -285,6 +290,7 @@ def evaluate_math500(
         max_tokens=max_new_tokens,
         presence_penalty=presence_penalty,
         n=val_n,  # Generate val_n solutions per prompt
+        seed=seed,
     )
 
     total = 0
@@ -413,6 +419,7 @@ def evaluate_math500(
             "problem": problem,
             "ground_truth": gt_answer,
             "val_n": val_n,
+            "seed": seed,
             "generations": [
                 {"predicted_answer": pred, "full_generation": gen, "correct": corr, "formatted": fmt}
                 for pred, gen, corr, fmt in zip(
@@ -428,7 +435,8 @@ def evaluate_math500(
             "correct": is_correct_list[0],
             "formatted": is_formatted_list[0],
         }
-        results.append(result)
+        if not pass_only:
+            results.append(result)
 
         # Print progress for each problem
         format_rate = formatted_count / total * 100
@@ -437,21 +445,25 @@ def evaluate_math500(
 
         # Print brief update for every problem
         status = "✓" if has_correct else "✗"
-        print(
-            f"{status} [{idx + 1}/{len(dataset)}] Pass@{val_n}: {current_pass_at_n:.1f}% | Avg@{val_n}: {current_avg_at_n:.1f}% | Formatted: {format_rate:.1f}%"
-        )
+        if pass_only:
+            print(f"{status} [{idx + 1}/{len(dataset)}] Pass@{val_n}: {current_pass_at_n:.1f}%")
+        else:
+            print(
+                f"{status} [{idx + 1}/{len(dataset)}] Pass@{val_n}: {current_pass_at_n:.1f}% | Avg@{val_n}: {current_avg_at_n:.1f}% | Formatted: {format_rate:.1f}%"
+            )
 
         # Print detailed info every 10 problems
         if (idx + 1) % 10 == 0:
             print(f"\n{'='*70}")
             print(f"Progress: {idx + 1}/{len(dataset)}")
             print(f"Pass@{val_n}: {current_pass_at_n:.2f}%")
-            print(f"Average@{val_n}: {current_avg_at_n:.2f}%")
-            print(f"Format Rate: {format_rate:.2f}%")
-            print(f"Last problem: {problem[:100]}...")
-            print(f"Solutions correct: {num_correct}/{val_n}")
-            print(f"Majority vote: {'✓' if majority_vote_correct else '✗'}")
-            print(f"Ground truth: {gt_answer}")
+            if not pass_only:
+                print(f"Average@{val_n}: {current_avg_at_n:.2f}%")
+                print(f"Format Rate: {format_rate:.2f}%")
+                print(f"Last problem: {problem[:100]}...")
+                print(f"Solutions correct: {num_correct}/{val_n}")
+                print(f"Majority vote: {'✓' if majority_vote_correct else '✗'}")
+                print(f"Ground truth: {gt_answer}")
             print(f"{'='*70}\n")
 
     # Calculate final metrics
@@ -476,13 +488,14 @@ def evaluate_math500(
     print(f"Total solutions: {total}")
     print("\nMetrics:")
     print(f"  Pass@{val_n}: {pass_at_n_pct:.2f}% ({pass_at_n}/{num_problems})")
-    print(f"  Average@{val_n}: {average_at_n_pct:.2f}% ({total_correct_per_problem}/{total})")
-    print(
-        f"  Majority Vote@{val_n}: {majority_vote_at_n_pct:.2f}% ({majority_vote_correct_count}/{num_problems})"
-    )
-    print("\nFormatting:")
-    print(f"  Formatted (boxed) answers: {formatted_count}/{total}")
-    print(f"  Format rate: {format_rate:.2f}%")
+    if not pass_only:
+        print(f"  Average@{val_n}: {average_at_n_pct:.2f}% ({total_correct_per_problem}/{total})")
+        print(
+            f"  Majority Vote@{val_n}: {majority_vote_at_n_pct:.2f}% ({majority_vote_correct_count}/{num_problems})"
+        )
+        print("\nFormatting:")
+        print(f"  Formatted (boxed) answers: {formatted_count}/{total}")
+        print(f"  Format rate: {format_rate:.2f}%")
     print("=" * 70)
 
     # Save detailed results if output file specified
@@ -501,6 +514,7 @@ def evaluate_math500(
             "presence_penalty": presence_penalty,
             "max_new_tokens": max_new_tokens,
             "val_n": val_n,
+            "seed": seed,
             "num_problems": num_problems,
             "total_solutions": total,
             "pass_at_n": pass_at_n,
@@ -514,12 +528,23 @@ def evaluate_math500(
             "results": results,
         }
 
+        if pass_only:
+            summary = {
+                "base_model": base_model_name,
+                "dataset": dataset_name,
+                "val_n": val_n,
+                "seed": seed,
+                "num_problems": num_problems,
+                "pass_at_n": pass_at_n,
+                "pass_at_n_pct": pass_at_n_pct,
+            }
+
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2, ensure_ascii=False)
 
         print(f"\nDetailed results saved to: {output_file}")
 
-    return average_at_n_pct, results
+    return (pass_at_n_pct if pass_only else average_at_n_pct), results
 
 
 def main():
@@ -540,14 +565,14 @@ def main():
         "--dataset",
         type=str,
         default="aime25",
-        choices=["aime25", "aime26", "hmmt25"],
+        choices=["aime24", "aime25", "aime26", "hmmt25"],
         help="Prepared paper benchmark to evaluate.",
     )
     parser.add_argument(
         "--dataset_dir",
         type=str,
         required=True,
-        help="Directory containing the prepared paper benchmarks and AIME26.",
+        help="Directory containing the prepared evaluation benchmarks.",
     )
     parser.add_argument(
         "--max_new_tokens",
@@ -613,6 +638,8 @@ def main():
     parser.add_argument(
         "--val_n", type=int, default=12, help="Number of solutions to sample per problem (default: 12)"
     )
+    parser.add_argument("--seed", type=int, default=42, help="Evaluation sampling seed (default: 42).")
+    parser.add_argument("--pass_only", action="store_true", help="Save and report only Pass@N.")
 
     args = parser.parse_args()
 
@@ -671,6 +698,7 @@ def main():
     print(f"Presence penalty: {args.presence_penalty}")
     print(f"Num samples: {args.num_samples or 'All'}")
     print(f"Val-N (solutions per problem): {args.val_n}")
+    print(f"Seed: {args.seed}")
     print(f"Output file: {args.output_file}")
     print(f"GPU memory utilization: {args.gpu_memory_utilization}")
     print(f"Tensor parallel size: {args.tensor_parallel_size}")
@@ -684,6 +712,7 @@ def main():
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
         enable_thinking=args.enable_thinking,
+        seed=args.seed,
     )
 
     # Setup LoRA request if checkpoint is provided
@@ -726,12 +755,14 @@ def main():
         enable_thinking=args.enable_thinking,
         val_n=args.val_n,
         dataset_dir=args.dataset_dir,
+        seed=args.seed,
+        pass_only=args.pass_only,
     )
 
     print("\n" + "=" * 70)
     print("EVALUATION COMPLETE!")
     print("=" * 70)
-    print(f"Final Average@{args.val_n}: {average_at_n_pct:.2f}%")
+    print(f"Final {'Pass' if args.pass_only else 'Average'}@{args.val_n}: {average_at_n_pct:.2f}%")
     print(f"Results saved to: {args.output_file}")
     print("=" * 70 + "\n")
 
