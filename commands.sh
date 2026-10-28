@@ -1,6 +1,6 @@
 #2
 #impact
-#v1
+#v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
 
