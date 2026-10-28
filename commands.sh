@@ -1,4 +1,8 @@
-#1 +30
+#d
+# models
+--hf meta-llama/Llama-2-7b-hf /mnt/local/@PROJECT@/eval-impact/models/Llama-2-7b-hf
+--hf TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T /mnt/local/@PROJECT@/eval-impact/models/TinyLlama-1.1B-intermediate-step-1431k-3T
+
 #impact
 #v1
 
