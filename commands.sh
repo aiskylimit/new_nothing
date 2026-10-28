@@ -1,7 +1,11 @@
 #d
+#datasets
+--url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data.zip /mnt/local/@PROJECT@/unified-ie
+--url https://huggingface.co/datasets/datht/unified-ie/resolve/main/mt_v2.zip /mnt/local/@PROJECT@/unified-ie
 #models
---hf meta-llama/Llama-2-7b-hf /mnt/local/@PROJECT@/eval-impact/models/Llama-2-7b-hf
---hf TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T /mnt/local/@PROJECT@/eval-impact/models/TinyLlama-1.1B-intermediate-step-1431k-3T
+--hf Qwen/Qwen3-0.6B /mnt/local/@PROJECT@/unified-ie/models/Qwen3-0.6B
+--hf Qwen/Qwen3-4B-Instruct-2507 /mnt/local/@PROJECT@/unified-ie/models/Qwen3-4B-Instruct-2507
+
 
 #impact
 #v1
