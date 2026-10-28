@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
-#uni3
+#1 +30
+#impact
 #v1
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -43,8 +43,8 @@ export NCCL_DEBUG=WARN
 # bash ./run3.sh
 # bash ./project_commands.sh
 
-# cd ./eval-impact
-# CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
+cd ./eval-impact
+CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands.sh
