@@ -180,9 +180,10 @@ def evaluate(args, tokenizer, model, dataset, split, epoch, device, adaptive_thr
     if get_rank() == 0:
         res = {}
         if responses is not None:
-            references = dataset.answers
+            # only the first len(dataset) rows were answered (--dev-num etc. can cut the split)
+            references = dataset.answers[:len(dataset)]
             responses = responses[:len(references)]
-            res, score[0] = score_responses(args, responses, references, dataset.raw, split, epoch)
+            res, score[0] = score_responses(args, responses, references, dataset.raw[:len(dataset)], split, epoch)
             eval_dir = os.path.join(args.save, "eval", str(epoch))
             os.makedirs(eval_dir, exist_ok=True)
             with open(os.path.join(eval_dir, f"{split}_answers.jsonl"), "w") as f:
