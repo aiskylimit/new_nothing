@@ -1,4 +1,4 @@
-#i vlm2vec-gvendi.txt
+#1 +30
 #pga
 #v2
 
