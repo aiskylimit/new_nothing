@@ -12,6 +12,8 @@
 #                         type, argument, role; NER entity, type; RE subject, relation, object)
 #   SPAN_LOCATE=response  with W_SPAN > 0: every span where the answer JSON writes it; legacy = the original
 #                         EventKD search (first span usually in the input sentence, the rest in the answer)
+#   SPAN_SCHEDULE=kd      with W_SPAN > 0: the span loss is part of the KD term (fades with annealing);
+#                         constant = added on its own with weight W_SPAN all through training
 #   SUBSET=               all train rows; 0.5 = fixed square-root subset (same rows as the SFT student's SUBSET=0.5)
 #   TEACHERS=             name=lora_dir,...; empty = best dev epoch of each teacher run in results/ below
 # e.g. KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh ee_v1
@@ -53,6 +55,7 @@ KD_RATIO=${KD_RATIO:-0.9}
 KD_TYPE=${KD_TYPE:-fkl}
 W_SPAN=${W_SPAN:-0}
 SPAN_LOCATE=${SPAN_LOCATE:-response}
+SPAN_SCHEDULE=${SPAN_SCHEDULE:-kd}
 SUBSET=${SUBSET:-}
 TEACHERS=${TEACHERS:-}
 if [ -z "${TEACHERS}" ]; then
@@ -82,7 +85,7 @@ EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")${SUBSET:+_subset${SUBSET}}
+RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")$([ "${W_SPAN}" != 0 ] && [ "${SPAN_SCHEDULE}" = constant ] && echo "_spanconst")${SUBSET:+_subset${SUBSET}}
 SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}/${RUN}"
 # seed
 SEED=42
@@ -144,6 +147,7 @@ OPTS+=" --type ${KD_TYPE}"
 # span loss
 OPTS+=" --w-span-loss ${W_SPAN}"
 OPTS+=" --span-locate ${SPAN_LOCATE}"
+OPTS+=" --span-schedule ${SPAN_SCHEDULE}"
 OPTS+=" --teacher_layer_mapping 33 36"
 OPTS+=" --student_layer_mapping 25 28"
 # gen: greedy (no --do-sample)
