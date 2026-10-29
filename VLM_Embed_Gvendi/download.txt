@@ -79,7 +79,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/MSCOCO/original-00000-of-00001.parquet /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_train/MMEB-train/MSCOCO
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/MSCOCO/train-00000-of-00001.parquet /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_train/MMEB-train/MSCOCO
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/MSCOCO/test-00000-of-00001.parquet /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_eval/MMEB-eval/MSCOCO
---url https://huggingface.co/datasets/nlphuji/flickr30k/blob/main/flickr30k-images.zip /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_external/flickr30k
+--url https://huggingface.co/datasets/nlphuji/flickr30k/resolve/main/flickr30k-images.zip /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_external/flickr30k
 --url https://huggingface.co/datasets/nlphuji/flickr30k/resolve/main/flickr_annotations_30k.csv /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_external/flickr30k
 #models
 --hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/VLM_Embed_Gvendi/models/B3_Qwen2_2B
