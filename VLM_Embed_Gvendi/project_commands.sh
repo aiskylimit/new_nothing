@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
+source /mnt/local/uvenvs/vlm-gvendi/bin/activate
 
 
 # bash set_base_model_path.sh
