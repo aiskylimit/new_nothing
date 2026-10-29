@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#1 +10
 #gpu
 #v2
 
@@ -43,7 +43,8 @@ export NCCL_DEBUG=WARN
 # bash ./run4.sh
 # bash ./project_commands.sh
 
-# cd ./eval-impact
+cd ./eval-impact
+tree outputs
 # CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
 
 # cd VLM_Distillation-main
