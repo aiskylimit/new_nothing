@@ -6,7 +6,7 @@ source /mnt/local/uvenvs/vlm2vec-gvendi/bin/activate
 
 # bash set_base_model_path.sh
 # # python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
-# python fix_lib.py
+python fix_lib.py
 
 # # #
 # # 3. Unzip the dataset
