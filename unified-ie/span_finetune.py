@@ -629,6 +629,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
 
                 distil_loss = get_distil_loss(args, teacher_logits, label_batch, logits)
 
+                span_term = 0.0  # --span-schedule constant: the span loss outside the KD weight
                 if use_span:
                     spans_offsets = no_model_batch["span_offsets"]
                     offset_mapping = no_model_batch["offset_mapping"]
@@ -637,11 +638,14 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                                                           student_captured_hidden, teacher_hidden,
                                                           offset_mapping, spans_offsets, args)
                     span_loss = args.w_span_loss * span_loss
-                    distil_loss = distil_loss + span_loss
+                    if args.span_schedule == "constant":
+                        span_term = span_loss
+                    else:
+                        distil_loss = distil_loss + span_loss
                 # loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * (distil_loss + span_loss)
                 # BAM teacher annealing: the target moves from the teacher to the gold labels as training goes
                 kd_ratio = 1 - global_step / args.total_iters if args.kd_schedule == "anneal" else args.kd_ratio
-                loss = (1 - kd_ratio) * lm_loss + kd_ratio * distil_loss
+                loss = (1 - kd_ratio) * lm_loss + kd_ratio * distil_loss + span_term
             else:
                 loss = lm_loss
                 

@@ -179,6 +179,9 @@ def add_hp_args(parser: argparse.ArgumentParser):
                             "entity/type, RE subject/relation/object): legacy = the original EventKD search, each "
                             "string after the previous one starting at the top of the prompt; response = each string "
                             "where the answer JSON writes it")
+    group.add_argument("--span-schedule", type=str, default="kd", choices=["kd", "constant"],
+                       help="kd: the span loss is part of the KD term and gets its weight (with --kd-schedule "
+                            "anneal it fades out with the KD loss); constant: added on its own, w_span_loss all along")
 
     return parser
 
