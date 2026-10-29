@@ -1,5 +1,5 @@
-#2
-#pga
+#1 +10
+#log
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -33,8 +33,8 @@ export NCCL_DEBUG=WARN
 # cd ./grit
 # bash ./project_commands.sh
 
-cd ./VLM_Embed_Gvendi
-bash ./project_commands.sh
+# cd ./VLM_Embed_Gvendi
+# bash ./project_commands.sh
 
 # cd ./unified-ie
 # tar -czf logs.tar.gz logs/
@@ -42,8 +42,8 @@ bash ./project_commands.sh
 # bash ./run5.sh
 # bash ./project_commands.sh
 
-# cd ./eval-impact
-# tree outputs
+cd ./eval-impact
+tree outputs
 # CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
 
 # cd VLM_Distillation-main
