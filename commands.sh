@@ -1,5 +1,5 @@
-#1 +10
-#gpu
+#1 +60
+#pga
 #v2
 
 # cd SpectralGuidedLearning && GPUS=5 bash project_commands_b200_gain.sh 
@@ -9,7 +9,7 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-iepenED/logs.tar.gz +a
 
 # nvidia-smi
-# kill -9 $(nvidia-smi -i 0,1,2,3,4,5,6,7 --query-compute-apps=pid --format=csv,noheader)
+kill -9 193233 193242 193251 193248 193254
 # sleep 2
 nvidia-smi
 
@@ -33,8 +33,8 @@ export NCCL_DEBUG=WARN
 # cd ./grit
 # bash ./project_commands.sh
 
-# cd ./VLM_Embed_Gvendi
-# bash ./project_commands.sh
+cd ./VLM_Embed_Gvendi
+bash ./project_commands.sh
 
 # cd ./unified-ie
 # tar -czf logs.tar.gz logs/
