@@ -40,19 +40,19 @@ tar -xzf /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/B3_Qwen2_7B
 
 CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_cls.sh &
 CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_grounding.sh &
-CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_vqa.sh &
 
 CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_cls.sh &
 CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_grounding.sh &
-CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_vqa.sh &
 
 CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_cls.sh &
 CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_grounding.sh &
-CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_vqa.sh &
 
 CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_cls.sh &
 CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_grounding.sh &
-CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_vqa.sh &
 
 wait 
 
@@ -76,6 +76,6 @@ wait
 # 9. Copy JSON eval outputs
 # =========================
 
-# JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
 
-# python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
