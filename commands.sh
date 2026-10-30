@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-iepenED/logs.tar.gz +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #pga
 #v2
 
