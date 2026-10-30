@@ -1,11 +1,10 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
-#pga
+#1 +10
+#gpu
 #v2
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-iepenED/logs.tar.gz +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
 # kill -9 193233 193242 193251 193248 193254
