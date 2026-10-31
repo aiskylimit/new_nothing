@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 from .data import save_json
+from .timing import deadline_timestamp
 
 MODELS = {"llama2-tinyllama": ("Llama-2-7b-hf", "TinyLlama-1.1B-intermediate-step-1431k-3T"),
           "math-small": ("Qwen2.5-Math-7B-Instruct", "Qwen2.5-Math-1.5B-Instruct"),
@@ -190,7 +191,7 @@ def artifact_complete(job):
     return True
 
 
-def speed_up_plan(plan, micro_batch_size=8, gradient_checkpointing=False):
+def speed_up_plan(plan, micro_batch_size=8, gradient_checkpointing=False, only_method=None):
     """Only regroup unfinished student jobs; retain their effective batch/budget."""
     if micro_batch_size < 1:
         raise ValueError("micro-batch-size must be positive")
@@ -200,6 +201,8 @@ def speed_up_plan(plan, micro_batch_size=8, gradient_checkpointing=False):
         if job["stage"] != "train" or artifact_complete(job):
             continue
         command = job["command"]
+        if only_method and command[command.index("--method") + 1] != only_method:
+            continue
         old_command = list(command)
 
         def value(flag, default):
@@ -226,7 +229,7 @@ def speed_up_plan(plan, micro_batch_size=8, gradient_checkpointing=False):
     return plan
 
 
-def execute_job(job, ledger, logs):
+def execute_job(job, ledger, logs, stop_at=None):
     command = list(job["command"])
     if job.get("checkpoint_from"):
         latest = json.loads(Path(job["checkpoint_from"]).read_text())
@@ -242,6 +245,10 @@ def execute_job(job, ledger, logs):
     if previous.get("fingerprint") == fingerprint and previous.get("state") == "completed" and artifact_complete(job):
         print(f"Skip completed {job['name']}", flush=True)
         return
+    # Per-launch deadline is recorded in the ledger command, but does not change
+    # the scientific plan/fingerprint or invalidate an already-completed job.
+    if stop_at and job["stage"] == "train":
+        command += ["--stop-at", stop_at]
     if job["stage"] == "eval" and Path(job["eval_dir"]).exists():
         # Preserve old/partial predictions when the checkpoint advances on resume.
         history = Path(job["eval_dir"]).parent / "eval_history" / str(time.time_ns())
@@ -286,6 +293,9 @@ def main():
     p.add_argument("--gradient-checkpointing", action=argparse.BooleanOptionalAction, default=False,
                    help="Checkpoint activations in --fast mode; disabled by default")
     p.add_argument("--methods", nargs="+", choices=["opd", "opd_impact"], default=["opd", "opd_impact"])
+    p.add_argument("--only-method", choices=["opd", "opd_impact"], default=None,
+                   help="Execute only this student method from the saved plan; retain both cases in the report")
+    p.add_argument("--stop-at", default=None, help="Student deadline for this launch; timezone-aware ISO time")
     p.add_argument("--teacher-adapter", default=None, help="Existing local Dolly teacher adapter; skips teacher SFT")
     p.add_argument("--teacher-steps", type=int, default=0, help="Optional teacher SFT smoke-test cap")
     p.add_argument("--math-eval", action="store_true", help="Explicitly opt into MATH-500/GSM8K; disabled by default")
@@ -294,6 +304,9 @@ def main():
     p.add_argument("--plan-out", default=None, help="For plan stage, save elsewhere while retaining target B200 paths")
     p.add_argument("--python", dest="python_bin", default=sys.executable)
     args = p.parse_args()
+    deadline = deadline_timestamp(args.stop_at)
+    if deadline is not None and deadline <= time.time():
+        raise ValueError("stop-at is in the past")
     if Path(args.run_name).name != args.run_name or args.run_name in (".", ".."):
         raise ValueError("run-name must be a directory name")
     plan = make_plan(args)
@@ -321,7 +334,7 @@ def run_plan(args, plan, existing, run):
         elif old["cases"] != plan["cases"] or old["jobs"] != plan["jobs"]:
             raise ValueError("Run plan changed; use a new RUN_NAME to avoid mixing results")
     if args.fast:
-        plan = speed_up_plan(plan, args.micro_batch_size, args.gradient_checkpointing)
+        plan = speed_up_plan(plan, args.micro_batch_size, args.gradient_checkpointing, args.only_method)
         if existing.exists() and plan != old:
             save_json(existing.parent / "plan_history" / f"before-fast-{time.time_ns()}.json", old)
     save_json(existing, plan)
@@ -348,10 +361,18 @@ def run_plan(args, plan, existing, run):
     ledger = json.loads(ledger_path.read_text()) if ledger_path.exists() else {}
     try:
         for job in plan["jobs"]:
+            if args.only_method and job["stage"] == "train":
+                command = job["command"]
+                if command[command.index("--method") + 1] != args.only_method:
+                    continue
+            if args.only_method and job["stage"] == "eval":
+                case = next((case for case in plan["cases"] if case["name"] == job["name"]), None)
+                if case is None or case["method"] != args.only_method:
+                    continue
             if args.stage in ("all", job["stage"]):
-                execute_job(job, ledger, run / "logs")
+                execute_job(job, ledger, run / "logs", args.stop_at)
     finally:
-        if args.stage in ("all", "report", "eval"):
+        if args.stage in ("all", "train", "report", "eval"):
             from .final_results import aggregate
             aggregate(existing, run / "final_results")
 

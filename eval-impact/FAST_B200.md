@@ -92,3 +92,32 @@ toàn bộ overhead checkpoint; `step_seconds` là thời gian mỗi update, b�
 Đã kiểm tra trên CPU bằng model LLaMA nhỏ: rollout padding/EOS, giá trị loss và gradients so với
 cách tính cũ, LoRA + IMPACT train, resume checkpoint cũ từ microbatch 1 sang 2, optimizer/scheduler,
 thứ tự mẫu và plan migration. Chưa benchmark model thật trên B200; không cam kết hệ số tăng tốc.
+
+## Chạy riêng IMPACT qua đêm, theo giờ hẹn
+
+`ONLY_METHOD=opd_impact` chọn riêng student job IMPACT ngay cả khi plan đã lưu có cả hai nhánh;
+không xóa kết quả/case baseline. Với stage `train`, teacher SFT và BI phải đã hoàn thành.
+Đặt `FAST=1` để đọc plan cũ, giữ tổng steps và resume nhánh IMPACT nếu có checkpoint.
+
+Ví dụ phiên tối 31/10/2026 đến trưa 01/11/2026 (giờ Việt Nam), chừa khoảng 10 phút để lưu:
+
+```bash
+FAST=1 ONLY_METHOD=opd_impact MICRO_BATCH_SIZE=8 \
+STOP_AT="2026-11-01T11:50:00+07:00" RUN_NAME=llama2-tinyllama-opd \
+  bash project_commands.sh train
+```
+
+`STOP_AT` là tùy chọn cho lần launch đó, không đổi ngân sách 10 epochs/cosine schedule.
+Đến giờ, trainer hoàn tất update đang chạy rồi lưu checkpoint, ghi `deadline_reached` nếu
+chưa đủ steps. Đây là run chưa hoàn thành, không được coi tương đương OPD đã đủ 10 epochs.
+Không bảo đảm ngắt đúng giây: cần cộng thời gian update đang chạy và ghi checkpoint.
+Launcher báo incomplete và dừng; chạy lại với giờ hẹn mới hoặc bỏ `STOP_AT` để tiếp tục.
+Stage `train` cũng cập nhật báo cáo tổng hợp; nhánh thiếu steps được đánh dấu incomplete.
+
+Log thêm ETA cửa sổ 50 steps: `rolling_step_seconds`, `eta_remaining_hours`,
+`estimated_finish_utc`, `required_seconds_per_step`, `estimated_within_deadline`.
+ETA loại trừ ghi checkpoint, có thể thay đổi theo độ dài rollout; nên đọc sau 20–50 updates.
+Với 3560 updates từ đầu và khoảng 13 giờ, cần dưới 13 giây/update để có dư địa overhead.
+Nếu batch 8 chưa đủ nhanh, có thể dừng ở checkpoint rồi thử `MICRO_BATCH_SIZE=16`
+(accumulation tự thành 2). Chỉ giữ cấu hình đó nếu log đo được nhanh hơn và VRAM đủ;
+không giả định batch lớn hơn luôn nhanh hơn.

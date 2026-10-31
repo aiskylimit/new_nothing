@@ -31,3 +31,9 @@ Migration validation: 31 unit tests passed. A fresh staged export without any `d
 - Existing-plan migration is repeatable, keeps completed jobs and non-training jobs unchanged, preserves effective batch, and archives the previous plan. Unsaved log tails are preserved separately on checkpoint resume.
 
 Shell syntax and Git whitespace checks passed. No real B200 throughput, peak VRAM or full-model run was measured here; speedup must be measured on the target GPU using the new timing/throughput metrics. The B200 environment manifest and dependencies are unchanged.
+
+Overnight follow-up: 45 CPU tests passed, adding timezone-aware deadline parsing, rolling ETA,
+selection of only IMPACT from the saved paired plan, and real tiny-LLaMA checkpoint/resume after
+a simulated wall-clock deadline. A deadline stop is explicitly incomplete, retains the original
+cosine/epoch budget and remains resumable. The train stage now refreshes the final report even
+when a deadline leaves it incomplete. No target-server run has been launched from this machine.

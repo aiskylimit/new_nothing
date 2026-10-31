@@ -205,6 +205,12 @@ class FastTrainingTests(unittest.TestCase):
             self.assertFalse((root / "local-assets").exists())
 
     def test_real_llama_impact_training_resume_regroups_old_checkpoint(self):
+        self._real_resume_smoke()
+
+    def test_real_llama_deadline_saves_incomplete_checkpoint_and_resumes(self):
+        self._real_resume_smoke(stop_at_deadline=True)
+
+    def _real_resume_smoke(self, stop_at_deadline=False):
         with tempfile.TemporaryDirectory() as temp:
             root, tok = Path(temp), tokenizer()
             for name, width, layers in (("student", 16, 2), ("teacher", 24, 3)):
@@ -226,11 +232,19 @@ class FastTrainingTests(unittest.TestCase):
                       "--device", "cpu", "--dtype", "float32", "--epochs", "1", "--steps", "2",
                       "--lora-rank", "2", "--max-length", "16", "--max-prompt-length", "8",
                       "--max-new-tokens", "4", "--bi-max-length", "8", "--top-k", "2", "--save-every", "1"]
-            # First run saves at update boundary after one optimizer update.
-            with patch("sys.argv", common + ["--grad-accum", "2", "--max-minutes", "0.0000001"]), contextlib.redirect_stdout(io.StringIO()):
-                main()
+            # Simulated wall clock advances past the deadline after one metric
+            # is committed. This exercises actual checkpointing, not a mock save.
+            def virtual_clock():
+                metrics = root / "run/metrics.jsonl"
+                return 5_000_000_000. if metrics.exists() and metrics.stat().st_size else 0.
+
+            stop_args = (["--stop-at", "2099-11-01T11:50:00+07:00"] if stop_at_deadline else
+                         ["--max-minutes", "0.0000001"])
+            with patch("sys.argv", common + ["--grad-accum", "2", *stop_args]), contextlib.redirect_stdout(io.StringIO()):
+                with patch("opd.train.time.time", side_effect=virtual_clock) if stop_at_deadline else contextlib.nullcontext():
+                    main()
             status = json.loads((root / "run/status.json").read_text())
-            self.assertEqual(status["state"], "time_budget_reached")
+            self.assertEqual(status["state"], "deadline_reached" if stop_at_deadline else "time_budget_reached")
             self.assertEqual(status["step"], 1)
             # Simulate schema-3 config (batch=1, no checkpoint-local config).
             checkpoint = root / "run/checkpoint-1"

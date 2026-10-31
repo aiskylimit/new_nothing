@@ -8,6 +8,7 @@ import json
 import math
 import random
 import time
+from collections import deque
 from pathlib import Path
 import numpy as np
 import torch
@@ -19,6 +20,7 @@ from .bi import collect, render_prompt
 from .data import digest, read_jsonl, save_json, write_jsonl
 from .batching import rollout_inputs, trim_generated, supervised_batch_loss
 from .resume import rewind_log
+from .timing import deadline_timestamp, estimate_timing
 
 
 
@@ -71,6 +73,7 @@ def make_parser():
     p.add_argument("--weighting", choices=["bi", "uniform"], default="bi")
     p.add_argument("--save-every", type=int, default=64)
     p.add_argument("--max-minutes", type=float, default=0, help="0 = no deadline; saves at next update boundary")
+    p.add_argument("--stop-at", default=None, help="Stop at an update boundary and save; timezone-aware ISO time")
     p.add_argument("--resume", default=None, help="Checkpoint directory, including optimizer/RNG state")
     return p
 
@@ -88,6 +91,9 @@ def check_resume_batch(old, new):
 
 def main():
     args = apply_recipe(make_parser().parse_args())
+    deadline = deadline_timestamp(args.stop_at)
+    if deadline is not None and deadline <= time.time():
+        raise ValueError("stop-at is in the past; provide a new deadline or omit it to continue")
     if args.steps is None and not args.epochs:
         args.steps = 256
     if min(args.steps if args.steps is not None else 1, args.grad_accum, args.micro_batch_size, args.save_every, args.projector_vocab, args.max_new_tokens,
@@ -287,9 +293,15 @@ def main():
             prior_seconds = history[-1].get("cumulative_loop_seconds", 0.0)
             prior_tokens = history[-1].get("cumulative_generated_tokens", 0)
     begin, total_tokens, step = time.monotonic(), 0, start_step
+    durations = deque(maxlen=50)
+    stop_reason = "time_budget_reached"
     try:
         with (out / "metrics.jsonl").open("a") as metrics, (out / "rollouts.jsonl").open("a") as rollouts:
-            for step in range(start_step + 1, args.steps + 1):
+            for next_step in range(start_step + 1, args.steps + 1):
+                if deadline is not None and time.time() >= deadline:
+                    stop_reason = "deadline_reached"
+                    break
+                step = next_step
                 step_begin, step_tokens, rollout_seconds, learning_seconds = time.monotonic(), 0, 0., 0.
                 if args.epochs and (step - 1) % updates_per_epoch == 0:
                     epoch = (step - 1) // updates_per_epoch
@@ -382,7 +394,9 @@ def main():
                 if str(args.device).startswith("cuda"):
                     torch.cuda.synchronize(args.device)
                 step_seconds = time.monotonic() - step_begin
+                durations.append(step_seconds)
                 record = {"step": step, **sums, "elapsed_seconds": time.monotonic() - begin,
+                          **estimate_timing(step, args.steps, durations, time.time(), deadline),
                           "step_seconds": step_seconds, "rollout_seconds": rollout_seconds,
                           "learning_seconds": learning_seconds, "samples_per_second": effective_batch / step_seconds,
                           "generated_tokens_per_second": step_tokens / step_seconds,
@@ -400,7 +414,7 @@ def main():
                 if args.max_minutes and time.monotonic() - begin >= args.max_minutes * 60:
                     break
         checkpoint(step)
-        save_json(out / "status.json", {"state": "completed" if step >= args.steps else "time_budget_reached",
+        save_json(out / "status.json", {"state": "completed" if step >= args.steps else stop_reason,
                                         "step": step, "elapsed_seconds": time.monotonic() - begin})
     except Exception as exc:
         save_json(out / "status.json", {"state": "failed", "step": step, "error": str(exc)})

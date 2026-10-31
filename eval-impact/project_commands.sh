@@ -36,6 +36,8 @@ read -r -a OPD_SEEDS <<< "${SEEDS:-10}"
 read -r -a OPD_BI_SEEDS <<< "${BI_SEEDS:-42 43 44}"
 read -r -a OPD_METHODS <<< "${METHODS:-opd opd_impact}"
 OPD_EXTRA=()
+if [[ -n "${ONLY_METHOD:-}" ]]; then OPD_EXTRA+=(--only-method "$ONLY_METHOD"); fi
+if [[ -n "${STOP_AT:-}" ]]; then OPD_EXTRA+=(--stop-at "$STOP_AT"); fi
 if [[ "$OPD_FAST" == 1 || "${FAST:-0}" == 1 ]]; then
   OPD_EXTRA+=(--fast --micro-batch-size "${MICRO_BATCH_SIZE:-8}")
   if [[ "${GRADIENT_CHECKPOINTING:-0}" == 1 ]]; then OPD_EXTRA+=(--gradient-checkpointing); fi
