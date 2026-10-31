@@ -90,6 +90,30 @@ class TrainSubsetTests(unittest.TestCase):
             self.assertEqual(command[command.index("--run-name") + 1], "llama2-tinyllama-opd-8k")
             self.assertEqual(command[command.index("--teacher-from-run") + 1], "llama2-tinyllama-opd")
 
+    def test_8k_script_forces_only_impact_and_keeps_auto_eval_setup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = Path(__file__).resolve().parents[1] / "run_8k_b200.sh"
+            (root / source.name).write_text(source.read_text())
+            (root / "project_commands.sh").write_text('python3 "$OPD_TEST_RECORDER" "$1"\n')
+            recorder = root / "record.py"
+            recorder.write_text('import json, os, sys\nfrom pathlib import Path\n'
+                'row = {"action": sys.argv[1], **{k: os.environ.get(k) for k in '
+                '["METHODS", "ONLY_METHOD", "STOP_AT", "TRAIN_SAMPLES", "DOLLY_EVAL", "EVAL_BENCHMARKS"]}}\n'
+                'with Path(os.environ["OPD_TEST_CAPTURE"]).open("a") as f: f.write(json.dumps(row) + "\\n")\n')
+            env = {**os.environ, "OPD_TEST_RECORDER": str(recorder), "OPD_TEST_CAPTURE": str(root / "calls.jsonl"),
+                   "ONLY_METHOD": "opd", "METHODS": "opd", "STOP_AT": "2020-01-01T00:00:00+07:00"}
+            subprocess.run(["bash", str(root / source.name)], env=env, check=True, capture_output=True, text=True)
+            calls = [json.loads(line) for line in (root / "calls.jsonl").read_text().splitlines()]
+            self.assertEqual([r["action"] for r in calls], ["setup-eval", "download-eval", "fast"])
+            for row in calls:
+                self.assertEqual(row["METHODS"], "opd_impact")
+                self.assertEqual(row["ONLY_METHOD"], "opd_impact")
+                self.assertEqual(row["TRAIN_SAMPLES"], "8000")
+                self.assertEqual(row["DOLLY_EVAL"], "1")
+                self.assertEqual(row["EVAL_BENCHMARKS"], "dolly self-inst vicuna sinst")
+                self.assertIsNone(row["STOP_AT"])
+
 
 if __name__ == "__main__":
     unittest.main()

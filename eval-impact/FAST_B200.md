@@ -1,25 +1,26 @@
 # Chạy nhanh OPD / OPD + IMPACT trên B200
 
-## Cấu hình hiện tại: 8.000 mẫu × 10 epochs, train xong tự eval
+## Cấu hình hiện tại: chỉ OPD + IMPACT, 8.000 mẫu × 10 epochs, train xong tự eval
 
-Mặc định launcher hiện dùng run riêng `llama2-tinyllama-opd-8k`, chọn 8.000 student train rows
-với subset seed 42 giống nhau cho OPD và OPD + IMPACT. Giữ 10 epochs và effective batch 32:
-`8000 / 32 × 10 = 2500` updates mỗi nhánh, giảm từ 3560 updates của run full cũ.
+Script `run_8k_b200.sh` chỉ chọn `opd_impact`, dùng run riêng `llama2-tinyllama-opd-8k`,
+chọn 8.000 student train rows với subset seed 42. Giữ 10 epochs và effective batch 32:
+`8000 / 32 × 10 = 2500` updates, giảm từ 3560 updates của run full cũ.
 Subset chỉ lấy từ train; test và BI calibration giữ nguyên. ID subset và hash được lưu trong từng run.
-Hai student bắt đầu từ base; không resume checkpoint full-data để đổi ngân sách cosine giữa chừng.
+Student bắt đầu từ base khi tạo run 8k; không resume checkpoint full-data để đổi ngân sách cosine giữa chừng.
 
 Teacher đã SFT được lấy từ `outputs/llama2-tinyllama-opd/teacher_sft/latest.json` và phải completed.
 Đổi `TEACHER_FROM_RUN` nếu teacher nằm trong run tên khác; hoặc cung cấp `TEACHER_ADAPTER` trực tiếp.
 Teacher không train lại; BI được tính cho run mới với teacher này.
 
-Script gộp cài dependency eval, tải ba bộ test bổ sung và chạy đủ hai nhánh:
+Script gộp cài dependency eval, tải ba bộ test bổ sung và chạy nhánh OPD + IMPACT:
 
 ```bash
 bash run_8k_b200.sh
 ```
 
 Script dùng batch 8, effective batch 32, seed subset 42 và run 8k riêng;
-xóa các biến `ONLY_METHOD`/`STOP_AT` cũ trong phiên script để chạy đủ ngân sách.
+đặt `METHODS=opd_impact`, `ONLY_METHOD=opd_impact` và xóa `STOP_AT` cũ để chạy đủ ngân sách.
+Nếu plan 8k cũ có cả hai nhánh, OPD được bỏ qua; các kết quả đã có được giữ nguyên.
 Chạy trong tmux và dừng launcher/GPU job cũ trước khi bắt đầu.
 Nếu teacher ở run tên khác, dùng `TEACHER_FROM_RUN=<tên-run> bash run_8k_b200.sh`;
 cũng có thể truyền `TEACHER_ADAPTER=<đường-dẫn>`.
@@ -30,11 +31,11 @@ Các bước tương đương khi muốn chạy riêng từng lệnh:
 ```bash
 bash project_commands.sh setup-eval
 bash project_commands.sh download-eval
-MICRO_BATCH_SIZE=8 EVAL_BATCH_SIZE=16 bash project_commands.sh fast
+METHODS=opd_impact ONLY_METHOD=opd_impact MICRO_BATCH_SIZE=8 EVAL_BATCH_SIZE=16 bash project_commands.sh fast
 ```
 
-Lệnh cuối chạy BI → OPD 2500 updates → eval → OPD + IMPACT 2500 updates → eval → báo cáo,
-trên Dolly / SelfInst / VicunaEval / S-NI, không có UnNI. Mỗi nhánh dùng 5 decoding seeds.
+Lệnh cuối chạy BI → OPD + IMPACT 2500 updates → eval → báo cáo,
+trên Dolly / SelfInst / VicunaEval / S-NI, không có UnNI. Eval dùng 5 decoding seeds.
 Chạy lại cùng lệnh để resume run 8k từ checkpoint đã lưu. Run 4k cũ được giữ riêng;
 không resume checkpoint 4k để đổi sang 8k giữa chừng.
 Không chạy đồng thời launcher cũ và mới trên cùng GPU nếu muốn đo thời gian ổn định.
@@ -42,7 +43,7 @@ Không chạy đồng thời launcher cũ và mới trên cùng GPU nếu muốn
 Nếu BI của run 8k đã có, có thể tiếp tục train + eval mà không chạy lại bước prepare:
 
 ```bash
-FAST=1 MICRO_BATCH_SIZE=8 EVAL_BATCH_SIZE=16 bash project_commands.sh train
+FAST=1 METHODS=opd_impact ONLY_METHOD=opd_impact MICRO_BATCH_SIZE=8 EVAL_BATCH_SIZE=16 bash project_commands.sh train
 ```
 
 `TRAIN_SAMPLES` và `TRAIN_SUBSET_SEED` chỉ dùng khi tạo run mới; đổi subset của saved plan bị từ chối.
