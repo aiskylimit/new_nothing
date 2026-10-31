@@ -19,3 +19,15 @@ See [DSKDV2_REFERENCE.md](DSKDV2_REFERENCE.md) for the reference revision, adopt
 After the dataset migration to Hugging Face, unit tests use synthetic data fixtures created in temporary directories; fresh clones no longer need any tracked dataset payload. The published full Dolly snapshot is validated separately through the download/prepare path.
 
 Migration validation: 31 unit tests passed. A fresh staged export without any `data/` directory passed the code-only tests. Both the pinned Hub dataset downloader and the template-compatible `--url` download path were exercised from empty local roots; offline preparation reproduced all six normalized train/test/calibration JSONL files byte-for-byte against the published release.
+
+## Batched B200 fast mode (2026-10-31)
+
+41 tests passed locally on CPU (PyTorch 2.7.0, Transformers 4.55.2). New regressions check:
+
+- Batched CE and forward/reverse/JS KD values and gradients equal the mean of batch-1 examples, including unequal response lengths and masked padding.
+- Vectorized IMPACT values and projection/student gradients match the original scalar implementation, including a differently segmented tokenizer fixture; per-sample reduction retains zero contribution from EOS-only examples.
+- Real tiny-LLaMA greedy generation with left padding and EOS-as-padding equals individual-prompt generation.
+- Real tiny-LLaMA LoRA + IMPACT training, save, schema-3-style resume from batch 1 / accumulation 2 to batch 2 / accumulation 1 with SDPA and no activation checkpointing; final optimizer/scheduler, sample coverage and metrics validated.
+- Existing-plan migration is repeatable, keeps completed jobs and non-training jobs unchanged, preserves effective batch, and archives the previous plan. Unsaved log tails are preserved separately on checkpoint resume.
+
+Shell syntax and Git whitespace checks passed. No real B200 throughput, peak VRAM or full-model run was measured here; speedup must be measured on the target GPU using the new timing/throughput metrics. The B200 environment manifest and dependencies are unchanged.

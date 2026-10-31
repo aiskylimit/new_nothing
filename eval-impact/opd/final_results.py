@@ -62,11 +62,18 @@ def training_cost(case):
         elapsed, tokens = None, None
     peak = [m["peak_memory_gb"] for m in metrics if m.get("peak_memory_gb") is not None]
     status = json.loads((root / "status.json").read_text()) if (root / "status.json").exists() else {}
+    config = json.loads((root / "config.json").read_text()) if (root / "config.json").exists() else {}
     return {"domain": case["domain"], "method": case["method"], "seed": case["seed"],
             "optimizer_steps": last["step"], "loop_seconds": elapsed, "generated_tokens": tokens,
             "peak_allocated_gb": max(peak) if peak else None,
             "last_reference_ce": last.get("nll_loss"), "last_total_loss": last.get("loss"),
             "last_opd_loss": last.get("opd_loss"), "last_impact_loss": last.get("impact_loss"),
+            "micro_batch_size": config.get("micro_batch_size", 1) if config else None,
+            "grad_accum": config.get("grad_accum"),
+            "gradient_checkpointing": config.get("gradient_checkpointing", True) if config else None,
+            "last_step_seconds": last.get("step_seconds"),
+            "last_samples_per_second": last.get("samples_per_second"),
+            "last_generated_tokens_per_second": last.get("generated_tokens_per_second"),
             "state": status.get("state", "unknown")}
 
 
@@ -129,7 +136,7 @@ def aggregate(plan_file, out):
                "training_budget_complete": budget_complete, "math_eval_enabled": plan.get("math_eval_enabled", True),
                "accuracy": rows, "summary": summary, "paired_deltas": deltas,
                "training_cost": costs, "bi_comparisons": bi_pairs,
-               "cost_note": "Loop seconds and generated tokens include resumed training sessions; total job wall time is in jobs.json."}
+               "cost_note": "Loop seconds and generated tokens include resumed training sessions; per-launch wall time is in jobs.json. Speed comparisons require matched batching/checkpointing; see config.json, resume_history and plan throughput_history for changes."}
     save_json(out / "final_results.json", payload)
     if plan.get("math_eval_enabled", True):
         write_csv(out / "accuracy_by_run.csv", [{k: v for k, v in r.items() if k != "protocol"} for r in rows])
@@ -157,6 +164,7 @@ def aggregate(plan_file, out):
         lines.append(f"{cost['domain']} | {cost['method']} | {cost['seed']} | {cost['optimizer_steps']} | {cost['last_opd_loss']} | {cost['last_impact_loss']} | {cost['state']}")
     lines += ["", f"BI calibration sets: {len({r['calibration'] for r in bi_layers})}; paired BI comparisons: {len(bi_pairs)}.",
               "Detailed training costs, all BI layer ranks/weights and any enabled evaluations are in the adjacent CSV/JSON files.",
+              payload["cost_note"],
               "One training seed has no across-seed variability estimate. Missing results are never filled with zero."]
     if missing:
         lines += ["", "Missing evaluations: " + ", ".join(missing)]

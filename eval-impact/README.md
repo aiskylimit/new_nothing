@@ -11,10 +11,12 @@ cd /mnt/local/PROJECT_NAME/new_nothing/eval-impact
 bash setup_b200.sh
 # HF_TOKEN phải thuộc tài khoản đã được cấp quyền LLaMA-2.
 bash project_commands.sh download
-bash project_commands.sh all
+bash project_commands.sh fast
 ```
 
 Nếu đã clone, cập nhật branch bằng `git pull --ff-only` trước khi chạy. Có thể dùng token từ môi trường `HF_TOKEN`; không ghi token vào manifest/repo. Nếu dùng `hf auth login`, đặt `HF_HOME="$PWD/cache/huggingface"` để login và script dùng cùng cache. [LLaMA-2](https://huggingface.co/meta-llama/Llama-2-7b-hf) yêu cầu quyền truy cập trước khi tải.
+
+`fast` dùng batch 8 × accumulation 4, SDPA, tắt gradient checkpointing cho student và vector hóa IMPACT; vẫn giữ effective batch 32, 10 epochs. Nếu đã có run, dừng launcher/train cũ rồi dùng cùng `RUN_NAME` với `fast` để resume checkpoint. Xem [FAST_B200.md](FAST_B200.md) về resume, bộ nhớ và đo tốc độ. `all` giữ cách chạy batch 1 để tương thích plan cũ.
 
 Ba file để set máy vẫn là `impact-opd-b200.txt` (env uv/Python 3.11/torch 2.9.0 CUDA 12.8), `download.txt` (model và dataset local), `project_commands.sh` (chạy tuần tự). Env mặc định `/mnt/local/uvenvs/impact-opd-b200`; project root tự lấy từ thư mục script. Có thể override `OPD_VENV`, `OPD_PROJECT_ROOT`, `CUDA_VISIBLE_DEVICES`.
 

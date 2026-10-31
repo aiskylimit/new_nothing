@@ -11,6 +11,8 @@ export HF_DATASETS_CACHE="$HF_HOME/datasets"
 export TOKENIZERS_PARALLELISM=false
 export PYTHONUNBUFFERED=1
 ACTION="${1:-all}"
+OPD_FAST=0
+if [[ "$ACTION" == fast ]]; then ACTION=all; OPD_FAST=1; fi
 OPD_PROFILE="${OPD_PROFILE:-llama2-tinyllama}"
 if [[ "$ACTION" == download ]]; then
   case "$OPD_PROFILE" in
@@ -34,6 +36,10 @@ read -r -a OPD_SEEDS <<< "${SEEDS:-10}"
 read -r -a OPD_BI_SEEDS <<< "${BI_SEEDS:-42 43 44}"
 read -r -a OPD_METHODS <<< "${METHODS:-opd opd_impact}"
 OPD_EXTRA=()
+if [[ "$OPD_FAST" == 1 || "${FAST:-0}" == 1 ]]; then
+  OPD_EXTRA+=(--fast --micro-batch-size "${MICRO_BATCH_SIZE:-8}")
+  if [[ "${GRADIENT_CHECKPOINTING:-0}" == 1 ]]; then OPD_EXTRA+=(--gradient-checkpointing); fi
+fi
 if [[ -n "${TEACHER_ADAPTER:-}" ]]; then OPD_EXTRA+=(--teacher-adapter "$TEACHER_ADAPTER"); fi
 if [[ "${MATH_EVAL:-0}" == 1 ]]; then OPD_EXTRA+=(--math-eval); fi
 python -m opd.b200 "$ACTION" --project-root "$OPD_PROJECT_ROOT" \

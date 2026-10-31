@@ -1,5 +1,7 @@
 """Sequential, offline, local-path B200 pipeline: BI, paired OPD, eval, final report."""
 import argparse
+import copy
+import fcntl
 import hashlib
 import json
 import platform
@@ -188,6 +190,42 @@ def artifact_complete(job):
     return True
 
 
+def speed_up_plan(plan, micro_batch_size=8, gradient_checkpointing=False):
+    """Only regroup unfinished student jobs; retain their effective batch/budget."""
+    if micro_batch_size < 1:
+        raise ValueError("micro-batch-size must be positive")
+    plan = copy.deepcopy(plan)
+    changes = []
+    for job in plan["jobs"]:
+        if job["stage"] != "train" or artifact_complete(job):
+            continue
+        command = job["command"]
+        old_command = list(command)
+
+        def value(flag, default):
+            return command[command.index(flag) + 1] if flag in command else default
+
+        effective = int(value("--micro-batch-size", 1)) * int(value("--grad-accum", 32))
+        if effective % micro_batch_size:
+            raise ValueError(f"{job['name']}: micro batch {micro_batch_size} must divide effective batch {effective}")
+        for flag, setting in (("--micro-batch-size", micro_batch_size),
+                              ("--grad-accum", effective // micro_batch_size),
+                              ("--attention-backend", "sdpa")):
+            if flag in command:
+                command[command.index(flag) + 1] = str(setting)
+            else:
+                command.extend([flag, str(setting)])
+        command[:] = [x for x in command if x not in ("--gradient-checkpointing", "--no-gradient-checkpointing")]
+        command.append("--gradient-checkpointing" if gradient_checkpointing else "--no-gradient-checkpointing")
+        if command != old_command:
+            changes.append({"job": job["name"], "old_command": old_command,
+                            "new_command": list(command), "effective_batch_size": effective})
+    if changes:
+        plan.setdefault("throughput_history", []).append({"time_unix": time.time(), "changes": changes,
+            "note": "Same sample weighting, effective batch and step budget; sampling/dropout are not bitwise identical."})
+    return plan
+
+
 def execute_job(job, ledger, logs):
     command = list(job["command"])
     if job.get("checkpoint_from"):
@@ -226,6 +264,10 @@ def execute_job(job, ledger, logs):
     save_json(logs.parent / "jobs.json", ledger)
     if result.returncode:
         raise RuntimeError(f"{job['name']} failed; see {logs / (job['name'] + '.log')}")
+    if job["stage"] in ("train", "teacher") and not artifact_complete(job):
+        record["state"] = "incomplete"
+        save_json(logs.parent / "jobs.json", ledger)
+        raise RuntimeError(f"{job['name']} saved a partial checkpoint; resume this run before downstream jobs")
 
 
 def main():
@@ -239,6 +281,10 @@ def main():
     p.add_argument("--bi-seeds", nargs="+", type=int, default=[42, 43, 44])
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--grad-accum", type=int, default=0)
+    p.add_argument("--fast", action="store_true", help="Use the saved plan if present; batch unfinished student jobs without changing effective batch")
+    p.add_argument("--micro-batch-size", type=int, default=8, help="Student micro batch for --fast (default 8)")
+    p.add_argument("--gradient-checkpointing", action=argparse.BooleanOptionalAction, default=False,
+                   help="Checkpoint activations in --fast mode; disabled by default")
     p.add_argument("--methods", nargs="+", choices=["opd", "opd_impact"], default=["opd", "opd_impact"])
     p.add_argument("--teacher-adapter", default=None, help="Existing local Dolly teacher adapter; skips teacher SFT")
     p.add_argument("--teacher-steps", type=int, default=0, help="Optional teacher SFT smoke-test cap")
@@ -253,10 +299,31 @@ def main():
     plan = make_plan(args)
     run = Path(plan["run_root"])
     existing = Path(args.plan_out) if args.stage == "plan" and args.plan_out else run / "plan.json"
+    # Protect new launchers against concurrent writes to checkpoints and logs.
+    # A launcher started before this lock was introduced must be stopped first.
+    lock_root = existing.parent if args.stage == "plan" and args.plan_out else run
+    lock_root.mkdir(parents=True, exist_ok=True)
+    with (lock_root / ".pipeline.lock").open("a") as run_lock:
+        try:
+            fcntl.flock(run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("Another pipeline is running in this RUN_NAME")
+        run_plan(args, plan, existing, run)
+
+
+def run_plan(args, plan, existing, run):
     if existing.exists():
         old = json.loads(existing.read_text())
-        if old["cases"] != plan["cases"] or old["jobs"] != plan["jobs"]:
+        if args.fast:
+            if Path(old["run_root"]).resolve() != run.resolve():
+                raise ValueError("Saved plan belongs to a different run root")
+            plan = old
+        elif old["cases"] != plan["cases"] or old["jobs"] != plan["jobs"]:
             raise ValueError("Run plan changed; use a new RUN_NAME to avoid mixing results")
+    if args.fast:
+        plan = speed_up_plan(plan, args.micro_batch_size, args.gradient_checkpointing)
+        if existing.exists() and plan != old:
+            save_json(existing.parent / "plan_history" / f"before-fast-{time.time_ns()}.json", old)
     save_json(existing, plan)
     if args.stage == "plan":
         for job in plan["jobs"]:
