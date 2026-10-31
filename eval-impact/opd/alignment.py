@@ -53,7 +53,8 @@ def boundary_state(c, offsets, states):
 
 def response_alignment_loss(student_hs, teacher_hs, batch, student_tok, teacher_tok,
                             projection, scores, top_k=6, tau=2.0,
-                            selection="bi", weighting="bi", seed=42, allow_empty=False):
+                            selection="bi", weighting="bi", seed=42, allow_empty=False,
+                            reduction="token_mean"):
     if tau <= 0 or top_k < 1:
         raise ValueError("tau and top_k must be positive")
     lt, ls = len(teacher_hs) - 1, len(student_hs) - 1
@@ -76,39 +77,67 @@ def response_alignment_loss(student_hs, teacher_hs, batch, student_tok, teacher_
     prefix = "op_" if "op_input_batch" in batch else ""
     s_input, t_input = batch[prefix + "input_batch"], batch[prefix + "teacher_input_batch"]
     s_labels, t_labels = batch[prefix + "label_batch"], batch[prefix + "teacher_label_batch"]
-    views = []
+    # Decode offsets once on CPU, not inside GPU layer/token loops.
+    shared = s_input is t_input and student_tok is teacher_tok and s_labels is t_labels
+    s_input = {k: v.detach().cpu() for k, v in s_input.items()}
+    s_labels = {"label": s_labels["label"].detach().cpu()}
+    t_input = s_input if shared else {k: v.detach().cpu() for k, v in t_input.items()}
+    t_labels = s_labels if shared else {"label": t_labels["label"].detach().cpu()}
+    spans = []
     for row in range(s_input["input_ids"].shape[0]):
         sv = response_view(s_input, s_labels, student_tok, row)
-        tv = response_view(t_input, t_labels, teacher_tok, row)
+        tv = sv if shared else response_view(t_input, t_labels, teacher_tok, row)
         # Independent truncation may shorten one response; shared prefix is valid.
         if not (sv[0].startswith(tv[0]) or tv[0].startswith(sv[0])):
             raise ValueError("Teacher/student inputs contain different response text")
-        views.append((sv, tv))
+        _, so, sp, sbase = sv
+        ttext, to, tp, tbase = tv
+        if not sp or not tp or sbase is None or tbase is None:
+            continue
+        positions = [tbase, *tp]
+
+        def boundary(c):
+            if c <= 0:
+                return positions[0], positions[0], 0.
+            for i, (a, b) in enumerate(to):
+                if b > a and a <= c <= b:
+                    return positions[i], positions[i + 1], (c - a) / (b - a)
+            raise ValueError(f"Boundary {c} outside teacher response coverage")
+
+        for (a, b), pos in zip(so, sp):
+            if b > a and b <= len(ttext):
+                spans.append((row, pos, *boundary(a), *boundary(b)))
     total = student_hs[-1].sum() * 0
-    valid_count = 0
-    for index, weight in zip(chosen.tolist(), weights):
-        t_layer = index + 1
-        s_layer = math.ceil(t_layer * ls / lt)  # Same rule as shipped IMPACT code.
-        losses = []
-        for row, (sv, tv) in enumerate(views):
-            _, so, sp, sbase = sv
-            ttext, to, tp, tbase = tv
-            if not sp or not tp or sbase is None or tbase is None:
-                continue
-            sh = student_hs[s_layer][row].float()
-            th = teacher_hs[t_layer][row].float() @ projection.float()
-            tstates = torch.cat([th[tbase:tbase + 1], th[tp]], dim=0)
-            for (a, b), pos in zip(so, sp):
-                if b <= a or b > len(ttext):
-                    continue
-                dt = boundary_state(b, to, tstates) - boundary_state(a, to, tstates)
-                ds = sh[pos] - sh[pos - 1]
-                losses.append(1 - F.cosine_similarity(ds, dt, dim=0, eps=1e-6))
-        if losses:
-            total = total + weight * torch.stack(losses).mean()
-            valid_count += len(losses)
-    if not valid_count:
+    if not spans:
         if allow_empty:
             return total
         raise ValueError("No covered response spans for IMPACT; increase generation/context length")
+    device = student_hs[0].device
+    columns = list(zip(*spans))
+    row_ids, pos, a0, a1, b0, b1 = [torch.tensor(columns[i], device=device, dtype=torch.long)
+                                    for i in (0, 1, 2, 3, 5, 6)]
+    alpha = torch.tensor(columns[4], device=device).unsqueeze(-1)
+    beta = torch.tensor(columns[7], device=device).unsqueeze(-1)
+    batch_size = s_input["input_ids"].shape[0]
+    counts = torch.bincount(row_ids, minlength=batch_size).clamp_min(1)
+    for index, weight in zip(chosen.tolist(), weights):
+        t_layer = index + 1
+        s_layer = math.ceil(t_layer * ls / lt)  # Same rule as shipped IMPACT code.
+        sh, th = student_hs[s_layer], teacher_hs[t_layer].detach()
+        # Linear projection commutes with interpolation and subtraction. Project
+        # only response deltas, in one GEMM per layer (not full padded sequences).
+        begin = th[row_ids, a0].float() * (1 - alpha) + th[row_ids, a1].float() * alpha
+        end = th[row_ids, b0].float() * (1 - beta) + th[row_ids, b1].float() * beta
+        dt = (end - begin) @ projection.float()
+        ds = sh[row_ids, pos].float() - sh[row_ids, pos - 1].float()
+        losses = 1 - F.cosine_similarity(ds, dt, dim=-1, eps=1e-6)
+        if reduction == "sample_mean":
+            # Empty (e.g. EOS-only) examples contribute zero, as in batch-1 runs.
+            sums = losses.new_zeros(batch_size).scatter_add(0, row_ids, losses)
+            layer_loss = (sums / counts).mean()
+        elif reduction == "token_mean":
+            layer_loss = losses.mean()
+        else:
+            raise ValueError(f"Unknown reduction {reduction}")
+        total = total + weight * layer_loss
     return total
