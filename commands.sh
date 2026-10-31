@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
+#1 +60
 #gpu
 #v2
 
@@ -7,7 +7,7 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
-# kill -9 193233 193242 193251 193248 193254
+# kill -9 257280
 # sleep 2
 nvidia-smi
 
@@ -40,9 +40,9 @@ export NCCL_DEBUG=WARN
 # bash ./run5.sh
 # bash ./project_commands.sh
 
-# cd ./eval-impact
+cd ./eval-impact
 # tree outputs
-# CUDA_VISIBLE_DEVICES=2,3 bash ./project_commands.sh
+CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands.sh
