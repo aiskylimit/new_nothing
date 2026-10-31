@@ -1,4 +1,4 @@
-#1 +10
+#2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 #gpu
 #v2
 
