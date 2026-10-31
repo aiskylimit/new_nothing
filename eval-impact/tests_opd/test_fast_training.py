@@ -158,12 +158,12 @@ class FastTrainingTests(unittest.TestCase):
                      "command": ["python", "-m", "opd.train", "--method", name, "--grad-accum", "32"]}
                     for name in ("completed", "opd_impact")]
             original = {"jobs": jobs, "cases": [], "arguments": {"steps": 0}}
-            result = speed_up_plan(original)
+            result = speed_up_plan(original, micro_batch_size=8)
             self.assertEqual(result["jobs"][0], original["jobs"][0])
             command = result["jobs"][1]["command"]
             self.assertEqual(command[command.index("--grad-accum") + 1], "4")
             self.assertIn("--no-gradient-checkpointing", command)
-            self.assertEqual(speed_up_plan(result), result)
+            self.assertEqual(speed_up_plan(result, micro_batch_size=8), result)
             self.assertNotIn("throughput_history", original)
             with self.assertRaises(ValueError):
                 speed_up_plan(original, 3)
@@ -184,7 +184,7 @@ class FastTrainingTests(unittest.TestCase):
             root = Path(temp)
             plan_file = root / "preview/plan.json"
             argv = ["b200", "plan", "--project-root", str(root / "local-assets"),
-                    "--run-name", "fixture", "--plan-out", str(plan_file)]
+                    "--run-name", "fixture", "--plan-out", str(plan_file), "--micro-batch-size", "8"]
             with patch("sys.argv", argv), contextlib.redirect_stdout(io.StringIO()):
                 pipeline_main()
             before = json.loads(plan_file.read_text())

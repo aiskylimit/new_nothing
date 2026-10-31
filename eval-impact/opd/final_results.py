@@ -6,6 +6,7 @@ import math
 import statistics
 from pathlib import Path
 from .data import save_json, read_jsonl
+from .dolly_results import read_dolly_result, dolly_rows, paired_dolly_deltas
 
 TASKS = {"minerva_math500": "exact_match,none", "gsm8k_cot": "exact_match,flexible-extract"}
 
@@ -70,6 +71,8 @@ def training_cost(case):
             "last_opd_loss": last.get("opd_loss"), "last_impact_loss": last.get("impact_loss"),
             "micro_batch_size": config.get("micro_batch_size", 1) if config else None,
             "grad_accum": config.get("grad_accum"),
+            "training_samples": config.get("eligible_samples"), "epochs": config.get("epochs"),
+            "training_subset_sha256": config.get("training_subset_sha256"),
             "gradient_checkpointing": config.get("gradient_checkpointing", True) if config else None,
             "last_step_seconds": last.get("step_seconds"),
             "last_samples_per_second": last.get("samples_per_second"),
@@ -81,8 +84,19 @@ def aggregate(plan_file, out):
     plan = json.loads(Path(plan_file).read_text())
     out = Path(out)
     rows, missing, costs = [], [], []
+    dolly, dolly_seeds = [], []
     for case in plan["cases"]:
-        observed = evaluation(case) if case.get("eval_dir") else []
+        if case.get("eval_kind") == "dolly":
+            result = read_dolly_result(case)
+            if result is None:
+                missing.append(case["name"])
+            else:
+                row, per_seed = dolly_rows(case, result)
+                dolly.append(row)
+                dolly_seeds.extend(per_seed)
+            observed = []
+        else:
+            observed = evaluation(case) if case.get("eval_dir") else []
         if observed is None:
             missing.append(case["name"])
         else:
@@ -128,6 +142,9 @@ def aggregate(plan_file, out):
         for label, metrics in json.loads(pair_file.read_text()).items():
             bi_pairs.append({"comparison": label, **{k: v for k, v in metrics.items() if k != "per_layer"}})
     missing_artifacts = [j["name"] for j in plan.get("jobs", []) if not Path(j["artifact"]).is_file()]
+    from .benchmark_results import collect_benchmark_results, markdown_table
+    suite = collect_benchmark_results(plan, dolly)
+    missing.extend(suite["missing"])
     budget_complete = (len(costs) == sum(bool(c.get("train_dir")) for c in plan["cases"])
                        and all(c["state"] == "completed" for c in costs)) if plan.get("jobs") else True
     payload = {"schema_version": 1, "comparison": plan["comparison"], "profile": plan["profile"],
@@ -135,6 +152,9 @@ def aggregate(plan_file, out):
                "missing_evaluations": missing, "missing_artifacts": missing_artifacts,
                "training_budget_complete": budget_complete, "math_eval_enabled": plan.get("math_eval_enabled", True),
                "accuracy": rows, "summary": summary, "paired_deltas": deltas,
+               "dolly_eval_enabled": plan.get("dolly_eval_enabled", False),
+               "dolly_metrics": dolly, "dolly_per_seed": dolly_seeds, "dolly_paired_deltas": paired_dolly_deltas(dolly),
+               "instruction_benchmarks": suite,
                "training_cost": costs, "bi_comparisons": bi_pairs,
                "cost_note": "Loop seconds and generated tokens include resumed training sessions; per-launch wall time is in jobs.json. Speed comparisons require matched batching/checkpointing; see config.json, resume_history and plan throughput_history for changes."}
     save_json(out / "final_results.json", payload)
@@ -143,6 +163,14 @@ def aggregate(plan_file, out):
         write_csv(out / "accuracy_summary.csv", summary)
         write_csv(out / "opd_vs_impact_delta.csv", deltas)
     write_csv(out / "training_cost.csv", costs)
+    if plan.get("dolly_eval_enabled"):
+        write_csv(out / "dolly_metrics.csv", [{k: v for k, v in r.items() if k != "protocol"} for r in dolly])
+        write_csv(out / "dolly_per_seed.csv", dolly_seeds)
+        write_csv(out / "dolly_opd_vs_impact.csv", payload["dolly_paired_deltas"])
+        write_csv(out / "benchmark_metrics.csv", [{k: v for k, v in r.items() if k != "protocol"} for r in suite["metrics"]])
+        write_csv(out / "benchmark_per_seed.csv", [{**r, "benchmark": "dolly"} for r in dolly_seeds] + suite["per_seed"])
+        write_csv(out / "benchmark_opd_vs_impact.csv", suite["paired_deltas"])
+        write_csv(out / "benchmark_summary.csv", suite["wide"])
     write_csv(out / "bi_all_layers.csv", bi_layers)
     write_csv(out / "bi_comparisons.csv", bi_pairs)
     lines = ["# " + " vs ".join(plan["comparison"]) + " — final results", "",
@@ -158,6 +186,19 @@ def aggregate(plan_file, out):
             lines.append(f"{row['domain']} | {row['seed']} | {row['task']} | {row['opd_percent']:.3f} | {row['opd_impact_percent']:.3f} | {row['delta_percentage_points']:+.3f}")
     else:
         lines += ["", "MATH-500/GSM8K disabled for this run. No benchmark accuracy is reported."]
+    if plan.get("dolly_eval_enabled"):
+        lines += markdown_table(suite)
+        lines += ["", "Dolly test — scores on a 0–100 scale; std is across decoding seeds, not training seeds.",
+                  "Method | Training seed | Checkpoint step | Full training | Samples | ROUGE-L | Decoding std | Exact match",
+                  "--- | --- | --- | --- | --- | --- | --- | ---"]
+        for row in dolly:
+            std = row["rougeL_std_decoding_seeds"]
+            std_text = f"{std:.3f}" if std is not None else "n/a"
+            lines.append(f"{row['method']} | {row['training_seed']} | {row['checkpoint_step']} | {row['training_complete']} | {row['n_samples']} | {row['rougeL_mean']:.3f} | {std_text} | {row['exact_match_mean']:.3f}")
+        for delta in payload["dolly_paired_deltas"]:
+            lines.append(f"Delta IMPACT − OPD (seed {delta['training_seed']}): ROUGE-L {delta['delta_rougeL_points']:+.3f} points; matched full training budget: {delta['matched_full_training_budget']}.")
+        if any(not r["training_complete"] for r in dolly):
+            lines += ["Partial-checkpoint scores are provisional; they are not a matched full-budget comparison."]
     lines += ["", "Domain | Method | Seed | Updates | OPD loss | IMPACT loss | State",
               "--- | --- | --- | --- | --- | --- | ---"]
     for cost in costs:

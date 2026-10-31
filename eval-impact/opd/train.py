@@ -21,6 +21,7 @@ from .data import digest, read_jsonl, save_json, write_jsonl
 from .batching import rollout_inputs, trim_generated, supervised_batch_loss
 from .resume import rewind_log
 from .timing import deadline_timestamp, estimate_timing
+from .subset import select_train_subset
 
 
 
@@ -41,6 +42,8 @@ def make_parser():
     p.add_argument("--teacher-revision", default=None)
     p.add_argument("--method", choices=["opd", "opd_impact"], required=True)
     p.add_argument("--data", required=True)
+    p.add_argument("--train-samples", type=int, default=0, help="Fixed student subset size; 0 keeps all eligible samples")
+    p.add_argument("--train-subset-seed", type=int, default=42, help="Independent of training seed; shared across methods")
     p.add_argument("--calibration", required=True)
     p.add_argument("--bi-summary", default=None)
     p.add_argument("--out", required=True)
@@ -137,7 +140,8 @@ def main():
             eligible.append(row)
     if not eligible:
         raise ValueError("No prompts fit --max-prompt-length")
-    rows = eligible
+    rows = select_train_subset(eligible, args.train_samples, args.train_subset_seed)
+    subset_sha256 = digest(json.dumps([r["id"] for r in rows]))
     effective_batch = args.micro_batch_size * args.grad_accum
     updates_per_epoch = len(rows) // effective_batch
     if args.epochs and updates_per_epoch < 1:
@@ -240,12 +244,17 @@ def main():
               "teacher_adapter_sha256": teacher_adapter_sha256, "updates_per_epoch": updates_per_epoch,
               "rollout_schedule": "fresh student response from first update; no off-policy warmup",
               "eligible_samples": len(rows), "excluded_samples": len(excluded),
+              "available_eligible_samples": len(eligible), "training_subset_sha256": subset_sha256,
               "loss": "(1-kd_rate)*reference_CE + kd_rate*direct_full_vocab_OPD + optional lambda*response-prefix_IMPACT"}
     if args.resume:
         config_path = Path(args.resume) / "run_config.json"
         if not config_path.exists():
             config_path = Path(args.resume).parent / "config.json"
         old = json.loads(config_path.read_text())
+        if old.get("train_samples", 0) != args.train_samples or old.get("train_subset_seed", 42) != args.train_subset_seed:
+            raise ValueError("Training subset changed; use a new output run instead of resuming")
+        if old.get("training_subset_sha256", subset_sha256) != subset_sha256:
+            raise ValueError("Resume training subset IDs differ")
         check_resume_batch(old, config)
         if args.scheduler == "cosine" and old["steps"] != args.steps:
             raise ValueError("Cosine resume requires the original total step budget")

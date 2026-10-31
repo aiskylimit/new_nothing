@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from .data import save_json
 from .timing import deadline_timestamp
+from .dolly_plan import add_dolly_eval
 
 MODELS = {"llama2-tinyllama": ("Llama-2-7b-hf", "TinyLlama-1.1B-intermediate-step-1431k-3T"),
           "math-small": ("Qwen2.5-Math-7B-Instruct", "Qwen2.5-Math-1.5B-Instruct"),
@@ -62,9 +63,11 @@ def freeze_inputs(plan):
     root = Path(plan["project_root"])
     files = list((root / "data/opd").rglob("*.jsonl")) + list((root / "raw").rglob("*.parquet"))
     records = {}
-    if plan["arguments"].get("teacher_adapter"):
+    external_teacher = plan["arguments"].get("teacher_adapter") or (
+        plan.get("teacher_adapter") if not any(j["stage"] == "teacher" for j in plan["jobs"]) else None)
+    if external_teacher:
         from .recipes import adapter_signature
-        records[plan["arguments"]["teacher_adapter"]] = {"adapter_sha256": adapter_signature(plan["arguments"]["teacher_adapter"])}
+        records[external_teacher] = {"adapter_sha256": adapter_signature(external_teacher)}
     for name in (plan["teacher"], plan["student"]):
         model = Path(name)
         files.extend(model.glob("*.json"))
@@ -74,8 +77,13 @@ def freeze_inputs(plan):
     for path in sorted(set(files)):
         records[str(path)] = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
     path = Path(plan["run_root"]) / "inputs.json"
-    if path.exists() and json.loads(path.read_text()) != records:
-        raise ValueError("Local model/data assets changed for this run; use a new RUN_NAME")
+    if path.exists():
+        previous = json.loads(path.read_text())
+        added = set(records) - set(previous)
+        benchmark_root = (root / "data/opd/benchmarks").resolve()
+        only_new_benchmarks = all(Path(name).resolve().is_relative_to(benchmark_root) for name in added)
+        if any(records.get(name) != value for name, value in previous.items()) or not only_new_benchmarks:
+            raise ValueError("Local model/data assets changed for this run; use a new RUN_NAME")
     save_json(path, records)
 
 
@@ -92,6 +100,18 @@ def make_plan(args):
     grad_accum = args.grad_accum or (32 if reference else 8)
     steps = args.steps or (0 if reference else 256)
     teacher_adapter = getattr(args, "teacher_adapter", None)
+    teacher_source = getattr(args, "teacher_from_run", None)
+    if teacher_source and not teacher_adapter:
+        if Path(teacher_source).name != teacher_source or teacher_source in (".", ".."):
+            raise ValueError("teacher-from-run must be a run directory name")
+        folder = root / "outputs" / teacher_source / "teacher_sft"
+        if not (folder / "status.json").is_file() or not (folder / "latest.json").is_file():
+            raise FileNotFoundError(f"Existing teacher not found: {folder}; set TEACHER_ADAPTER to the trained adapter")
+        status = json.loads((folder / "status.json").read_text())
+        latest = json.loads((folder / "latest.json").read_text())
+        if status.get("state") != "completed" or status.get("step") != latest.get("step"):
+            raise ValueError("Existing teacher SFT must be completed at its latest saved checkpoint")
+        teacher_adapter = latest["checkpoint"]
     adapter_pointer = None
 
     def job(stage, name, module, params, artifact):
@@ -159,6 +179,11 @@ def make_plan(args):
                     "--calibration", root / "data/opd" / domain / "calibration-seed42.jsonl",
                     "--out", train, "--preset", preset, "--grad-accum", grad_accum,
                     "--seed", seed, "--max-minutes", args.max_minutes]
+                train_samples = getattr(args, "train_samples", None)
+                if train_samples is None and reference:
+                    train_samples = 8000
+                if train_samples is not None:
+                    params += ["--train-samples", train_samples, "--train-subset-seed", getattr(args, "train_subset_seed", 42)]
                 if steps:
                     params += ["--steps", steps]
                 if not reference:
@@ -172,11 +197,19 @@ def make_plan(args):
                 jobs[-1]["train_dir"] = str(train)
                 bind_teacher("--teacher-adapter")
                 evaluation("eval-" + name, student, train / "eval", domain, method, seed, train)
-    return {"schema_version": 2, "comparison": ["OPD" if m == "opd" else "OPD + IMPACT" for m in methods],
+    plan = {"schema_version": 2, "comparison": ["OPD" if m == "opd" else "OPD + IMPACT" for m in methods],
             "math_eval_enabled": eval_enabled, "teacher_adapter": str(teacher_adapter) if teacher_adapter else None,
             "profile": args.profile, "project_root": str(root), "run_root": str(run),
             "teacher": str(teacher), "student": str(student), "arguments": vars(args),
             "cases": cases, "jobs": jobs}
+    if reference and getattr(args, "dolly_eval", False):
+        plan = add_dolly_eval(plan, getattr(args, "dolly_eval_batch_size", 16),
+                             getattr(args, "dolly_eval_seeds", [10, 20, 30, 40, 50]))
+        from .benchmark_plan import add_instruction_eval
+        plan = add_instruction_eval(plan, getattr(args, "eval_benchmarks", ["dolly"]),
+                                   getattr(args, "dolly_eval_batch_size", 16),
+                                   getattr(args, "dolly_eval_seeds", [10, 20, 30, 40, 50]))
+    return plan
 
 
 def artifact_complete(job):
@@ -187,11 +220,13 @@ def artifact_complete(job):
         status = json.loads(path.read_text())
         return status.get("state") == "completed"
     if job["stage"] == "eval":
+        if job.get("eval_kind") in ("dolly", "instruction"):
+            return json.loads(path.read_text()).get("state") == "completed" and (path.parent / "results.json").is_file()
         return len(list(Path(job["eval_dir"]).rglob("results*.json"))) == 1
     return True
 
 
-def speed_up_plan(plan, micro_batch_size=8, gradient_checkpointing=False, only_method=None):
+def speed_up_plan(plan, micro_batch_size=16, gradient_checkpointing=False, only_method=None):
     """Only regroup unfinished student jobs; retain their effective batch/budget."""
     if micro_batch_size < 1:
         raise ValueError("micro-batch-size must be positive")
@@ -229,9 +264,12 @@ def speed_up_plan(plan, micro_batch_size=8, gradient_checkpointing=False, only_m
     return plan
 
 
-def execute_job(job, ledger, logs, stop_at=None):
+def execute_job(job, ledger, logs, stop_at=None, allow_partial=False):
     command = list(job["command"])
     if job.get("checkpoint_from"):
+        if job.get("eval_kind") in ("dolly", "instruction") and not Path(job["checkpoint_from"]).exists():
+            print(f"Pending {job['name']}: no saved checkpoint yet", flush=True)
+            return False
         latest = json.loads(Path(job["checkpoint_from"]).read_text())
         command[command.index("--adapter") + 1] = latest["checkpoint"]
     for flag, pointer in job.get("adapter_dependencies", {}).items():
@@ -274,12 +312,16 @@ def execute_job(job, ledger, logs, stop_at=None):
     if job["stage"] in ("train", "teacher") and not artifact_complete(job):
         record["state"] = "incomplete"
         save_json(logs.parent / "jobs.json", ledger)
+        status = json.loads(Path(job["artifact"]).read_text())
+        if allow_partial and job["stage"] == "train" and status.get("state") in ("deadline_reached", "time_budget_reached"):
+            print(f"{job['name']}: saved partial checkpoint; evaluating it with incomplete-training label", flush=True)
+            return False
         raise RuntimeError(f"{job['name']} saved a partial checkpoint; resume this run before downstream jobs")
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("stage", choices=["plan", "preflight", "teacher", "bi", "train", "eval", "report", "all"])
+    p.add_argument("stage", choices=["plan", "preflight", "teacher", "bi", "train", "train-eval", "eval", "report", "all"])
     p.add_argument("--project-root", required=True)
     p.add_argument("--run-name", default="llama2-tinyllama-opd")
     p.add_argument("--profile", choices=list(MODELS), default="llama2-tinyllama")
@@ -287,9 +329,11 @@ def main():
     p.add_argument("--seeds", nargs="+", type=int, default=[10])
     p.add_argument("--bi-seeds", nargs="+", type=int, default=[42, 43, 44])
     p.add_argument("--steps", type=int, default=0)
+    p.add_argument("--train-samples", type=int, default=None, help="Fixed student subset; new runs default to 8000, saved plans keep their budget")
+    p.add_argument("--train-subset-seed", type=int, default=42)
     p.add_argument("--grad-accum", type=int, default=0)
     p.add_argument("--fast", action="store_true", help="Use the saved plan if present; batch unfinished student jobs without changing effective batch")
-    p.add_argument("--micro-batch-size", type=int, default=8, help="Student micro batch for --fast (default 8)")
+    p.add_argument("--micro-batch-size", type=int, default=16, help="Student micro batch for --fast (default 16)")
     p.add_argument("--gradient-checkpointing", action=argparse.BooleanOptionalAction, default=False,
                    help="Checkpoint activations in --fast mode; disabled by default")
     p.add_argument("--methods", nargs="+", choices=["opd", "opd_impact"], default=["opd", "opd_impact"])
@@ -297,13 +341,21 @@ def main():
                    help="Execute only this student method from the saved plan; retain both cases in the report")
     p.add_argument("--stop-at", default=None, help="Student deadline for this launch; timezone-aware ISO time")
     p.add_argument("--teacher-adapter", default=None, help="Existing local Dolly teacher adapter; skips teacher SFT")
+    p.add_argument("--teacher-from-run", default=None, help="Reuse completed teacher_sft from this output run")
     p.add_argument("--teacher-steps", type=int, default=0, help="Optional teacher SFT smoke-test cap")
     p.add_argument("--math-eval", action="store_true", help="Explicitly opt into MATH-500/GSM8K; disabled by default")
+    p.add_argument("--dolly-eval", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--dolly-eval-batch-size", type=int, default=16)
+    p.add_argument("--dolly-eval-seeds", nargs="+", type=int, default=[10, 20, 30, 40, 50])
+    p.add_argument("--eval-benchmarks", nargs="+", choices=["dolly", "self-inst", "vicuna", "sinst"],
+                   default=["dolly", "self-inst", "vicuna", "sinst"])
     p.add_argument("--eval-max-new-tokens", type=int, default=1024)
     p.add_argument("--max-minutes", type=float, default=0)
     p.add_argument("--plan-out", default=None, help="For plan stage, save elsewhere while retaining target B200 paths")
     p.add_argument("--python", dest="python_bin", default=sys.executable)
     args = p.parse_args()
+    if args.train_samples is not None and args.train_samples < 0:
+        raise ValueError("train-samples must be nonnegative")
     deadline = deadline_timestamp(args.stop_at)
     if deadline is not None and deadline <= time.time():
         raise ValueError("stop-at is in the past")
@@ -331,10 +383,23 @@ def run_plan(args, plan, existing, run):
             if Path(old["run_root"]).resolve() != run.resolve():
                 raise ValueError("Saved plan belongs to a different run root")
             plan = old
+            if args.train_samples is not None and args.stage in ("all", "train", "train-eval"):
+                for job in plan["jobs"]:
+                    if job["stage"] != "train":
+                        continue
+                    command = job["command"]
+                    count = int(command[command.index("--train-samples") + 1]) if "--train-samples" in command else 0
+                    seed = int(command[command.index("--train-subset-seed") + 1]) if "--train-subset-seed" in command else 42
+                    if (count, seed) != (args.train_samples, args.train_subset_seed):
+                        raise ValueError("Saved training subset differs; use a new RUN_NAME for the requested subset")
         elif old["cases"] != plan["cases"] or old["jobs"] != plan["jobs"]:
             raise ValueError("Run plan changed; use a new RUN_NAME to avoid mixing results")
     if args.fast:
         plan = speed_up_plan(plan, args.micro_batch_size, args.gradient_checkpointing, args.only_method)
+        if args.dolly_eval and plan["profile"] == "llama2-tinyllama":
+            plan = add_dolly_eval(plan, args.dolly_eval_batch_size, args.dolly_eval_seeds)
+            from .benchmark_plan import add_instruction_eval
+            plan = add_instruction_eval(plan, args.eval_benchmarks, args.dolly_eval_batch_size, args.dolly_eval_seeds)
         if existing.exists() and plan != old:
             save_json(existing.parent / "plan_history" / f"before-fast-{time.time_ns()}.json", old)
     save_json(existing, plan)
@@ -343,6 +408,17 @@ def run_plan(args, plan, existing, run):
             print(f"[{job['stage']}] {shlex.join(job['command'])}")
         return
     if args.stage != "report":
+        if plan.get("dolly_eval_enabled") and args.stage in ("all", "train-eval", "eval"):
+            try:
+                import rouge_score  # noqa: F401
+            except ImportError:
+                raise RuntimeError("Install Dolly eval dependencies first: bash project_commands.sh setup-eval")
+            for job in plan["jobs"]:
+                if job.get("eval_kind") == "instruction":
+                    command = job["command"]
+                    data_file = Path(command[command.index("--data") + 1])
+                    if not data_file.is_file() or not data_file.with_name("manifest.json").is_file():
+                        raise FileNotFoundError("Download instruction benchmarks first: bash project_commands.sh download-eval")
         preflight(run / "environment.json")
         verify_model(plan["teacher"])
         verify_model(plan["student"])
@@ -359,20 +435,29 @@ def run_plan(args, plan, existing, run):
         return
     ledger_path = run / "jobs.json"
     ledger = json.loads(ledger_path.read_text()) if ledger_path.exists() else {}
+    training_paused = False
     try:
         for job in plan["jobs"]:
+            if training_paused and job["stage"] == "train":
+                continue
             if args.only_method and job["stage"] == "train":
                 command = job["command"]
                 if command[command.index("--method") + 1] != args.only_method:
                     continue
-            if args.only_method and job["stage"] == "eval":
+            if args.only_method and job.get("eval_kind") in ("dolly", "instruction") and job.get("method") != args.only_method:
+                continue
+            if args.only_method and job["stage"] == "eval" and job.get("eval_kind") not in ("dolly", "instruction"):
                 case = next((case for case in plan["cases"] if case["name"] == job["name"]), None)
                 if case is None or case["method"] != args.only_method:
                     continue
-            if args.stage in ("all", job["stage"]):
-                execute_job(job, ledger, run / "logs", args.stop_at)
+            selected = args.stage in ("all", job["stage"]) or args.stage == "train-eval" and job["stage"] in ("train", "eval")
+            if selected:
+                result = execute_job(job, ledger, run / "logs", args.stop_at,
+                                     allow_partial=plan.get("dolly_eval_enabled", False) and args.stage in ("all", "train-eval"))
+                if job["stage"] == "train" and result is False:
+                    training_paused = True
     finally:
-        if args.stage in ("all", "train", "report", "eval"):
+        if args.stage in ("all", "train", "train-eval", "report", "eval"):
             from .final_results import aggregate
             aggregate(existing, run / "final_results")
 

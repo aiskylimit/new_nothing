@@ -1,5 +1,9 @@
 # OPD vs OPD + IMPACT — LLaMA2 → TinyLLaMA trên B200
 
+**Cấu hình mới:** student train 8.000 mẫu cố định × 10 epochs = 2.500 updates/nhánh,
+run `llama2-tinyllama-opd-8k`, tái sử dụng teacher đã SFT và tự eval Dolly/SelfInst/VicunaEval/S-NI.
+Xem lệnh hiện tại ở đầu [FAST_B200.md](FAST_B200.md). Các số 11.421 mẫu / 3.560 updates bên dưới mô tả recipe full trước đó.
+
 Mặc định hiện tại: **LLaMA2-7B → TinyLLaMA-1.1B**, train trên Dolly, giữ cả **OPD** và **OPD + IMPACT**. **Không tải/chạy MATH-500 hoặc GSM8K**, không tạo điểm math giả khi tổng hợp.
 
 ## Chạy trên B200
