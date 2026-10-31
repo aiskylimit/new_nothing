@@ -1,9 +1,9 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
-#impact
+#1 +10
+#log
 #v2
 
 
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v5/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
@@ -31,8 +31,8 @@ export NCCL_DEBUG=WARN
 # cd ./grit
 # bash ./project_commands.sh
 
-# cd ./VLM_Embed_Gvendi
-# bash ./project_commands.sh
+cd ./VLM_Embed_Gvendi
+bash ./project_commands.sh
 
 # cd ./unified-ie
 # tar -czf logs.tar.gz logs/
@@ -40,9 +40,9 @@ export NCCL_DEBUG=WARN
 # bash ./run5.sh
 # bash ./project_commands.sh
 
-cd ./eval-impact
+# cd ./eval-impact
 # tree outputs
-CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
+# CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands.sh
