@@ -160,6 +160,107 @@ def _response_indices(inputs: Dict[str, Any], device: torch.device) -> Optional[
     return idx if idx.numel() > 0 else None
 
 
+def _student_logit_positions(labels: torch.Tensor) -> torch.Tensor:
+    """Positions needed by SIC plus exact next-token CE for the whole batch."""
+    sic_positions = labels.ne(IGNORE_INDEX).any(dim=0).nonzero(as_tuple=True)[0]
+    ce_positions = labels[:, 1:].ne(IGNORE_INDEX).any(dim=0).nonzero(as_tuple=True)[0]
+    return torch.unique(torch.cat([sic_positions, ce_positions]), sorted=True)
+
+
+def _selected_logits_at(
+    logits: torch.Tensor,
+    selected_positions: Optional[torch.Tensor],
+    requested_positions: torch.Tensor,
+) -> torch.Tensor:
+    """Gather sequence positions from logits that may already be position-sliced."""
+    if selected_positions is None:
+        return logits[requested_positions]
+    selected_positions = selected_positions.to(device=requested_positions.device)
+    return logits[torch.searchsorted(selected_positions, requested_positions)]
+
+
+def _causal_ce_from_selected_logits(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    selected_positions: torch.Tensor,
+) -> torch.Tensor:
+    """Standard causal LM CE using only logits whose next-token labels are valid."""
+    prediction_positions = labels[:, 1:].ne(IGNORE_INDEX).any(dim=0).nonzero(as_tuple=True)[0]
+    if prediction_positions.numel() == 0:
+        return logits.sum() * 0.0
+    selected_positions = selected_positions.to(device=logits.device)
+    prediction_positions = prediction_positions.to(device=logits.device)
+    logit_columns = torch.searchsorted(selected_positions, prediction_positions)
+    targets = labels[:, prediction_positions + 1].to(device=logits.device)
+    return F.cross_entropy(
+        logits[:, logit_columns, :].reshape(-1, logits.shape[-1]).float(),
+        targets.reshape(-1),
+        ignore_index=IGNORE_INDEX,
+    )
+
+
+def _concat_single_sample_inputs(samples: list[Dict[str, Any]]) -> Dict[str, Any]:
+    """Combine sliced model inputs for intervention jobs from different samples."""
+    if not samples:
+        raise ValueError("SIC intervention batch requires at least one sample.")
+
+    combined: Dict[str, Any] = {}
+    for key in samples[0]:
+        if key == "labels" or any(key not in sample for sample in samples):
+            continue
+        values = [sample[key] for sample in samples]
+        first = values[0]
+        if torch.is_tensor(first):
+            if first.ndim == 0:
+                combined[key] = first
+            elif key == "position_ids" and first.ndim >= 2 and all(value.shape[1] == 1 for value in values):
+                combined[key] = torch.cat(values, dim=1)
+            elif all(value.shape[0] == 1 for value in values):
+                combined[key] = torch.cat(values, dim=0)
+            elif all(value.shape == first.shape and torch.equal(value, first) for value in values[1:]):
+                combined[key] = first
+            else:
+                raise RuntimeError(f"Cannot batch SIC intervention input {key!r} across samples.")
+        elif isinstance(first, list) and all(len(value) == 1 for value in values):
+            combined[key] = [item for value in values for item in value]
+        elif isinstance(first, tuple) and all(len(value) == 1 for value in values):
+            combined[key] = tuple(item for value in values for item in value)
+        else:
+            combined[key] = first
+    return combined
+
+
+def _with_masked_cluster_embeds_jobs(
+    sample_inputs: list[Dict[str, Any]],
+    embedding_hidden: list[torch.Tensor],
+    vision_indices: list[torch.Tensor],
+    cluster_onehot: list[torch.Tensor],
+    cluster_indices: list[int],
+    response_indices: torch.Tensor,
+) -> Dict[str, Any]:
+    """Build one intervention batch spanning regions and original samples."""
+    masked_inputs = _concat_single_sample_inputs(
+        [_drop_visual_inputs(inputs) for inputs in sample_inputs]
+    )
+    masked_embeddings = []
+    for hidden, indices, onehot, cluster_idx in zip(
+        embedding_hidden, vision_indices, cluster_onehot, cluster_indices
+    ):
+        masked = hidden.clone()
+        members = onehot[:, cluster_idx].to(device=indices.device).bool()
+        if members.any():
+            masked[:, indices[members], :] = 0
+        masked_embeddings.append(masked)
+
+    masked_inputs["inputs_embeds"] = torch.cat(masked_embeddings, dim=0)
+    masked_inputs["logits_to_keep"] = response_indices
+    masked_inputs["_vlm_output_attentions"] = False
+    masked_inputs["_vlm_output_hidden_states"] = False
+    masked_inputs["_vlm_disable_scva_capture"] = True
+    masked_inputs["_vlm_attention_backend"] = "sdpa"
+    return masked_inputs
+
+
 def _semantic_direction(delta_log_probs: torch.Tensor, embedding_weight: torch.Tensor) -> torch.Tensor:
     """Project intervention-induced log-probability shifts into embedding space."""
     vocab = min(delta_log_probs.shape[-1], embedding_weight.shape[0])
@@ -182,6 +283,16 @@ def _align_dims(
         return student_direction, teacher_direction
     dim = min(student_direction.shape[-1], teacher_direction.shape[-1])
     return student_direction[..., :dim].float(), teacher_direction[..., :dim].float()
+
+
+def _zero_module_anchor(module: Optional[nn.Module], like: torch.Tensor) -> torch.Tensor:
+    """Keep a conditional trainable module visible to DDP without changing loss."""
+    anchor = like.new_zeros(())
+    if module is not None:
+        for parameter in module.parameters():
+            if parameter.requires_grad:
+                anchor = anchor + parameter.reshape(-1)[0].to(dtype=like.dtype) * 0.0
+    return anchor
 
 
 def _nearest_neighbor_merge_map(cluster_features: torch.Tensor, num_regions: int) -> torch.Tensor:
@@ -283,7 +394,7 @@ class SCVASICCriterion(nn.Module):
         elif self.max_clusters > 0:
             requested_regions = min(requested_regions, self.max_clusters)
         self.num_regions = max(requested_regions, 1)
-        self.intervention_batch_size = int(getattr(args, "sic_intervention_batch_size", 4))
+        self.intervention_batch_size = int(getattr(args, "sic_intervention_batch_size", 8))
         self.use_projector = bool(getattr(args, "sic_use_projector", False))
 
     def forward(self, distiller: Any, batch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -292,7 +403,19 @@ class SCVASICCriterion(nn.Module):
         if teacher_inputs is None:
             raise RuntimeError("teacher_inputs are missing while running SCVA+SIC.")
 
-        student_outputs = distiller.student(**student_inputs)
+        student_labels = student_inputs.get("labels")
+        if not torch.is_tensor(student_labels) or student_labels.ndim != 2:
+            raise RuntimeError("SCVA+SIC requires rank-2 student labels for response-only CE.")
+        student_logit_positions = _student_logit_positions(student_labels)
+        if student_logit_positions.numel() == 0:
+            raise RuntimeError("SCVA+SIC found no supervised student response tokens.")
+
+        # Keep labels available to sparse-SCVA response-mask bookkeeping, but
+        # compute the exact causal CE below from response-only logits.
+        student_forward_inputs = dict(student_inputs)
+        student_forward_inputs["_vlm_skip_loss"] = True
+        student_forward_inputs["logits_to_keep"] = student_logit_positions
+        student_outputs = distiller.student(**student_forward_inputs)
         teacher_logit_positions = None
         with torch.no_grad():
             # Keep labels available to sparse-SCVA response-mask bookkeeping,
@@ -308,9 +431,11 @@ class SCVASICCriterion(nn.Module):
                     teacher_forward_inputs["logits_to_keep"] = teacher_logit_positions
             teacher_outputs = distiller.teacher(**teacher_forward_inputs)
 
-        ce = student_outputs.loss
-        if ce is None:
-            raise RuntimeError("Student model did not return CE loss; labels may be missing.")
+        ce = _causal_ce_from_selected_logits(
+            student_outputs.logits,
+            student_labels,
+            student_logit_positions,
+        )
 
         cluster_cache = self.scva._build_cluster_cache(
             student_outputs,
@@ -332,11 +457,17 @@ class SCVASICCriterion(nn.Module):
             teacher_outputs,
             student_inputs,
             teacher_inputs,
+            student_logit_positions=student_logit_positions,
             teacher_logit_positions=teacher_logit_positions,
             cluster_cache=cluster_cache,
         )
 
         total = self.ce_weight * ce + self.lambda_v * scva_kd + self.lambda_sic * sic_kd
+        # Some samples have no usable visual regions, so SIC can skip its
+        # projector on an otherwise valid CE step. Keep the two projector
+        # parameters connected with a zero-valued term; this makes DDP's costly
+        # per-step unused-parameter graph traversal unnecessary.
+        total = total + _zero_module_anchor(self._projector(distiller), total)
         out: Dict[str, torch.Tensor] = {
             "loss": total,
             "hard_loss": ce.detach(),
@@ -372,6 +503,7 @@ class SCVASICCriterion(nn.Module):
         teacher_outputs,
         student_inputs: Dict[str, Any],
         teacher_inputs: Dict[str, Any],
+        student_logit_positions: Optional[torch.Tensor] = None,
         teacher_logit_positions: Optional[torch.Tensor] = None,
         cluster_cache: Optional[list[Optional[Dict[str, Any]]]] = None,
     ) -> torch.Tensor:
@@ -401,7 +533,8 @@ class SCVASICCriterion(nn.Module):
         t_embed = _embedding_weight(distiller.teacher)
         projector = self._projector(distiller)
 
-        sample_losses = []
+        sample_states: list[Dict[str, Any]] = []
+        intervention_jobs: list[tuple[int, int]] = []
         batch_size = int(teacher_hidden.shape[0])
         for b in range(batch_size):
             t_resp_idx = _response_indices(_slice_batch(teacher_inputs, b, batch_size), teacher_hidden.device)
@@ -466,7 +599,12 @@ class SCVASICCriterion(nn.Module):
             else:
                 t_logit_idx = t_resp
             t_full_log_probs = F.log_softmax(t_logits[b, t_logit_idx].float(), dim=-1)
-            s_full_log_probs = F.log_softmax(s_logits[b, s_resp].float(), dim=-1)
+            s_full_logits = _selected_logits_at(
+                s_logits[b],
+                student_logit_positions,
+                s_resp,
+            )
+            s_full_log_probs = F.log_softmax(s_full_logits.float(), dim=-1)
 
             # u_t: confidence of the teacher's full-image next-token distribution.
             t_probs_resp = t_full_log_probs.exp()
@@ -481,50 +619,101 @@ class SCVASICCriterion(nn.Module):
                 if teacher_cluster_onehot[:, m].bool().any()
                 or student_cluster_onehot[:, m].bool().any()
             ]
-            region_batch_size = (
-                len(active_regions)
-                if self.intervention_batch_size <= 0
-                else self.intervention_batch_size
+            state_idx = len(sample_states)
+            sample_states.append(
+                {
+                    "teacher_inputs": t_one,
+                    "student_inputs": s_one,
+                    "teacher_hidden0": teacher_hidden0[b : b + 1],
+                    "student_hidden0": student_hidden0[b : b + 1],
+                    "teacher_vision_indices": t_v_idx,
+                    "student_vision_indices": s_v_idx,
+                    "teacher_onehot": teacher_cluster_onehot,
+                    "student_onehot": student_cluster_onehot,
+                    "teacher_response": t_resp,
+                    "student_response": s_resp,
+                    "teacher_full_log_probs": t_full_log_probs,
+                    "student_full_log_probs": s_full_log_probs,
+                    "confidence": u,
+                    "cluster_losses": [],
+                }
             )
-            cluster_losses = []
-            for start in range(0, len(active_regions), region_batch_size):
-                region_indices = active_regions[start : start + region_batch_size]
-                t_masked_inputs = _with_masked_cluster_embeds_batch(
-                    t_one,
-                    teacher_hidden0[b : b + 1],
-                    t_v_idx,
-                    teacher_cluster_onehot,
-                    region_indices,
-                    response_indices=t_resp,
+            intervention_jobs.extend((state_idx, region_idx) for region_idx in active_regions)
+
+        if intervention_jobs:
+            region_batch_size = (
+                len(intervention_jobs)
+                if self.intervention_batch_size <= 0
+                else max(self.intervention_batch_size, 1)
+            )
+            for start in range(0, len(intervention_jobs), region_batch_size):
+                jobs = intervention_jobs[start : start + region_batch_size]
+                states = [sample_states[state_idx] for state_idx, _ in jobs]
+                teacher_response_union = torch.unique(
+                    torch.cat([state["teacher_response"] for state in states]), sorted=True
                 )
-                s_masked_inputs = _with_masked_cluster_embeds_batch(
-                    s_one,
-                    student_hidden0[b : b + 1],
-                    s_v_idx,
-                    student_cluster_onehot,
-                    region_indices,
-                    response_indices=s_resp,
+                student_response_union = torch.unique(
+                    torch.cat([state["student_response"] for state in states]), sorted=True
+                )
+                cluster_indices = [region_idx for _, region_idx in jobs]
+
+                t_masked_inputs = _with_masked_cluster_embeds_jobs(
+                    [state["teacher_inputs"] for state in states],
+                    [state["teacher_hidden0"] for state in states],
+                    [state["teacher_vision_indices"] for state in states],
+                    [state["teacher_onehot"] for state in states],
+                    cluster_indices,
+                    teacher_response_union,
+                )
+                s_masked_inputs = _with_masked_cluster_embeds_jobs(
+                    [state["student_inputs"] for state in states],
+                    [state["student_hidden0"] for state in states],
+                    [state["student_vision_indices"] for state in states],
+                    [state["student_onehot"] for state in states],
+                    cluster_indices,
+                    student_response_union,
                 )
 
                 with torch.no_grad():
                     t_masked_outputs = distiller.teacher(**t_masked_inputs)
                 s_masked_outputs = distiller.student(**s_masked_inputs)
 
-                t_masked_log_probs = F.log_softmax(t_masked_outputs.logits.float(), dim=-1)
-                s_masked_log_probs = F.log_softmax(s_masked_outputs.logits.float(), dim=-1)
+                for row, (state_idx, _region_idx) in enumerate(jobs):
+                    state = sample_states[state_idx]
+                    t_masked_logits = _selected_logits_at(
+                        t_masked_outputs.logits[row],
+                        teacher_response_union,
+                        state["teacher_response"],
+                    )
+                    s_masked_logits = _selected_logits_at(
+                        s_masked_outputs.logits[row],
+                        student_response_union,
+                        state["student_response"],
+                    )
+                    t_masked_log_probs = F.log_softmax(t_masked_logits.float(), dim=-1)
+                    s_masked_log_probs = F.log_softmax(s_masked_logits.float(), dim=-1)
 
-                t_delta = t_full_log_probs.unsqueeze(0) - t_masked_log_probs
-                s_delta = s_full_log_probs.unsqueeze(0) - s_masked_log_probs
-                t_direction = _semantic_direction(t_delta, t_embed)
-                s_direction = _semantic_direction(s_delta, s_embed)
-                s_direction, t_direction = _align_dims(s_direction, t_direction, projector)
+                    t_delta = state["teacher_full_log_probs"] - t_masked_log_probs
+                    s_delta = state["student_full_log_probs"] - s_masked_log_probs
+                    t_direction = _semantic_direction(t_delta, t_embed)
+                    s_direction = _semantic_direction(s_delta, s_embed)
+                    s_direction, t_direction = _align_dims(s_direction, t_direction, projector)
 
-                cosine_loss = 1.0 - F.cosine_similarity(s_direction, t_direction, dim=-1, eps=1e-6)
-                cluster_loss = (u.to(cosine_loss.device).unsqueeze(0) * cosine_loss).sum()
-                cluster_losses.append(cluster_loss)
+                    cosine_loss = 1.0 - F.cosine_similarity(
+                        s_direction, t_direction, dim=-1, eps=1e-6
+                    )
+                    cluster_loss = (
+                        state["confidence"].to(cosine_loss.device) * cosine_loss
+                    ).sum()
+                    state["cluster_losses"].append(cluster_loss)
 
-            if cluster_losses:
-                sample_losses.append(torch.stack(cluster_losses).sum() / u.sum().clamp_min(1e-6))
+        sample_losses = []
+        for state in sample_states:
+            if state["cluster_losses"]:
+                sample_losses.append(
+                    torch.stack(state["cluster_losses"]).sum()
+                    / state["confidence"].sum().clamp_min(1e-6)
+                )
                 counts["valid"] += 1
 
         if not sample_losses:
