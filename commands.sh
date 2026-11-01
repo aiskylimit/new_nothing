@@ -1,5 +1,5 @@
-#2 -0
-#vlm_ablation_ablation_accelerated 
+#1 +10
+#check
 #v1
 
 
@@ -8,10 +8,6 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
 # sleep 2
-kill -9 310748
-kill -9 310749
-kill -9 310750
-kill -9 310751
 nvidia-smi
 
 # ls OPSD/results/raw/olmo3-7b-think/grpo/

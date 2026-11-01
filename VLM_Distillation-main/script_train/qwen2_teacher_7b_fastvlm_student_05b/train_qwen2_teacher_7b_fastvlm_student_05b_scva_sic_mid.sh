@@ -44,7 +44,6 @@ torchrun \
   --warmup_ratio 0.03 \
   --lr_scheduler_type cosine \
   --bf16 true \
-  --ddp_find_unused_parameters false \
   --save_strategy epoch \
   --save_total_limit 2 \
   --logging_steps 50 \
@@ -67,6 +66,6 @@ torchrun \
   --scva_sic_lambda_sic "${SCVA_SIC_LAMBDA_SIC:-0.3}" \
   --sic_num_regions "${SIC_NUM_REGIONS:-4}" \
   --sic_max_clusters "${SIC_MAX_CLUSTERS:-0}" \
-  --sic_intervention_batch_size "${SIC_INTERVENTION_BATCH_SIZE:-8}" \
+  --sic_intervention_batch_size "${SIC_INTERVENTION_BATCH_SIZE:-4}" \
   --sic_use_projector "${SIC_USE_PROJECTOR:-true}" \
   ${HUB_FLAGS[@]+"${HUB_FLAGS[@]}"}
