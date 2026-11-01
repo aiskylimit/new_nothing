@@ -8,6 +8,10 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
 # sleep 2
+kill -9 286542
+kill -9 286543
+kill -9 286544
+kill -9 286545
 nvidia-smi
 
 # ls OPSD/results/raw/olmo3-7b-think/grpo/
