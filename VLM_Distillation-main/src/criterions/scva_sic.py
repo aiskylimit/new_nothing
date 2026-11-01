@@ -75,8 +75,10 @@ def _with_masked_cluster_embeds(
     cluster_idx: int,
 ) -> Dict[str, Any]:
     masked_inputs = _drop_visual_inputs(inputs)
-    # Hugging Face backbones require exactly one of input_ids/inputs_embeds.
-    masked_inputs.pop("input_ids", None)
+    # Keep input_ids as positional metadata. Qwen2-VL needs the original token
+    # IDs plus image_grid_thw to reconstruct per-sample 3D RoPE positions. The
+    # supplied inputs_embeds still determine the actual hidden representations.
+    # FastVLM's local backbone explicitly supports this intervention-only pair.
     inputs_embeds = embedding_hidden.clone()
     cluster_members = cluster_onehot[:, cluster_idx].to(device=vision_indices.device).bool()
     if cluster_members.any():

@@ -751,7 +751,7 @@ class KDPlumbingTests(unittest.TestCase):
             cluster_idx=0,
         )
 
-        self.assertNotIn("input_ids", masked)
+        torch.testing.assert_close(masked["input_ids"], inputs["input_ids"])
         self.assertNotIn("pixel_values", masked)
         torch.testing.assert_close(masked["inputs_embeds"][:, 1], torch.zeros(1, 3))
         torch.testing.assert_close(masked["inputs_embeds"][:, 2], torch.ones(1, 3))
