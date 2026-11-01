@@ -1,6 +1,6 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
-#log
-#v2
+#1 +10
+#vlm_ablation_layer
+#v1
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
@@ -31,8 +31,8 @@ export NCCL_DEBUG=WARN
 # cd ./grit
 # bash ./project_commands.sh
 
-cd ./VLM_Embed_Gvendi
-bash ./project_commands.sh
+# cd ./VLM_Embed_Gvendi
+# bash ./project_commands.sh
 
 # cd ./unified-ie
 # tar -czf logs.tar.gz logs/
@@ -44,8 +44,8 @@ bash ./project_commands.sh
 # tree outputs
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
-# cd VLM_Distillation-main
-# bash ./project_commands.sh
+cd VLM_Distillation-main
+bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
 # pwd && ls
