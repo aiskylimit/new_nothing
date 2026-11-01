@@ -8,10 +8,6 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
 # sleep 2
-kill -9 286542
-kill -9 286543
-kill -9 286544
-kill -9 286545
 nvidia-smi
 
 # ls OPSD/results/raw/olmo3-7b-think/grpo/
@@ -47,7 +43,7 @@ export NCCL_DEBUG=WARN
 # tree outputs
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
-# cd VLM_Distillation-main
-# bash ./project_commands.sh
+cd VLM_Distillation-main
+bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh

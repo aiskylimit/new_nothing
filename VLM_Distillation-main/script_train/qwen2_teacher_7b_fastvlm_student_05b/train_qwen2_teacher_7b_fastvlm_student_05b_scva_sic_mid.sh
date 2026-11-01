@@ -64,7 +64,7 @@ torchrun \
   --scva_sic_ce_weight "${SCVA_SIC_CE_WEIGHT:-1.0}" \
   --scva_sic_lambda_v "${SCVA_SIC_LAMBDA_V:-0.3}" \
   --scva_sic_lambda_sic "${SCVA_SIC_LAMBDA_SIC:-0.3}" \
-  --sic_num_regions "${SIC_NUM_REGIONS:-16}" \
+  --sic_num_regions "${SIC_NUM_REGIONS:-4}" \
   --sic_max_clusters "${SIC_MAX_CLUSTERS:-0}" \
   --sic_use_projector "${SIC_USE_PROJECTOR:-true}" \
   ${HUB_FLAGS[@]+"${HUB_FLAGS[@]}"}
