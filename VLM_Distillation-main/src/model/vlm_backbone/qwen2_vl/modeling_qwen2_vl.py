@@ -1253,8 +1253,11 @@ class Qwen2VLModel(Qwen2VLPreTrainedModel):
                 attention_mask=attention_mask,
             )
             self.rope_deltas = rope_deltas
-        # Use pre-calculated rope-deltas to infer correct 3D position ids
-        elif self.rope_deltas is not None:
+        # Reuse pre-calculated rope deltas only for cached generation. During
+        # training, every no-cache forward is an independent batch; carrying a
+        # multimodal delta into a later text-only batch can also carry the wrong
+        # batch dimension and produce an empty repeat_interleave result.
+        elif self.rope_deltas is not None and past_key_values_length > 0:
             batch_size, seq_length, _ = inputs_embeds.shape
             if attention_mask is not None:
                 position_ids = attention_mask.long().cumsum(-1) - 1
@@ -1266,6 +1269,8 @@ class Qwen2VLModel(Qwen2VLPreTrainedModel):
             delta = self.rope_deltas.repeat_interleave(batch_size // self.rope_deltas.shape[0], dim=0)
             position_ids = position_ids + delta.to(device=position_ids.device)
         else:
+            if past_key_values_length == 0:
+                self.rope_deltas = None
             # Can't build correct 3D positions. Let the model infer it from `cache_position`
             position_ids = None
         return position_ids
