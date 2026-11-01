@@ -1,5 +1,5 @@
-#2 -0
-#vlm_ablation_layer
+#1 +10
+#vlm_checkdata
 #v1
 
 
@@ -44,8 +44,11 @@ export NCCL_DEBUG=WARN
 # tree outputs
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
-# cd VLM_Distillation-main
+cd VLM_Distillation-main
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
-# pwd && ls
+pwd && ls
+cd train_data
+pwd && ls
+du -h --max-depth=1
