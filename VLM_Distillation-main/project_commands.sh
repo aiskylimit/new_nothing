@@ -51,13 +51,18 @@ fi
 
 
 # ============================================================
-# 3. Remaining train + eval jobs
+# 2. SCVA + SIC layer-range tuning jobs
 # ============================================================
 
 JOBS=(
 #   "train_qwen2_teacher_7b_fastvlm_student_05b_emkd.sh|qwen2_teacher_7b_fastvlm_student_05b_emkd"
 #   "train_qwen2_teacher_7b_fastvlm_student_05b_mcw_kd.sh|qwen2_teacher_7b_fastvlm_student_05b_mcw_kd"
-  "train_qwen2_teacher_7b_fastvlm_student_05b_sre.sh|qwen2_teacher_7b_fastvlm_student_05b_sre"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_sre.sh|qwen2_teacher_7b_fastvlm_student_05b_sre"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_scva.sh|qwen2_teacher_7b_fastvlm_student_05b_scva"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_sic.sh|qwen2_teacher_7b_fastvlm_student_05b_sic"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_mid.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_mid"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_high.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_high"
 )
 
 for job in "${JOBS[@]}"; do
@@ -79,10 +84,10 @@ for job in "${JOBS[@]}"; do
     printf '\n============================================================\n'
     printf '[%s] START TRAIN: %s\n' \
         "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
-    printf 'GPUs: 0,1,2,3\n'
+    printf 'GPUs: 4,5,6,7\n'
     printf '============================================================\n'
 
-    if CUDA_VISIBLE_DEVICES=0,1,2,3 bash "${train_path}"; then
+    if CUDA_VISIBLE_DEVICES=4,5,6,7 bash "${train_path}"; then
 
         printf '\n=== [%s] TRAIN EXIT SUCCESS: %s (exit_code=0) ===\n' \
             "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
@@ -109,10 +114,10 @@ for job in "${JOBS[@]}"; do
     printf '\n============================================================\n'
     printf '[%s] START EVAL: %s\n' \
         "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
-    printf 'GPU: 0\n'
+    printf 'GPU: 4\n'
     printf '============================================================\n'
 
-    if CUDA_VISIBLE_DEVICES=0 bash "${EVAL_SCRIPT}" \
+    if CUDA_VISIBLE_DEVICES=4 bash "${EVAL_SCRIPT}" \
         "${output_dir}" "${BASE_MODEL}"; then
 
         printf '\n=== [%s] EVAL SUCCESS: %s (exit_code=0) ===\n' \
