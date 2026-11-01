@@ -168,7 +168,17 @@ class FastVlmModel(FastVlmPreTrainedModel):
         # generation/text-model flags.
         for key in ("output_attentions", "output_hidden_states", "use_cache", "cache_position"):
             kwargs.pop(key, None)
-        image_outputs = self.vision_tower(pixel_values, return_dict=True, **kwargs)
+        # Pass explicit False values as well as removing inherited kwargs.
+        # `merge_with_config_defaults` on the timm wrapper can otherwise restore
+        # the parent FastVLM config's output_attentions=True default, even though
+        # SCVA only needs decoder attention. Timm vision models reject that flag.
+        image_outputs = self.vision_tower(
+            pixel_values,
+            return_dict=True,
+            output_attentions=False,
+            output_hidden_states=False,
+            **kwargs,
+        )
 
         # since the vision tower is hybrid in FastVLM, its output needs to be handled differently from Llava
         selected_image_feature = image_outputs.last_hidden_state

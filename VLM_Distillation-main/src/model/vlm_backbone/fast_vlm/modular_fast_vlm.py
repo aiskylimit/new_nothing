@@ -202,7 +202,17 @@ class FastVlmModel(LlavaModel):
             Only "full" supported.
         """
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
-        image_outputs = self.vision_tower(pixel_values, return_dict=True, **kwargs)
+        # SCVA consumes language-decoder attention only. Never forward its
+        # output_attentions setting into FastVLM's timm vision tower.
+        for key in ("output_attentions", "output_hidden_states", "use_cache", "cache_position"):
+            kwargs.pop(key, None)
+        image_outputs = self.vision_tower(
+            pixel_values,
+            return_dict=True,
+            output_attentions=False,
+            output_hidden_states=False,
+            **kwargs,
+        )
 
         # since the vision tower is hybrid in FastVLM, its output needs to be handled differently from Llava
         selected_image_feature = image_outputs.last_hidden_state
