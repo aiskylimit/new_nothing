@@ -17,6 +17,21 @@ BASE_MODEL="${BASE_MODEL:-${DOWNLOAD_ROOT}/models/KamilaMila/FastVLM-0.5B}"
 source "${TRAIN_ENV}"
 cd "${PROJECT_DIR}"
 
+# Fail before torchrun launches four ranks if CuPy discovers headers from a
+# different CUDA major version (for example nvidia/cu13 with CUDA 12 NVRTC).
+python - <<'PY'
+import cupy as cp
+from cuml.cluster import DBSCAN
+
+probe = cp.arange(4, dtype=cp.float32)
+assert float(probe.sum().item()) == 6.0
+print(
+    "cuML preflight OK:",
+    f"CuPy {cp.__version__}, runtime {cp.cuda.runtime.runtimeGetVersion()},",
+    f"device {cp.cuda.runtime.getDevice()}",
+)
+PY
+
 # ============================================================
 # 1. Prepare datasets
 # ============================================================

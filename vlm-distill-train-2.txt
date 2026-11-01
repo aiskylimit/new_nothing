@@ -8,7 +8,7 @@ einops>=0.8.2
 hdbscan==0.8.43
 hnswlib>=0.8.0
 huggingface-hub==1.14.0
-numba==0.65.1
+numba==0.64.0
 numpy==1.26.4
 opencv-python==4.11.0.86
 peft==0.19.1
@@ -26,6 +26,11 @@ torchvision==0.24.0
 tqdm==4.67.3
 transformers==5.2.0
 
-# cuML is the only package added relative to vlm-distill-train.txt.
+# GPU DBSCAN stack. Keep CuPy's NVRTC compiler and runtime headers on the
+# CUDA 12.8 component versions used by the PyTorch 2.9 wheels.
 --extra-index-url https://pypi.nvidia.com
+cupy-cuda12x==13.6.0
+cuda-python==12.9.2
+nvidia-cuda-nvrtc-cu12==12.8.93
+nvidia-cuda-runtime-cu12==12.8.90
 cuml-cu12==26.6.0
