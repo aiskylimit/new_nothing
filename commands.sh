@@ -1,4 +1,4 @@
-#2 -1
+#1 +10
 #vlm_ablation_check
 #v1
 
@@ -7,7 +7,10 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
-# kill -9 257280
+kill -9 285435
+kill -9 285436
+kill -9 285437
+kill -9 285438
 # sleep 2
 nvidia-smi
 
