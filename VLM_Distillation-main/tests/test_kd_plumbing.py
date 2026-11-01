@@ -713,6 +713,68 @@ class KDPlumbingTests(unittest.TestCase):
         self.assertEqual(criterion.attention_layer, -2)
         self.assertEqual(criterion.min_vision_tokens, 8)
 
+    def test_scva_sic_joint_builds_and_reads_arguments(self):
+        from src.criterions import SCVASICCriterion, build_criterion
+
+        args = SimpleNamespace(
+            kd_loss_type="scva_sic",
+            scva_sic_ce_weight=0.7,
+            scva_sic_lambda_v=0.2,
+            scva_sic_lambda_sic=0.4,
+            sic_num_regions=12,
+            sic_max_clusters=8,
+            sic_use_projector=True,
+        )
+        criterion = build_criterion(args)
+
+        self.assertIsInstance(criterion, SCVASICCriterion)
+        self.assertEqual(criterion.ce_weight, 0.7)
+        self.assertEqual(criterion.lambda_v, 0.2)
+        self.assertEqual(criterion.lambda_sic, 0.4)
+        self.assertEqual(criterion.num_regions, 8)
+        self.assertTrue(criterion.use_projector)
+
+    def test_scva_sic_masked_inputs_replace_ids_and_visual_tensors(self):
+        from src.criterions.scva_sic import _with_masked_cluster_embeds
+
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "pixel_values": torch.randn(1, 3, 2, 2),
+            "attention_mask": torch.ones(1, 4, dtype=torch.long),
+        }
+        hidden = torch.ones(1, 4, 3)
+        masked = _with_masked_cluster_embeds(
+            inputs,
+            hidden,
+            vision_indices=torch.tensor([1, 2]),
+            cluster_onehot=torch.tensor([[1.0, 0.0], [0.0, 1.0]]),
+            cluster_idx=0,
+        )
+
+        self.assertNotIn("input_ids", masked)
+        self.assertNotIn("pixel_values", masked)
+        torch.testing.assert_close(masked["inputs_embeds"][:, 1], torch.zeros(1, 3))
+        torch.testing.assert_close(masked["inputs_embeds"][:, 2], torch.ones(1, 3))
+
+    def test_scva_sic_auto_creates_named_projector(self):
+        from src.distiller import Distiller
+
+        distiller = Distiller.__new__(Distiller)
+        torch.nn.Module.__init__(distiller)
+        distiller.student_hidden_dim = 4
+        distiller.teacher_hidden_dim = 6
+        distiller.training_args = SimpleNamespace(
+            kd_loss_type="scva_sic",
+            sic_use_projector=True,
+            teacher_layer_mapping=[],
+        )
+        distiller.model_args = SimpleNamespace(projector_config_path=None, proj_dim=3)
+
+        distiller.set_projector()
+
+        self.assertEqual(set(distiller.projectors), {"sic"})
+        self.assertEqual(tuple(distiller.projectors["sic"].weight.shape), (6, 4))
+
     def test_scva_resolves_layer_pairs_once(self):
         from src.model.scva_attention import resolve_layer_pairs
 

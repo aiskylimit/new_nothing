@@ -102,7 +102,7 @@ class Distiller(nn.Module):
 
     def _should_use_sparse_scva_attention(self) -> bool:
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
-        if kd_loss_type not in {"scva", "scva_cgkd", "draft"}:
+        if kd_loss_type not in {"scva", "scva_cgkd", "scva_sic", "draft"}:
             return False
         if not bool(getattr(self.training_args, "scva_sparse_attention", True)):
             return False
@@ -277,6 +277,14 @@ class Distiller(nn.Module):
                     ),
                 }
             )
+        elif kd_loss_type == "scva_sic" and bool(getattr(self.training_args, "sic_use_projector", True)):
+            projector = nn.Linear(
+                self.student_hidden_dim,
+                self.teacher_hidden_dim,
+                dtype=torch.bfloat16,
+            )
+            nn.init.xavier_uniform_(projector.weight)
+            self.projectors = nn.ModuleDict({"sic": projector})
         elif self.model_args.projector_config_path is not None:
             self.projectors = nn.ModuleDict()
             with open(self.model_args.projector_config_path) as f:
