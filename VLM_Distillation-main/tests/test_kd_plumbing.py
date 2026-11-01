@@ -396,6 +396,16 @@ class KDPlumbingTests(unittest.TestCase):
                 distiller.training_args = SimpleNamespace(kd_loss_type=kd_loss_type)
                 self.assertTrue(distiller._needs_attention_outputs())
 
+    def test_scva_family_does_not_request_vision_attention(self):
+        from src.distiller import Distiller
+
+        distiller = object.__new__(Distiller)
+        distiller.use_sparse_scva_attention = False
+        for kd_loss_type in ("sre", "scva", "scva_cgkd", "scva_sic", "sic", "draft"):
+            with self.subTest(kd_loss_type=kd_loss_type):
+                distiller.training_args = SimpleNamespace(kd_loss_type=kd_loss_type)
+                self.assertFalse(distiller._needs_vision_attention_outputs())
+
     def test_vlm_forward_respects_disabled_attention_outputs(self):
         from src.model.model import VLMModel
 
@@ -416,6 +426,69 @@ class KDPlumbingTests(unittest.TestCase):
 
         self.assertFalse(encoder.forward_kwargs["output_attentions"])
         self.assertTrue(encoder.forward_kwargs["output_hidden_states"])
+
+    def test_vlm_forward_allows_lightweight_intervention_outputs(self):
+        from src.model.model import VLMModel
+
+        class RecordingEncoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = torch.nn.Parameter(torch.ones(()))
+                self.config = SimpleNamespace()
+                self.forward_kwargs = None
+
+            def forward(self, **kwargs):
+                self.forward_kwargs = kwargs
+                return kwargs
+
+        encoder = RecordingEncoder()
+        model = VLMModel(encoder, output_attentions=True)
+        model(
+            input_ids=torch.ones(1, 2, dtype=torch.long),
+            _vlm_output_attentions=False,
+            _vlm_output_hidden_states=False,
+            _vlm_disable_scva_capture=True,
+        )
+
+        self.assertFalse(encoder.forward_kwargs["output_attentions"])
+        self.assertFalse(encoder.forward_kwargs["output_hidden_states"])
+        self.assertNotIn("_vlm_disable_scva_capture", encoder.forward_kwargs)
+
+    def test_vlm_forward_temporarily_uses_sdpa_for_intervention(self):
+        from src.model.model import VLMModel
+
+        class LanguageModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.config = SimpleNamespace(
+                    _attn_implementation="eager",
+                    attn_implementation="eager",
+                )
+
+        class RecordingEncoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = torch.nn.Parameter(torch.ones(()))
+                self.config = SimpleNamespace()
+                self.model = torch.nn.Module()
+                self.model.language_model = LanguageModel()
+                self.backend_during_forward = None
+
+            def forward(self, **kwargs):
+                self.backend_during_forward = self.model.language_model.config._attn_implementation
+                return kwargs
+
+        encoder = RecordingEncoder()
+        model = VLMModel(encoder, output_attentions=True)
+        model(
+            input_ids=torch.ones(1, 2, dtype=torch.long),
+            _vlm_output_attentions=False,
+            _vlm_disable_scva_capture=True,
+            _vlm_attention_backend="sdpa",
+        )
+
+        self.assertEqual(encoder.backend_during_forward, "sdpa")
+        self.assertEqual(encoder.model.language_model.config._attn_implementation, "eager")
 
     def test_attention_backend_defaults_to_sdpa_except_fastvlm(self):
         from src.model.model import VLMModel
@@ -753,6 +826,10 @@ class KDPlumbingTests(unittest.TestCase):
 
         torch.testing.assert_close(masked["input_ids"], inputs["input_ids"])
         self.assertNotIn("pixel_values", masked)
+        self.assertFalse(masked["_vlm_output_attentions"])
+        self.assertFalse(masked["_vlm_output_hidden_states"])
+        self.assertTrue(masked["_vlm_disable_scva_capture"])
+        self.assertEqual(masked["_vlm_attention_backend"], "sdpa")
         torch.testing.assert_close(masked["inputs_embeds"][:, 1], torch.zeros(1, 3))
         torch.testing.assert_close(masked["inputs_embeds"][:, 2], torch.ones(1, 3))
 

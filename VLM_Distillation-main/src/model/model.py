@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
@@ -230,7 +231,92 @@ class VLMModel(nn.Module):
             "use_cache": False,
         }
 
+    def _language_model(self):
+        """Resolve the text decoder through PEFT and VLM wrapper layers."""
+        queue = [self.encoder]
+        visited = set()
+        while queue:
+            module = queue.pop(0)
+            if module is None or id(module) in visited:
+                continue
+            visited.add(id(module))
+            language_model = getattr(module, "language_model", None)
+            if isinstance(language_model, nn.Module):
+                return language_model
+            for attr in ("base_model", "model"):
+                child = getattr(module, attr, None)
+                if isinstance(child, nn.Module) and id(child) not in visited:
+                    queue.append(child)
+        return None
+
+    @contextmanager
+    def _temporary_text_attention_backend(self, backend):
+        """Use a faster decoder backend for one forward, then restore it.
+
+        SIC intervention forwards only consume logits, so they can use SDPA
+        even though the main SCVA forward needs eager attention matrices.  A
+        checkpointed decoder would be recomputed after this context has been
+        restored; keep eager in that uncommon case so forward/backward agree.
+        """
+        if backend is None:
+            yield
+            return
+        if backend not in {"eager", "sdpa"}:
+            raise ValueError(f"Unsupported temporary attention backend: {backend!r}")
+
+        language_model = self._language_model()
+        if language_model is None:
+            raise RuntimeError("Could not resolve the language model for an attention-backend override.")
+        checkpointing_active = any(
+            bool(getattr(module, "gradient_checkpointing", False)) and module.training
+            for module in language_model.modules()
+        )
+        if checkpointing_active:
+            if not getattr(self, "_warned_sic_sdpa_checkpointing", False):
+                print_master(
+                    "SIC SDPA override skipped because decoder gradient checkpointing is active."
+                )
+                self._warned_sic_sdpa_checkpointing = True
+            yield
+            return
+
+        configs = []
+        seen = set()
+        for module in language_model.modules():
+            config = getattr(module, "config", None)
+            if config is None or id(config) in seen:
+                continue
+            if not (hasattr(config, "_attn_implementation") or hasattr(config, "attn_implementation")):
+                continue
+            seen.add(id(config))
+            configs.append(config)
+
+        if not configs:
+            raise RuntimeError("The language model exposes no configurable attention backend.")
+
+        missing = object()
+        previous = []
+        for config in configs:
+            values = []
+            for name in ("_attn_implementation", "attn_implementation"):
+                values.append((name, getattr(config, name, missing)))
+                setattr(config, name, backend)
+            previous.append((config, values))
+        try:
+            yield
+        finally:
+            for config, values in previous:
+                for name, value in values:
+                    if value is missing:
+                        delattr(config, name)
+                    else:
+                        setattr(config, name, value)
+
     def forward(self, **model_inputs):
+        output_attentions_override = model_inputs.pop("_vlm_output_attentions", None)
+        output_hidden_states_override = model_inputs.pop("_vlm_output_hidden_states", None)
+        disable_scva_capture = bool(model_inputs.pop("_vlm_disable_scva_capture", False))
+        attention_backend_override = model_inputs.pop("_vlm_attention_backend", None)
         model_inputs = self._clean_model_inputs(model_inputs)
         if "input_ids" in model_inputs and torch.is_tensor(model_inputs["input_ids"]):
             model_inputs = self._move_tensor_lists_to_device(model_inputs, model_inputs["input_ids"].device)
@@ -239,21 +325,26 @@ class VLMModel(nn.Module):
         forward_kwargs = self._forward_defaults()
         forward_kwargs.update(model_inputs)
         forward_kwargs["return_dict"] = True
-        forward_kwargs["output_hidden_states"] = True
-        forward_kwargs["output_attentions"] = self.output_attentions
+        forward_kwargs["output_hidden_states"] = (
+            True if output_hidden_states_override is None else bool(output_hidden_states_override)
+        )
+        forward_kwargs["output_attentions"] = (
+            self.output_attentions if output_attentions_override is None else bool(output_attentions_override)
+        )
         forward_kwargs["use_cache"] = False
 
-        # Baseline criteria do not use SCVA. Skip all capture bookkeeping and
-        # module-tree walks on their hot forward path.
-        if not self._scva_capture_active:
-            return self.encoder(**forward_kwargs)
+        with self._temporary_text_attention_backend(attention_backend_override):
+            # Baseline criteria do not use SCVA. Skip all capture bookkeeping and
+            # module-tree walks on their hot forward path.
+            if not self._scva_capture_active or disable_scva_capture:
+                return self.encoder(**forward_kwargs)
 
-        self._prepare_scva_capture(model_inputs)
-        try:
-            outputs = self.encoder(**forward_kwargs)
-            scva_attentions = self._collect_scva_captures()
-        finally:
-            self._clear_scva_capture_context()
+            self._prepare_scva_capture(model_inputs)
+            try:
+                outputs = self.encoder(**forward_kwargs)
+                scva_attentions = self._collect_scva_captures()
+            finally:
+                self._clear_scva_capture_context()
 
         if scva_attentions:
             setattr(outputs, "scva_attentions", scva_attentions)

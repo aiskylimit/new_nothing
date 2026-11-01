@@ -85,6 +85,13 @@ def _with_masked_cluster_embeds(
         positions = vision_indices[cluster_members]
         inputs_embeds[:, positions, :] = 0
     masked_inputs["inputs_embeds"] = inputs_embeds
+    # Intervention passes only consume logits. Avoid retaining every decoder
+    # hidden state/attention map and disable sparse-SCVA capture for these extra
+    # forwards; the main full-image pass already produced everything SCVA needs.
+    masked_inputs["_vlm_output_attentions"] = False
+    masked_inputs["_vlm_output_hidden_states"] = False
+    masked_inputs["_vlm_disable_scva_capture"] = True
+    masked_inputs["_vlm_attention_backend"] = "sdpa"
     return masked_inputs
 
 
@@ -101,7 +108,11 @@ def _response_indices(inputs: Dict[str, Any], device: torch.device) -> Optional[
 def _semantic_direction(delta_log_probs: torch.Tensor, embedding_weight: torch.Tensor) -> torch.Tensor:
     """Project intervention-induced log-probability shifts into embedding space."""
     vocab = min(delta_log_probs.shape[-1], embedding_weight.shape[0])
-    return delta_log_probs[..., :vocab].float() @ embedding_weight[:vocab].to(delta_log_probs.device).float()
+    weight = embedding_weight[:vocab].to(delta_log_probs.device)
+    # Reuse the model's BF16/FP16 embedding matrix instead of materializing a
+    # multi-gigabyte FP32 copy for every region intervention.
+    delta = delta_log_probs[..., :vocab].to(dtype=weight.dtype)
+    return (delta @ weight).float()
 
 
 def _align_dims(
@@ -160,11 +171,10 @@ def _fixed_region_onehots(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return teacher/student cluster membership with a fixed region dimension.
 
-    DBSCAN can naturally produce a different number of clusters per image.  SIC
-    performs one intervention forward per region, so multi-GPU training needs a
-    fixed region count to keep DDP ranks issuing the same number of synchronized
-    student forwards.  We merge over-produced clusters with nearest-neighbor
-    agglomeration and pad under-produced clusters with empty dummy regions.
+    DBSCAN can naturally produce a different number of clusters per image. We
+    merge over-produced clusters with nearest-neighbor agglomeration and pad
+    under-produced clusters with empty dummy regions so membership tensors keep
+    a stable shape. Dummy regions are skipped before intervention forwards.
     """
     device = remapped_teacher_labels.device
     valid = remapped_teacher_labels.ge(0)
@@ -352,15 +362,18 @@ class SCVASICCriterion(nn.Module):
                 counts["skipped_no_clusters"] += 1
                 continue
 
-            t_full_log_probs = F.log_softmax(t_logits[b : b + 1].float(), dim=-1)
-            s_full_log_probs = F.log_softmax(s_logits[b : b + 1].float(), dim=-1)
             T_aligned = min(int(t_resp_idx.numel()), int(s_resp_idx.numel()))
             t_resp = t_resp_idx[:T_aligned]
             s_resp = s_resp_idx[:T_aligned]
 
+            # SIC only uses assistant-response positions. Slicing logits before
+            # FP32 log-softmax avoids allocating [1, full_seq_len, vocab] tensors.
+            t_full_log_probs = F.log_softmax(t_logits[b, t_resp].float(), dim=-1)
+            s_full_log_probs = F.log_softmax(s_logits[b, s_resp].float(), dim=-1)
+
             # u_t: confidence of the teacher's full-image next-token distribution.
-            t_probs_resp = t_full_log_probs[:, t_resp].exp()
-            entropy = -(t_probs_resp * t_full_log_probs[:, t_resp]).sum(dim=-1).squeeze(0)
+            t_probs_resp = t_full_log_probs.exp()
+            entropy = -(t_probs_resp * t_full_log_probs).sum(dim=-1)
             u = (-entropy / max(math.log(max(t_logits.shape[-1], 2)), 1e-6)).exp()
 
             t_one = _slice_batch(teacher_inputs, b, batch_size)
@@ -371,6 +384,10 @@ class SCVASICCriterion(nn.Module):
                     not teacher_cluster_onehot[:, m].bool().any()
                     and not student_cluster_onehot[:, m].bool().any()
                 )
+                # Padding regions have no effect on the loss. Avoid two full
+                # VLM forwards that would later be multiplied by zero.
+                if is_dummy_region:
+                    continue
                 t_masked_inputs = _with_masked_cluster_embeds(
                     t_one,
                     teacher_hidden0[b : b + 1],
@@ -390,19 +407,17 @@ class SCVASICCriterion(nn.Module):
                     t_masked_outputs = distiller.teacher(**t_masked_inputs)
                 s_masked_outputs = distiller.student(**s_masked_inputs)
 
-                t_masked_log_probs = F.log_softmax(t_masked_outputs.logits.float(), dim=-1)
-                s_masked_log_probs = F.log_softmax(s_masked_outputs.logits.float(), dim=-1)
+                t_masked_log_probs = F.log_softmax(t_masked_outputs.logits[0, t_resp].float(), dim=-1)
+                s_masked_log_probs = F.log_softmax(s_masked_outputs.logits[0, s_resp].float(), dim=-1)
 
-                t_delta = t_full_log_probs[:, t_resp] - t_masked_log_probs[:, t_resp]
-                s_delta = s_full_log_probs[:, s_resp] - s_masked_log_probs[:, s_resp]
-                t_direction = _semantic_direction(t_delta.squeeze(0), t_embed)
-                s_direction = _semantic_direction(s_delta.squeeze(0), s_embed)
+                t_delta = t_full_log_probs - t_masked_log_probs
+                s_delta = s_full_log_probs - s_masked_log_probs
+                t_direction = _semantic_direction(t_delta, t_embed)
+                s_direction = _semantic_direction(s_delta, s_embed)
                 s_direction, t_direction = _align_dims(s_direction, t_direction, projector)
 
                 cosine_loss = 1.0 - F.cosine_similarity(s_direction, t_direction, dim=-1, eps=1e-6)
                 cluster_loss = (u.to(cosine_loss.device) * cosine_loss).sum()
-                if is_dummy_region:
-                    cluster_loss = cluster_loss * 0.0
                 cluster_losses.append(cluster_loss)
 
             if cluster_losses:

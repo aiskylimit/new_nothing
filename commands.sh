@@ -1,16 +1,12 @@
 #1 +10
-#vlm_ablation_check
-#v1
+#vlm_ablation_layer
+#v2
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
-kill -9 285435
-kill -9 285436
-kill -9 285437
-kill -9 285438
 # sleep 2
 nvidia-smi
 
@@ -47,7 +43,7 @@ export NCCL_DEBUG=WARN
 # tree outputs
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
-# cd VLM_Distillation-main
-# bash ./project_commands.sh
+cd VLM_Distillation-main
+bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
