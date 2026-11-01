@@ -188,6 +188,7 @@ class TrainingArguments(TrainingArguments):
     scva_sic_lambda_sic: float = field(default=1.0, metadata={"help": "Weight on the SIC term in the SCVA+SIC joint loss."})
     sic_num_regions: int = field(default=16, metadata={"help": "Fixed number of semantic regions/interventions per image for SIC."})
     sic_max_clusters: int = field(default=0, metadata={"help": "Optional upper bound for SIC regions; <=0 disables the cap."})
+    sic_intervention_batch_size: int = field(default=4, metadata={"help": "Number of SIC region interventions evaluated in each teacher/student forward; <=0 batches every non-empty region."})
     sic_use_projector: bool = field(default=True, metadata={"help": "Project student SIC directions into the teacher embedding dimension."})
     ds_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
     deepspeed_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})

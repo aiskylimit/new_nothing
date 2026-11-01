@@ -28,9 +28,6 @@ from src.criterions.scva import (
     IGNORE_INDEX,
     SCVACriterion,
     _patch_centers,
-    _cluster_onehot_from_labels,
-    _cluster_vision_tokens_dbscan,
-    _grid_from_inputs,
     _last_hidden,
     _map_teacher_clusters_to_student_onehot,
 )
@@ -73,18 +70,76 @@ def _with_masked_cluster_embeds(
     vision_indices: torch.Tensor,
     cluster_onehot: torch.Tensor,
     cluster_idx: int,
+    response_indices: Optional[torch.Tensor] = None,
 ) -> Dict[str, Any]:
-    masked_inputs = _drop_visual_inputs(inputs)
+    return _with_masked_cluster_embeds_batch(
+        inputs,
+        embedding_hidden,
+        vision_indices,
+        cluster_onehot,
+        [cluster_idx],
+        response_indices=response_indices,
+    )
+
+
+def _repeat_single_sample_inputs(inputs: Dict[str, Any], repeats: int) -> Dict[str, Any]:
+    """Repeat a sliced, single-sample input dictionary along its batch axis."""
+    repeated: Dict[str, Any] = {}
+    for key, value in inputs.items():
+        # Intervention forwards consume logits only. Computing CE for every
+        # masked region is redundant and expensive.
+        if key == "labels":
+            continue
+        if torch.is_tensor(value) and value.ndim > 0:
+            if key == "position_ids" and value.ndim >= 2 and value.shape[1] == 1:
+                dims = [1] * value.ndim
+                dims[1] = repeats
+                repeated[key] = value.repeat(*dims)
+            elif value.shape[0] == 1:
+                dims = [1] * value.ndim
+                dims[0] = repeats
+                repeated[key] = value.repeat(*dims)
+            else:
+                repeated[key] = value
+        elif isinstance(value, list) and len(value) == 1:
+            repeated[key] = value * repeats
+        elif isinstance(value, tuple) and len(value) == 1:
+            repeated[key] = value * repeats
+        else:
+            repeated[key] = value
+    return repeated
+
+
+def _with_masked_cluster_embeds_batch(
+    inputs: Dict[str, Any],
+    embedding_hidden: torch.Tensor,
+    vision_indices: torch.Tensor,
+    cluster_onehot: torch.Tensor,
+    cluster_indices: list[int],
+    response_indices: Optional[torch.Tensor] = None,
+) -> Dict[str, Any]:
+    """Build one decoder batch containing several region interventions."""
+    if not cluster_indices:
+        raise ValueError("SIC intervention batch requires at least one region.")
+
+    masked_inputs = _repeat_single_sample_inputs(
+        _drop_visual_inputs(inputs), len(cluster_indices)
+    )
     # Keep input_ids as positional metadata. Qwen2-VL needs the original token
     # IDs plus image_grid_thw to reconstruct per-sample 3D RoPE positions. The
     # supplied inputs_embeds still determine the actual hidden representations.
     # FastVLM's local backbone explicitly supports this intervention-only pair.
-    inputs_embeds = embedding_hidden.clone()
-    cluster_members = cluster_onehot[:, cluster_idx].to(device=vision_indices.device).bool()
-    if cluster_members.any():
-        positions = vision_indices[cluster_members]
-        inputs_embeds[:, positions, :] = 0
+    inputs_embeds = embedding_hidden.expand(len(cluster_indices), -1, -1).clone()
+    for batch_idx, cluster_idx in enumerate(cluster_indices):
+        cluster_members = cluster_onehot[:, cluster_idx].to(device=vision_indices.device).bool()
+        if cluster_members.any():
+            positions = vision_indices[cluster_members]
+            inputs_embeds[batch_idx, positions, :] = 0
     masked_inputs["inputs_embeds"] = inputs_embeds
+    if response_indices is not None:
+        # Both active backbones accept tensor indices here, so the LM head only
+        # materializes logits at assistant-response positions.
+        masked_inputs["logits_to_keep"] = response_indices
     # Intervention passes only consume logits. Avoid retaining every decoder
     # hidden state/attention map and disable sparse-SCVA capture for these extra
     # forwards; the main full-image pass already produced everything SCVA needs.
@@ -228,6 +283,7 @@ class SCVASICCriterion(nn.Module):
         elif self.max_clusters > 0:
             requested_regions = min(requested_regions, self.max_clusters)
         self.num_regions = max(requested_regions, 1)
+        self.intervention_batch_size = int(getattr(args, "sic_intervention_batch_size", 4))
         self.use_projector = bool(getattr(args, "sic_use_projector", False))
 
     def forward(self, distiller: Any, batch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -237,21 +293,48 @@ class SCVASICCriterion(nn.Module):
             raise RuntimeError("teacher_inputs are missing while running SCVA+SIC.")
 
         student_outputs = distiller.student(**student_inputs)
+        teacher_logit_positions = None
         with torch.no_grad():
-            teacher_outputs = distiller.teacher(**teacher_inputs)
+            # Keep labels available to sparse-SCVA response-mask bookkeeping,
+            # but tell the wrapper not to compute the unused teacher CE.
+            teacher_forward_inputs = dict(teacher_inputs)
+            teacher_forward_inputs["_vlm_skip_loss"] = True
+            teacher_labels = teacher_inputs.get("labels")
+            if torch.is_tensor(teacher_labels) and teacher_labels.ndim == 2:
+                teacher_logit_positions = teacher_labels.ne(IGNORE_INDEX).any(dim=0).nonzero(as_tuple=True)[0]
+                if teacher_logit_positions.numel() > 0:
+                    # SCVA consumes hidden states and attention, while SIC only
+                    # consumes teacher logits at response positions.
+                    teacher_forward_inputs["logits_to_keep"] = teacher_logit_positions
+            teacher_outputs = distiller.teacher(**teacher_forward_inputs)
 
         ce = student_outputs.loss
         if ce is None:
             raise RuntimeError("Student model did not return CE loss; labels may be missing.")
 
+        cluster_cache = self.scva._build_cluster_cache(
+            student_outputs,
+            teacher_outputs,
+            student_inputs,
+            teacher_inputs,
+        )
         scva_kd = self.scva._scva_loss(
             student_outputs,
             teacher_outputs,
             student_inputs,
             teacher_inputs,
             layer_pairs=getattr(distiller, "scva_layer_pairs", None),
+            cluster_cache=cluster_cache,
         )
-        sic_kd = self._sic_loss(distiller, student_outputs, teacher_outputs, student_inputs, teacher_inputs)
+        sic_kd = self._sic_loss(
+            distiller,
+            student_outputs,
+            teacher_outputs,
+            student_inputs,
+            teacher_inputs,
+            teacher_logit_positions=teacher_logit_positions,
+            cluster_cache=cluster_cache,
+        )
 
         total = self.ce_weight * ce + self.lambda_v * scva_kd + self.lambda_sic * sic_kd
         out: Dict[str, torch.Tensor] = {
@@ -289,6 +372,8 @@ class SCVASICCriterion(nn.Module):
         teacher_outputs,
         student_inputs: Dict[str, Any],
         teacher_inputs: Dict[str, Any],
+        teacher_logit_positions: Optional[torch.Tensor] = None,
+        cluster_cache: Optional[list[Optional[Dict[str, Any]]]] = None,
     ) -> torch.Tensor:
         counts: Dict[str, int] = {
             "valid": 0,
@@ -319,40 +404,39 @@ class SCVASICCriterion(nn.Module):
         sample_losses = []
         batch_size = int(teacher_hidden.shape[0])
         for b in range(batch_size):
-            t_v_mask = teacher_vision_mask[b].to(device=teacher_hidden.device, dtype=torch.bool)
-            s_v_mask = student_vision_mask[b].to(device=teacher_hidden.device, dtype=torch.bool)
-            if t_v_mask.sum().item() < self.scva.min_vision_tokens or s_v_mask.sum().item() < self.scva.min_vision_tokens:
-                counts["skipped_mask"] += 1
-                continue
-
             t_resp_idx = _response_indices(_slice_batch(teacher_inputs, b, batch_size), teacher_hidden.device)
             s_resp_idx = _response_indices(_slice_batch(student_inputs, b, batch_size), teacher_hidden.device)
             if t_resp_idx is None or s_resp_idx is None:
                 counts["skipped_empty_response"] += 1
                 continue
 
-            t_v_idx = t_v_mask.nonzero(as_tuple=True)[0]
-            s_v_idx = s_v_mask.nonzero(as_tuple=True)[0]
+            region_data = (
+                cluster_cache[b]
+                if cluster_cache is not None and b < len(cluster_cache)
+                else self.scva._cluster_sample_regions(
+                    teacher_hidden,
+                    teacher_vision_mask,
+                    student_vision_mask,
+                    teacher_inputs,
+                    student_inputs,
+                    b,
+                )
+            )
+            if region_data is None:
+                counts["skipped_mask"] += 1
+                continue
+
+            t_v_idx = region_data["teacher_vision_indices"]
+            s_v_idx = region_data["student_vision_indices"]
             n_t_v = int(t_v_idx.numel())
             n_s_v = int(s_v_idx.numel())
 
             with torch.no_grad():
-                teacher_grid = _grid_from_inputs(teacher_inputs, b, n_t_v)
-                student_grid = _grid_from_inputs(student_inputs, b, n_s_v)
-                cluster_labels = _cluster_vision_tokens_dbscan(
-                    teacher_hidden[b, t_v_idx].float(),
-                    teacher_grid[0],
-                    teacher_grid[1],
-                    self.scva.spatial_weight,
-                    self.scva.dbscan_min_samples,
-                    self.scva.dbscan_eps_percentile,
-                )
-                _, remapped_labels = _cluster_onehot_from_labels(cluster_labels)
                 teacher_cluster_onehot, student_cluster_onehot = _fixed_region_onehots(
                     teacher_hidden[b, t_v_idx].float(),
-                    remapped_labels,
-                    teacher_grid,
-                    student_grid,
+                    region_data["teacher_labels"],
+                    region_data["teacher_grid"],
+                    region_data["student_grid"],
                     n_s_v,
                     self.num_regions,
                 )
@@ -368,7 +452,20 @@ class SCVASICCriterion(nn.Module):
 
             # SIC only uses assistant-response positions. Slicing logits before
             # FP32 log-softmax avoids allocating [1, full_seq_len, vocab] tensors.
-            t_full_log_probs = F.log_softmax(t_logits[b, t_resp].float(), dim=-1)
+            if teacher_logit_positions is not None and teacher_logit_positions.numel() > 0:
+                position_lookup = torch.full(
+                    (teacher_inputs["labels"].shape[-1],),
+                    -1,
+                    dtype=torch.long,
+                    device=t_resp.device,
+                )
+                position_lookup[teacher_logit_positions.to(t_resp.device)] = torch.arange(
+                    teacher_logit_positions.numel(), device=t_resp.device
+                )
+                t_logit_idx = position_lookup[t_resp]
+            else:
+                t_logit_idx = t_resp
+            t_full_log_probs = F.log_softmax(t_logits[b, t_logit_idx].float(), dim=-1)
             s_full_log_probs = F.log_softmax(s_logits[b, s_resp].float(), dim=-1)
 
             # u_t: confidence of the teacher's full-image next-token distribution.
@@ -378,46 +475,52 @@ class SCVASICCriterion(nn.Module):
 
             t_one = _slice_batch(teacher_inputs, b, batch_size)
             s_one = _slice_batch(student_inputs, b, batch_size)
+            active_regions = [
+                m
+                for m in range(self.num_regions)
+                if teacher_cluster_onehot[:, m].bool().any()
+                or student_cluster_onehot[:, m].bool().any()
+            ]
+            region_batch_size = (
+                len(active_regions)
+                if self.intervention_batch_size <= 0
+                else self.intervention_batch_size
+            )
             cluster_losses = []
-            for m in range(self.num_regions):
-                is_dummy_region = (
-                    not teacher_cluster_onehot[:, m].bool().any()
-                    and not student_cluster_onehot[:, m].bool().any()
-                )
-                # Padding regions have no effect on the loss. Avoid two full
-                # VLM forwards that would later be multiplied by zero.
-                if is_dummy_region:
-                    continue
-                t_masked_inputs = _with_masked_cluster_embeds(
+            for start in range(0, len(active_regions), region_batch_size):
+                region_indices = active_regions[start : start + region_batch_size]
+                t_masked_inputs = _with_masked_cluster_embeds_batch(
                     t_one,
                     teacher_hidden0[b : b + 1],
                     t_v_idx,
                     teacher_cluster_onehot,
-                    m,
+                    region_indices,
+                    response_indices=t_resp,
                 )
-                s_masked_inputs = _with_masked_cluster_embeds(
+                s_masked_inputs = _with_masked_cluster_embeds_batch(
                     s_one,
                     student_hidden0[b : b + 1],
                     s_v_idx,
                     student_cluster_onehot,
-                    m,
+                    region_indices,
+                    response_indices=s_resp,
                 )
 
                 with torch.no_grad():
                     t_masked_outputs = distiller.teacher(**t_masked_inputs)
                 s_masked_outputs = distiller.student(**s_masked_inputs)
 
-                t_masked_log_probs = F.log_softmax(t_masked_outputs.logits[0, t_resp].float(), dim=-1)
-                s_masked_log_probs = F.log_softmax(s_masked_outputs.logits[0, s_resp].float(), dim=-1)
+                t_masked_log_probs = F.log_softmax(t_masked_outputs.logits.float(), dim=-1)
+                s_masked_log_probs = F.log_softmax(s_masked_outputs.logits.float(), dim=-1)
 
-                t_delta = t_full_log_probs - t_masked_log_probs
-                s_delta = s_full_log_probs - s_masked_log_probs
+                t_delta = t_full_log_probs.unsqueeze(0) - t_masked_log_probs
+                s_delta = s_full_log_probs.unsqueeze(0) - s_masked_log_probs
                 t_direction = _semantic_direction(t_delta, t_embed)
                 s_direction = _semantic_direction(s_delta, s_embed)
                 s_direction, t_direction = _align_dims(s_direction, t_direction, projector)
 
                 cosine_loss = 1.0 - F.cosine_similarity(s_direction, t_direction, dim=-1, eps=1e-6)
-                cluster_loss = (u.to(cosine_loss.device) * cosine_loss).sum()
+                cluster_loss = (u.to(cosine_loss.device).unsqueeze(0) * cosine_loss).sum()
                 cluster_losses.append(cluster_loss)
 
             if cluster_losses:

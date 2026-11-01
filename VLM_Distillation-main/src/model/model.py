@@ -317,6 +317,7 @@ class VLMModel(nn.Module):
         output_hidden_states_override = model_inputs.pop("_vlm_output_hidden_states", None)
         disable_scva_capture = bool(model_inputs.pop("_vlm_disable_scva_capture", False))
         attention_backend_override = model_inputs.pop("_vlm_attention_backend", None)
+        skip_loss = bool(model_inputs.pop("_vlm_skip_loss", False))
         model_inputs = self._clean_model_inputs(model_inputs)
         if "input_ids" in model_inputs and torch.is_tensor(model_inputs["input_ids"]):
             model_inputs = self._move_tensor_lists_to_device(model_inputs, model_inputs["input_ids"].device)
@@ -337,10 +338,14 @@ class VLMModel(nn.Module):
             # Baseline criteria do not use SCVA. Skip all capture bookkeeping and
             # module-tree walks on their hot forward path.
             if not self._scva_capture_active or disable_scva_capture:
+                if skip_loss:
+                    forward_kwargs.pop("labels", None)
                 return self.encoder(**forward_kwargs)
 
             self._prepare_scva_capture(model_inputs)
             try:
+                if skip_loss:
+                    forward_kwargs.pop("labels", None)
                 outputs = self.encoder(**forward_kwargs)
                 scva_attentions = self._collect_scva_captures()
             finally:
