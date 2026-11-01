@@ -8,7 +8,7 @@ DOWNLOAD_ROOT=/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main
 DOWNLOAD_DATA_DIR="${DOWNLOAD_ROOT}/train_data"
 DATA_DIR="${PROJECT_DIR}/train_data"
 
-TRAIN_ENV=/mnt/local/uvenvs/vlm-distill-train/bin/activate
+TRAIN_ENV=/mnt/local/uvenvs/vlm-distill-train-2/bin/activate
 TRAIN_DIR="${PROJECT_DIR}/script_train/qwen2_teacher_7b_fastvlm_student_05b"
 EVAL_SCRIPT="${PROJECT_DIR}/project_commands_eval.sh"
 
