@@ -178,7 +178,8 @@ class LMTrainDataset(Dataset):
             "span_offsets": self.span_offsets[index],
             "offset_mapping": self.offset_mapping[index],
             "unknown_arg_tokens": self.unknown_arg_tokens[index],
-            "dataset": self.raw[index].get("dataset")   # picks the teacher with --teacher-peft-paths
+            "dataset": self.raw[index].get("dataset"),  # picks the teacher with --teacher-peft-paths
+            "task": self.raw[index].get("task")         # splits the loss by task with --mto
         }
 
     def _process_lm(self, i, samp, model_data, no_model_data, gen_data):
@@ -256,7 +257,8 @@ class LMTrainDataset(Dataset):
             "loss_mask": torch.zeros(bs, max_length),
             "span_offsets": [sample["span_offsets"] for sample in samples],
             "offset_mapping": torch.concat([sample["offset_mapping"] for sample in samples]),
-            "dataset": [sample["dataset"] for sample in samples]
+            "dataset": [sample["dataset"] for sample in samples],
+            "task": [sample["task"] for sample in samples]
         }
         
         gen_data = {
