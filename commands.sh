@@ -1,5 +1,5 @@
 #1 +30
-#log
+#pga-eval
 
 #v1
 
@@ -33,11 +33,7 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd ./VLM_Embed_Gvendi
-ls datasets
-tree vlm2vec_train
-tree vlm2vec_eval
-tree training
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./unified-ie
 # tar -czf logs.tar.gz logs/
