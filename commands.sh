@@ -1,5 +1,5 @@
-#2 -27 +700
-#vlm_ablation_layer
+#1 +30
+#log
 
 #v1
 
@@ -32,7 +32,11 @@ export NCCL_DEBUG=WARN
 # cd ./grit
 # bash ./project_commands.sh
 
-# cd ./VLM_Embed_Gvendi
+cd ./VLM_Embed_Gvendi
+ls datasets
+tree vlm2vec_train
+tree vlm2vec_eval
+tree training
 # bash ./project_commands.sh
 
 # cd ./unified-ie
