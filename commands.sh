@@ -1,4 +1,4 @@
-#2 -2 +a
+#i vlm2vec-gvendi.txt
 #pga-eval
 
 #v1
