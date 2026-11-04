@@ -1,5 +1,5 @@
-#1 +10
-#log
+#1 +120
+#pga
 #v1
 
 
@@ -30,8 +30,8 @@ export NCCL_DEBUG=WARN
 # cd ./grit
 # bash ./project_commands.sh
 
-# cd ./VLM_Embed_Gvendi
-# bash ./project_commands.sh
+cd ./VLM_Embed_Gvendi
+bash ./project_commands.sh
 
 # cd ./unified-ie
 # tar -czf logs.tar.gz logs/
