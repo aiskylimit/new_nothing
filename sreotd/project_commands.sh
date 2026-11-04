@@ -51,6 +51,11 @@ MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-2}"
 LR="${LR:-0.0001}"
 EVAL_SEEDS="${EVAL_SEEDS:-10 20 30 40 50}"
 
+# Thu stdout/stderr của toàn bộ phiên chạy vào một file riêng.
+# shellcheck disable=SC1091
+source "$ROOT/run_logging.sh"
+start_run_log "$ROOT" "$ACTION"
+
 # Khai báo các local path
 STUDENT="$ROOT/results/gpt2/train/init/gpt2-base"
 TEACHER="$ROOT/results/gpt2/train/sft/gpt2-xlarge"
