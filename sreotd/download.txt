@@ -1,0 +1,16 @@
+#d
+#datasets
+--hf-dataset MiniLLM/dolly /mnt/local/aiskylimit_new_nothing/sreotd/data/dolly
+--hf-dataset MiniLLM/self-inst /mnt/local/aiskylimit_new_nothing/sreotd/data/self-inst
+--hf-dataset MiniLLM/Vicuna /mnt/local/aiskylimit_new_nothing/sreotd/data/vicuna
+--hf-dataset MiniLLM/sinst /mnt/local/aiskylimit_new_nothing/sreotd/data/sinst
+--hf-dataset MiniLLM/uinst /mnt/local/aiskylimit_new_nothing/sreotd/data/uinst
+--hf-dataset MiniLLM/dolly-processed /mnt/local/aiskylimit_new_nothing/sreotd/processed_data/dolly
+--hf-dataset MiniLLM/openwebtext-processed /mnt/local/aiskylimit_new_nothing/sreotd/processed_data/openwebtext/gpt2/512/10M
+#models
+--hf gpt2 /mnt/local/aiskylimit_new_nothing/sreotd/checkpoints/gpt2-base
+--hf gpt2-medium /mnt/local/aiskylimit_new_nothing/sreotd/checkpoints/gpt2-medium
+--hf gpt2-large /mnt/local/aiskylimit_new_nothing/sreotd/checkpoints/gpt2-large
+--hf gpt2-xl /mnt/local/aiskylimit_new_nothing/sreotd/checkpoints/gpt2-xlarge
+--hf MiniLLM/teacher-gpt2-1.5B /mnt/local/aiskylimit_new_nothing/sreotd/results/gpt2/train/sft/gpt2-xlarge
+--hf MiniLLM/init-gpt2-120M /mnt/local/aiskylimit_new_nothing/sreotd/results/gpt2/train/init/gpt2-base
