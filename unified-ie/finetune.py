@@ -45,6 +45,7 @@ from rouge_metric import compute_metrics
 
 from peft import PeftModel
 from eval_loop import check_gen_backend, evaluate, evaluate_dev_and_test
+from mto import TaskWeighting, task_rows
 
 torch.set_num_threads(4)
 
@@ -242,6 +243,12 @@ def get_teacher_lm_loss(args, tokenizer, model, teacher_model, model_batch):
     return lm_loss
 
 
+def task_lm_losses(loss_func, logits, label, rows_by_task):
+    """--mto: {task: CE of that task's rows}, each a token mean over its own rows"""
+    return {t: loss_func(logits[r].float().reshape(-1, logits.shape[-1]), label[r].reshape(-1))
+            for t, r in rows_by_task.items()}
+
+
 def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, optimizer: AdamW, lr_scheduler, dataset, device, teacher_model=None):
     print_rank("Start Fine-tuning")
 
@@ -279,7 +286,19 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
         prev_avg_loss, _ = evaluate(args, tokenizer, model, dataset["dev"], "dev", 0, device, adaptive_threshold)
     best_dev = float("-inf")
     replay_buffer = ReplayBuffer(args)
-    
+    mto = TaskWeighting(args, {r.get("task") for r in dataset["train"].raw}, device) if args.mto != "none" else None
+
+    def famo_rescore():
+        """this step's micro-batches scored again with the updated model: {task: [CE per micro-batch]}"""
+        curr = {}
+        with torch.no_grad():
+            for mb, win, lab, rows in mto.cache:
+                lg = model(**mb, use_cache=False, logits_to_keep=win).logits
+                for t, l in task_lm_losses(loss_func, lg, lab, rows).items():
+                    curr.setdefault(t, []).append(l)
+        mto.cache.clear()
+        return curr
+
     for epoch in range(args.epochs):
         sampler.set_epoch(epoch)
 
@@ -345,23 +364,36 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             outputs = model(**model_batch, use_cache=False, logits_to_keep=window)
             
             logits = outputs.logits
-            if args.model_parallel:
-                raise NotImplementedError
+            if mto is not None:
+                # --mto: one CE per task, combined by mto.py (SFT only, main() checks there is no teacher)
+                rows_by_task = task_rows(no_model_batch["task"], label.device)
+                loss = mto.combine(task_lm_losses(loss_func, logits, label_batch["label"], rows_by_task))
+                if mto.mode == "famo":
+                    mto.cache.append((model_batch, window, label_batch["label"], rows_by_task))
             else:
-                lm_loss = loss_func(logits.float().reshape(-1, logits.shape[-1]), label_batch["label"].reshape(-1))
-            
-            if teacher_model is not None:
-                distil_loss = get_distil_loss(args, tokenizer, model, teacher_model, model_batch, label_batch, logits, window)
-                loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
-            else:
-                loss = lm_loss
-                
+                if args.model_parallel:
+                    raise NotImplementedError
+                else:
+                    lm_loss = loss_func(logits.float().reshape(-1, logits.shape[-1]), label_batch["label"].reshape(-1))
+
+                if teacher_model is not None:
+                    distil_loss = get_distil_loss(args, tokenizer, model, teacher_model, model_batch, label_batch, logits, window)
+                    loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * distil_loss
+                else:
+                    loss = lm_loss
+
             if args.lm_data_dir is not None:
                 assert args.lm_coef is not None
                 loss += args.lm_coef * pt_loss(args, model, pt_model_batch, pt_no_model_batch)
-                
+
             model.backward(loss)
+            boundary = model.is_gradient_accumulation_boundary()
             model.step()
+            if mto is not None and boundary:
+                if mto.mode == "famo":
+                    mto.update(famo_rescore())
+                else:
+                    mto.end_step()
              
             dist.all_reduce(loss, dist.ReduceOp.SUM, group=dp_group)
             global_loss = loss.item() / dp_world_size
@@ -411,7 +443,11 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                 print_rank("*" * 100)
                 save_rank(log_str, os.path.join(args.save, "log.txt"))
                 total_loss, total_distil_loss, total_time = 0.0, 0.0, 0.0
-            
+                if mto is not None:
+                    mto_line = mto.log_line()
+                    print_rank(mto_line)
+                    save_rank(mto_line, os.path.join(args.save, "log.txt"))
+
             # Checkpointing
             if args.save and args.save_interval and global_step % args.save_interval == 0 and step % args.gradient_accumulation_steps == 0:
                 save_dir_path = os.path.join(args.save, str(global_step))
@@ -516,6 +552,9 @@ def main():
     if args.teacher_model_type is None:
         args.teacher_model_type = args.model_type
     
+    # --mto here splits the CE only; the KD students (BAM) run span_finetune.py, which splits the whole loss
+    assert args.mto == "none" or args.teacher_model_path is None, "finetune.py: --mto with a teacher, use span_finetune.py"
+
     if args.teacher_model_path is not None:
         teacher_model = get_teacher_model(args, device)
     else:
