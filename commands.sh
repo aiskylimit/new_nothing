@@ -1,5 +1,5 @@
-#2 -1
-#vlm
+#1 +10
+#log
 #v1
 
 
@@ -8,10 +8,9 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
 
 # sleep 2
-
+kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
 nvidia-smi
 
-# ls OPSD/results/raw/olmo3-7b-think/grpo/
 
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
