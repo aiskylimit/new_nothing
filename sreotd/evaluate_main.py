@@ -358,15 +358,6 @@ def _as_text(reference):
     return str(reference)
 
 
-def _load_hf_hub():
-    import importlib.util
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "hf_hub_manager.py")
-    spec = importlib.util.spec_from_file_location("sreotd_hf_hub_manager", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def _collect_sreotd_features(args, tokenizer, model, dataset, device, teacher_model):
     """Pooled branch embeddings, mean transport weights, entropy, JSD and disagreement."""
     collate_fn = dataset.collate
@@ -776,15 +767,4 @@ def evaluate_sreotd_benchmark(args, tokenizer, model, dataset: PromptDataset, sp
         if diagnostics_payload is not None and diagnostics_payload.get("logits") is not None:
             torch.save(diagnostics_payload["logits"], os.path.join(artifact_dir, "sreotd_logits_and_modes.pt"))
         print_rank(f"SR-EOTD eval artifacts saved to {artifact_dir}")
-        if getattr(args, "push_to_hf", False):
-            repo = getattr(args, "hf_dataset_repo_id", None)
-            if not repo:
-                raise ValueError("--push-to-hf requires --hf-dataset-repo-id or --hf-model-repo-id")
-            _load_hf_hub().push_sreotd_eval_data_to_hub(
-                os.path.dirname(artifact_dir),
-                repo,
-                token=getattr(args, "hf_token", None),
-                private=bool(getattr(args, "hf_private", False)),
-                benchmarks=[benchmark],
-            )
     dist.barrier()

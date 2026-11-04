@@ -577,8 +577,8 @@ class PPOTrainer():
                 for resp in response_texts:
                     f.write(json.dumps({"text": resp}) + "\n")
 
-    def push_to_store(self, data):
-        self.store.push(data)
+    def append_to_store(self, data):
+        self.store.append(data)
          
     def generate(self, input_ids, attention_mask=None, mode="base", teacher_mixed_sample=False, **kwargs):
         """Wraps hf's `generate` adding some specific method's defaults"""

@@ -20,9 +20,9 @@ class BaseRolloutStore(Dataset):
         self.capacity = capacity
 
     @abstractmethod
-    def push(self, exps: Iterable[Any]):
+    def append(self, exps: Iterable[Any]):
         """
-        Push experiences to rollout storage
+        Add experiences to rollout storage
         """
         pass
 
@@ -71,7 +71,7 @@ class PPORolloutStorage(BaseRolloutStore):
         self.rng = torch.Generator()
         self.rng.manual_seed(seed)
 
-    def push(self, exps: Iterable[PPORLElement]):
+    def append(self, exps: Iterable[PPORLElement]):
         self.history += exps
 
     def save(self, path):

@@ -106,7 +106,6 @@ OPTS+=" --student-temp 2"
 OPTS+=" ${ADD_TERM}"
 
 export NCCL_DEBUG=""
-export WANDB_DISABLED=True
 export TF_CPP_MIN_LOG_LEVEL=3
 export PYTHONPATH=${BASE_PATH}
 CMD="torchrun ${DISTRIBUTED_ARGS} ${BASE_PATH}/finetune.py ${OPTS}"

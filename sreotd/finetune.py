@@ -368,30 +368,6 @@ def get_teacher_lm_loss(args, tokenizer, model, teacher_model, model_batch):
     return lm_loss
 
 
-def _latest_sreotd_ckpt(save_dir):
-    best = os.path.join(save_dir, "best_ckpt")
-    if os.path.isfile(os.path.join(best, "sreotd_model.pt")):
-        return best
-    if not os.path.isdir(save_dir):
-        return None
-    steps = []
-    for name in os.listdir(save_dir):
-        if name.isdigit() and os.path.isfile(os.path.join(save_dir, name, "sreotd_model.pt")):
-            steps.append(int(name))
-    if not steps:
-        return None
-    return os.path.join(save_dir, str(max(steps)))
-
-
-def _load_hf_hub():
-    import importlib.util
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "hf_hub_manager.py")
-    spec = importlib.util.spec_from_file_location("sreotd_hf_hub_manager", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def _consider_sreotd_best(args, model, tokenizer):
     """Keep the dev checkpoint with the highest Best-of-M ROUGE-L (or lowest loss)."""
     if getattr(args, "kd_objective", None) != "sr_eotd":
@@ -412,35 +388,6 @@ def _consider_sreotd_best(args, model, tokenizer):
             with open(os.path.join(best_dir, "val_metrics.json"), "w") as handle:
                 json.dump(metrics, handle, indent=2)
         print_rank(f"New SR-EOTD best checkpoint ({score:.4f}) -> {best_dir}")
-    if dist.is_initialized():
-        dist.barrier()
-
-
-def _push_sreotd_model_if_requested(args):
-    if getattr(args, "kd_objective", None) != "sr_eotd" or not getattr(args, "push_to_hf", False):
-        return
-    if dist.is_initialized() and dist.get_rank() != 0:
-        dist.barrier()
-        return
-    repo = getattr(args, "hf_model_repo_id", None)
-    if not repo:
-        raise ValueError("--push-to-hf during training requires --hf-model-repo-id")
-    ckpt_dir = _latest_sreotd_ckpt(args.save)
-    if ckpt_dir is None:
-        raise FileNotFoundError(f"No SR-EOTD checkpoint under {args.save}")
-    metrics = None
-    metrics_path = os.path.join(ckpt_dir, "val_metrics.json")
-    if os.path.isfile(metrics_path):
-        with open(metrics_path) as handle:
-            metrics = json.load(handle)
-    _load_hf_hub().push_sreotd_model_to_hub(
-        ckpt_dir,
-        repo,
-        token=getattr(args, "hf_token", None),
-        private=bool(getattr(args, "hf_private", False)),
-        export_merged_branches=bool(getattr(args, "hf_export_merged_branches", False)),
-        metrics=metrics,
-    )
     if dist.is_initialized():
         dist.barrier()
 
@@ -699,8 +646,6 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
 
             if global_step > args.total_iters:
                 break
-
-    _push_sreotd_model_if_requested(args)
 
     ##### Save #####
     # total_res = np.array(total_res)

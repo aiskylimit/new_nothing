@@ -36,8 +36,6 @@ export HF_HOME="${HF_HOME:-$ROOT/cache/huggingface}"
 export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$HF_HOME/datasets}"
 export TOKENIZERS_PARALLELISM=false
 export PYTHONUNBUFFERED=1
-export WANDB_DISABLED=true
-export WANDB_MODE=disabled
 
 # All model and dataset reads must remain local after download.txt is processed.
 export HF_HUB_OFFLINE=1

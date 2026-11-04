@@ -105,7 +105,6 @@ OPTS+=" --amid-alpha ${AMID_ALPHA}"
 OPTS+=" --amid-lam ${AMID_LAM}"
 
 export NCCL_DEBUG=""
-export WANDB_DISABLED=True
 export TF_CPP_MIN_LOG_LEVEL=3
 export PYTHONPATH=${BASE_PATH}
 CMD="torchrun ${DISTRIBUTED_ARGS} ${BASE_PATH}/finetune.py ${OPTS} $@"

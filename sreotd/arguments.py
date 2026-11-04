@@ -235,18 +235,6 @@ def add_distillm_args(parser: argparse.ArgumentParser):
                             "Pass the flag alone to force True, or 'false' to force False.")
     group.add_argument("--sreotd-diag-samples", type=int, default=256,
                        help="Leading eval examples stored with token-level logits and OT plans.")
-    group.add_argument("--push-to-hf", action="store_true",
-                       help="Upload the SR-EOTD checkpoint and eval artifacts to the Hugging Face Hub.")
-    group.add_argument("--hf-model-repo-id", type=str, default=None,
-                       help="Model Hub repo id, for example sonspeed/sreotd-gpt2-base-m3.")
-    group.add_argument("--hf-dataset-repo-id", type=str, default=None,
-                       help="Dataset Hub repo id. Defaults to '{hf-model-repo-id}-eval-data' when --push-to-hf is set.")
-    group.add_argument("--hf-token", type=str, default=None,
-                       help="Hugging Face token. Falls back to the HF_TOKEN environment variable.")
-    group.add_argument("--hf-private", action="store_true",
-                       help="Create the model repo and the dataset repo as private.")
-    group.add_argument("--hf-export-merged-branches", action="store_true",
-                       help="Also upload M standalone models with one LoRA branch merged into the backbone.")
 
     # skew kld
     group.add_argument("--skew-alpha", type=float, default=0.1)
@@ -459,9 +447,5 @@ def get_args():
         raise ValueError("--sreotd-topk must be positive")
     if args.sreotd_diag_samples < 1:
         raise ValueError("--sreotd-diag-samples must be positive")
-    if args.hf_token is None:
-        args.hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-    if args.push_to_hf and args.hf_dataset_repo_id is None and args.hf_model_repo_id:
-        args.hf_dataset_repo_id = f"{args.hf_model_repo_id}-eval-data"
 
     return args

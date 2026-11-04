@@ -12,7 +12,7 @@ from transformers import mpu
 class PPOSampler():
     """
     Orchestrator prepares data for PPO training.
-    Transforms samples from `pipeline` into `PPOBatch` and pushes them into trainer's `store`
+    Transforms samples from `pipeline` into `PPOBatch` and adds them to the trainer's `store`
     """
 
     def __init__(
@@ -161,8 +161,8 @@ class PPOSampler():
             ppo_rl_elements.extend(new_ppo_rl_elements)
 
         ppo_rl_elements = ppo_rl_elements[:num_rollouts_per_device]
-        # Push samples and rewards to trainer's rollout storage
-        self.trainer.push_to_store(ppo_rl_elements)
+        # Add samples and rewards to trainer's rollout storage
+        self.trainer.append_to_store(ppo_rl_elements)
         
         if self.args.save_rollout:
             all_query_ids = all_gather(torch.stack([e.query_tensor for e in ppo_rl_elements], dim=0).to(self.trainer.device))

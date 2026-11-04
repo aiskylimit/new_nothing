@@ -158,8 +158,6 @@ Each benchmark prints per-branch ROUGE-L, exact match, and LM loss, plus the mea
 - `branch_embeddings_and_weights.pt`
 - `sreotd_logits_and_modes.pt`
 
-Add `--push-to-hf --hf-model-repo-id <user/model>` on a training run to upload the best checkpoint when training finishes. The same flags on evaluation upload that benchmark's artifacts. The dataset repo defaults to `<hf-model-repo-id>-eval-data`. `--hf-export-merged-branches` also uploads one backbone per branch with that LoRA residual merged in. The token is `--hf-token` or the `HF_TOKEN` environment variable.
-
 ## Sanity Checks
 
 ```bash

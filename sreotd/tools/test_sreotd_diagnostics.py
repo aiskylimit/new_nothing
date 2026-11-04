@@ -5,7 +5,6 @@ Usage (from the repository root): python tools/test_sreotd_diagnostics.py
 import importlib.util
 import os
 import sys
-import tempfile
 import types
 
 import torch
@@ -29,9 +28,6 @@ def _load(qualified, path):
 multi = _load("distillm.multi_lora", "distillm/multi_lora.py")
 losses = _load("distillm.losses", "distillm/losses.py")
 diag = _load("distillm.sreotd_diagnostics", "distillm/sreotd_diagnostics.py")
-hub_spec = importlib.util.spec_from_file_location("hf_hub_manager", "tools/hf_hub_manager.py")
-hub = importlib.util.module_from_spec(hub_spec)
-hub_spec.loader.exec_module(hub)
 
 
 class _Args:
@@ -159,7 +155,7 @@ def test_pad_and_forks():
     print("pad and forks ok")
 
 
-def test_loss_keys_and_artifact_discovery():
+def test_loss_keys():
     teacher = torch.randn(1, 2, 20)
     hidden = torch.randn(1, 2, 3, 8)
     weight = torch.randn(20, 8)
@@ -169,23 +165,12 @@ def test_loss_keys_and_artifact_discovery():
     assert out["Gamma"].shape == (1, 2, 3, 4)
     jsd = diag.token_pairwise_jsd(out["P_m"], torch.tensor([[1.0, 0.0]]))
     assert jsd.shape == (1,)
-    with tempfile.TemporaryDirectory() as root:
-        for name in ("dolly", "self_inst"):
-            folder = os.path.join(root, name)
-            os.makedirs(folder)
-            with open(os.path.join(folder, "branch_generations.jsonl"), "w") as handle:
-                handle.write('{"sample_id": 0}\n')
-        found = hub._benchmark_dirs(root)
-        assert [name for name, _ in found] == ["dolly", "self_inst"]
-        card = hub._dataset_card("owner/repo-eval-data", ["dolly"])
-        assert "sreotd_logits_and_modes.pt" in card
-        assert "owner/repo-eval-data" in card
-    print("loss keys and artifact discovery ok")
+    print("loss keys ok")
 
 
 if __name__ == "__main__":
     test_regions_and_conservation()
     test_merge_transpose_and_orthogonality()
     test_pad_and_forks()
-    test_loss_keys_and_artifact_discovery()
+    test_loss_keys()
     print("all diagnostics checks passed")
