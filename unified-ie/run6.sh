@@ -1,5 +1,6 @@
 #! /bin/bash
-# Three things, about 27-30 h per GPU (start after run5.sh: same GPUs).
+# Three things, about 27-30 h per GPU. Start after run7.sh has trained the 8 teachers again (server reset of
+# 2026-11-04); the references below came from the old teachers.
 # 1. EventKD without BAM, one dataset per task (EE ACE, NER CoNLL03, RE FewRel, where the student is ~7 points
 #    under its teacher): the student learns only that dataset's rows from its one teacher
 #    (DATASET=<name>), constant KD weight 0.9, sfkl, as in the EventKD paper (span layers 25/28 <-> 33/36 as
