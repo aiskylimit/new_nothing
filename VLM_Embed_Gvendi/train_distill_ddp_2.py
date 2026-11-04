@@ -145,6 +145,9 @@ class Trainer:
         
     def run_epoch(self, epoch):
         self.train_data.sampler.set_epoch(epoch)
+        pair_data = getattr(self.train_data.dataset, "train_data", None)
+        if hasattr(pair_data, "set_epoch"):
+            pair_data.set_epoch(epoch)
         losses, contrastive_losses, kd_losses = [], [], []
         kd_rkd_losses, ot_losses, kd_dtw_losses = [], [], []
         kd_mse_losses, kd_penultimate_losses = [], []
