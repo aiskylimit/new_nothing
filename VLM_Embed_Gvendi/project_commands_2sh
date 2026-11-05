@@ -54,8 +54,8 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_grounding.sh &
 # CUDA_VISIBLE_DEVICES=3 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_vqa.sh &
 
-CUDA_VISIBLE_DEVICES=2 bash VLM_Embed_Gvendi/scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_vqa.sh &
-# CUDA_VISIBLE_DEVICES=2 bash VLM_Embed_Gvendi/scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_vqa.sh &
+# CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_vqa.sh &
 
 wait 
 
