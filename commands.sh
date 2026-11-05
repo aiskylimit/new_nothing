@@ -1,4 +1,4 @@
-#2 -0
+#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
 #vlm_ablation_component
 #v1
 
