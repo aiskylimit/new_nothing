@@ -318,23 +318,32 @@ class SCVASICCriterion(nn.Module):
             student_inputs,
             teacher_inputs,
         )
-        scva_kd = self.scva._scva_loss(
-            student_outputs,
-            teacher_outputs,
-            student_inputs,
-            teacher_inputs,
-            layer_pairs=getattr(distiller, "scva_layer_pairs", None),
-            cluster_cache=cluster_cache,
-        )
-        sic_kd = self._sic_loss(
-            distiller,
-            student_outputs,
-            teacher_outputs,
-            student_inputs,
-            teacher_inputs,
-            teacher_logit_positions=teacher_logit_positions,
-            cluster_cache=cluster_cache,
-        )
+        # A zero joint-loss weight is used by component-ablation recipes. Skip
+        # the disabled branch entirely, rather than paying for a loss whose
+        # gradients would later be multiplied by zero. This is particularly
+        # important for SIC because it performs extra intervention forwards.
+        scva_kd = ce.new_zeros(())
+        if self.lambda_v != 0.0:
+            scva_kd = self.scva._scva_loss(
+                student_outputs,
+                teacher_outputs,
+                student_inputs,
+                teacher_inputs,
+                layer_pairs=getattr(distiller, "scva_layer_pairs", None),
+                cluster_cache=cluster_cache,
+            )
+
+        sic_kd = ce.new_zeros(())
+        if self.lambda_sic != 0.0:
+            sic_kd = self._sic_loss(
+                distiller,
+                student_outputs,
+                teacher_outputs,
+                student_inputs,
+                teacher_inputs,
+                teacher_logit_positions=teacher_logit_positions,
+                cluster_cache=cluster_cache,
+            )
 
         total = self.ce_weight * ce + self.lambda_v * scva_kd + self.lambda_sic * sic_kd
         out: Dict[str, torch.Tensor] = {
