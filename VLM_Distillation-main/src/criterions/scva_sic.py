@@ -1,0 +1,541 @@
+"""SCVA + Semantic Intervention Consistency (SIC) distillation.
+
+This criterion keeps the existing SCVA term intact and adds the Semantic
+Intervention Consistency loss from the Overleaf draft.  SCVA clusters define the
+semantic visual regions C_m.  For each cluster, SIC replays the language model
+with that cluster's visual-token embeddings masked, measures the induced
+log-probability shift, projects the shift through each model's token embedding
+matrix, and aligns the resulting semantic directions with cosine distance.
+
+Total loss:
+    L = ce_weight * L_CE + lambda_v * L_SCVA + lambda_sic * L_SIC
+
+The implementation intentionally reuses SCVA's clustering/mapping helpers so the
+new criterion follows the same teacher-cluster/student-grid flow as the existing
+SCVA code.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any, Dict, Optional
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from src.criterions.scva import (
+    IGNORE_INDEX,
+    SCVACriterion,
+    _patch_centers,
+    _last_hidden,
+    _map_teacher_clusters_to_student_onehot,
+)
+
+
+def _embedding_weight(model: Any) -> torch.Tensor:
+    encoder = getattr(model, "encoder", model)
+    if not hasattr(encoder, "get_input_embeddings"):
+        raise RuntimeError("SIC requires models exposing get_input_embeddings().")
+    embeddings = encoder.get_input_embeddings()
+    if embeddings is None or not hasattr(embeddings, "weight"):
+        raise RuntimeError("SIC could not resolve an input embedding matrix.")
+    return embeddings.weight
+
+
+def _drop_visual_inputs(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove raw visual tensors so a forward with inputs_embeds is not overwritten."""
+    dropped = dict(inputs)
+    for key in ("pixel_values", "pixel_values_videos", "images", "videos"):
+        dropped.pop(key, None)
+    return dropped
+
+
+def _slice_batch(inputs: Dict[str, Any], sample_idx: int, batch_size: int) -> Dict[str, Any]:
+    """Best-effort single-sample slice for nested trainer input dictionaries."""
+    sliced: Dict[str, Any] = {}
+    for key, value in inputs.items():
+        if torch.is_tensor(value) and value.ndim > 0 and value.shape[0] == batch_size:
+            sliced[key] = value[sample_idx : sample_idx + 1]
+        elif isinstance(value, list) and len(value) == batch_size:
+            sliced[key] = value[sample_idx : sample_idx + 1]
+        else:
+            sliced[key] = value
+    return sliced
+
+
+def _with_masked_cluster_embeds(
+    inputs: Dict[str, Any],
+    embedding_hidden: torch.Tensor,
+    vision_indices: torch.Tensor,
+    cluster_onehot: torch.Tensor,
+    cluster_idx: int,
+    response_indices: Optional[torch.Tensor] = None,
+) -> Dict[str, Any]:
+    return _with_masked_cluster_embeds_batch(
+        inputs,
+        embedding_hidden,
+        vision_indices,
+        cluster_onehot,
+        [cluster_idx],
+        response_indices=response_indices,
+    )
+
+
+def _repeat_single_sample_inputs(inputs: Dict[str, Any], repeats: int) -> Dict[str, Any]:
+    """Repeat a sliced, single-sample input dictionary along its batch axis."""
+    repeated: Dict[str, Any] = {}
+    for key, value in inputs.items():
+        # Intervention forwards consume logits only. Computing CE for every
+        # masked region is redundant and expensive.
+        if key == "labels":
+            continue
+        if torch.is_tensor(value) and value.ndim > 0:
+            if key == "position_ids" and value.ndim >= 2 and value.shape[1] == 1:
+                dims = [1] * value.ndim
+                dims[1] = repeats
+                repeated[key] = value.repeat(*dims)
+            elif value.shape[0] == 1:
+                dims = [1] * value.ndim
+                dims[0] = repeats
+                repeated[key] = value.repeat(*dims)
+            else:
+                repeated[key] = value
+        elif isinstance(value, list) and len(value) == 1:
+            repeated[key] = value * repeats
+        elif isinstance(value, tuple) and len(value) == 1:
+            repeated[key] = value * repeats
+        else:
+            repeated[key] = value
+    return repeated
+
+
+def _with_masked_cluster_embeds_batch(
+    inputs: Dict[str, Any],
+    embedding_hidden: torch.Tensor,
+    vision_indices: torch.Tensor,
+    cluster_onehot: torch.Tensor,
+    cluster_indices: list[int],
+    response_indices: Optional[torch.Tensor] = None,
+) -> Dict[str, Any]:
+    """Build one decoder batch containing several region interventions."""
+    if not cluster_indices:
+        raise ValueError("SIC intervention batch requires at least one region.")
+
+    masked_inputs = _repeat_single_sample_inputs(
+        _drop_visual_inputs(inputs), len(cluster_indices)
+    )
+    # Keep input_ids as positional metadata. Qwen2-VL needs the original token
+    # IDs plus image_grid_thw to reconstruct per-sample 3D RoPE positions. The
+    # supplied inputs_embeds still determine the actual hidden representations.
+    # FastVLM's local backbone explicitly supports this intervention-only pair.
+    inputs_embeds = embedding_hidden.expand(len(cluster_indices), -1, -1).clone()
+    for batch_idx, cluster_idx in enumerate(cluster_indices):
+        cluster_members = cluster_onehot[:, cluster_idx].to(device=vision_indices.device).bool()
+        if cluster_members.any():
+            positions = vision_indices[cluster_members]
+            inputs_embeds[batch_idx, positions, :] = 0
+    masked_inputs["inputs_embeds"] = inputs_embeds
+    if response_indices is not None:
+        # Both active backbones accept tensor indices here, so the LM head only
+        # materializes logits at assistant-response positions.
+        masked_inputs["logits_to_keep"] = response_indices
+    # Intervention passes only consume logits. Avoid retaining every decoder
+    # hidden state/attention map and disable sparse-SCVA capture for these extra
+    # forwards; the main full-image pass already produced everything SCVA needs.
+    masked_inputs["_vlm_output_attentions"] = False
+    masked_inputs["_vlm_output_hidden_states"] = False
+    masked_inputs["_vlm_disable_scva_capture"] = True
+    masked_inputs["_vlm_attention_backend"] = "sdpa"
+    return masked_inputs
+
+
+def _response_indices(inputs: Dict[str, Any], device: torch.device) -> Optional[torch.Tensor]:
+    labels = inputs.get("labels")
+    if labels is None:
+        return None
+    if labels.ndim == 2:
+        labels = labels[0]
+    idx = labels.to(device=device).ne(IGNORE_INDEX).nonzero(as_tuple=True)[0]
+    return idx if idx.numel() > 0 else None
+
+
+def _semantic_direction(delta_log_probs: torch.Tensor, embedding_weight: torch.Tensor) -> torch.Tensor:
+    """Project intervention-induced log-probability shifts into embedding space."""
+    vocab = min(delta_log_probs.shape[-1], embedding_weight.shape[0])
+    weight = embedding_weight[:vocab].to(delta_log_probs.device)
+    # Reuse the model's BF16/FP16 embedding matrix instead of materializing a
+    # multi-gigabyte FP32 copy for every region intervention.
+    delta = delta_log_probs[..., :vocab].to(dtype=weight.dtype)
+    return (delta @ weight).float()
+
+
+def _align_dims(
+    student_direction: torch.Tensor,
+    teacher_direction: torch.Tensor,
+    projector: Optional[nn.Module] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if projector is not None:
+        target_dtype = next(projector.parameters()).dtype
+        student_direction = projector(student_direction.to(target_dtype)).float()
+        teacher_direction = teacher_direction.to(device=student_direction.device, dtype=torch.float32)
+        return student_direction, teacher_direction
+    dim = min(student_direction.shape[-1], teacher_direction.shape[-1])
+    return student_direction[..., :dim].float(), teacher_direction[..., :dim].float()
+
+
+def _nearest_neighbor_merge_map(cluster_features: torch.Tensor, num_regions: int) -> torch.Tensor:
+    """Greedily merge nearest clusters until exactly ``num_regions`` remain.
+
+    This keeps the operation local to one image and CPU/Python-control-flow only;
+    cluster assignment tensors produced from the returned map stay on the model
+    device.  The mapping is deterministic, which is important for reproducible
+    DDP runs.
+    """
+    n_clusters = int(cluster_features.shape[0])
+    groups = [[idx] for idx in range(n_clusters)]
+    centroids = F.normalize(cluster_features.float(), p=2, dim=-1)
+
+    while len(groups) > num_regions:
+        distance = torch.cdist(centroids, centroids)
+        distance.fill_diagonal_(float("inf"))
+        flat_idx = int(distance.argmin().item())
+        left = flat_idx // distance.shape[1]
+        right = flat_idx % distance.shape[1]
+        if right < left:
+            left, right = right, left
+
+        groups[left].extend(groups[right])
+        del groups[right]
+        centroids = torch.stack([cluster_features[group].float().mean(dim=0) for group in groups], dim=0)
+        centroids = F.normalize(centroids, p=2, dim=-1)
+
+    merge_map = torch.empty(n_clusters, dtype=torch.long, device=cluster_features.device)
+    for new_id, group in enumerate(groups):
+        merge_map[group] = new_id
+    return merge_map
+
+
+def _fixed_region_onehots(
+    teacher_hidden: torch.Tensor,
+    remapped_teacher_labels: torch.Tensor,
+    teacher_grid: tuple[int, int],
+    student_grid: tuple[int, int],
+    n_student_tokens: int,
+    num_regions: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return teacher/student cluster membership with a fixed region dimension.
+
+    DBSCAN can naturally produce a different number of clusters per image. We
+    merge over-produced clusters with nearest-neighbor agglomeration and pad
+    under-produced clusters with empty dummy regions so membership tensors keep
+    a stable shape. Dummy regions are skipped before intervention forwards.
+    """
+    device = remapped_teacher_labels.device
+    valid = remapped_teacher_labels.ge(0)
+    if not valid.any():
+        empty_t = torch.zeros(remapped_teacher_labels.numel(), num_regions, device=device)
+        empty_s = torch.zeros(n_student_tokens, num_regions, device=device)
+        return empty_t, empty_s
+
+    labels = remapped_teacher_labels.clone()
+    n_clusters = int(labels[valid].max().item()) + 1
+
+    if n_clusters > num_regions:
+        coords = _patch_centers(labels.numel(), teacher_grid[0], teacher_grid[1], device)
+        cluster_features = []
+        for cluster_id in range(n_clusters):
+            members = labels.eq(cluster_id)
+            hidden_centroid = teacher_hidden[members].float().mean(dim=0)
+            coord_centroid = coords[members].float().mean(dim=0)
+            cluster_features.append(torch.cat([F.normalize(hidden_centroid, p=2, dim=0), coord_centroid], dim=0))
+        merge_map = _nearest_neighbor_merge_map(torch.stack(cluster_features, dim=0), num_regions)
+        labels[valid] = merge_map[labels[valid]]
+        n_clusters = num_regions
+
+    teacher_onehot = torch.zeros(labels.numel(), num_regions, device=device)
+    if n_clusters > 0:
+        teacher_onehot[valid] = F.one_hot(labels[valid], num_classes=num_regions).float()
+    student_onehot = _map_teacher_clusters_to_student_onehot(
+        labels,
+        teacher_grid,
+        student_grid,
+        n_student_tokens,
+        num_regions,
+    )
+    return teacher_onehot, student_onehot
+
+
+class SCVASICCriterion(nn.Module):
+    """Joint SCVA + SIC criterion using one full forward plus cluster interventions."""
+
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+        self.scva = SCVACriterion(args)
+        self.ce_weight = float(getattr(args, "scva_sic_ce_weight", 1.0))
+        self.lambda_v = float(getattr(args, "scva_sic_lambda_v", 1.0))
+        self.lambda_sic = float(getattr(args, "scva_sic_lambda_sic", 1.0))
+        self.max_clusters = int(getattr(args, "sic_max_clusters", 0))
+        requested_regions = int(getattr(args, "sic_num_regions", 0))
+        if requested_regions <= 0:
+            requested_regions = self.max_clusters if self.max_clusters > 0 else int(getattr(args, "scva_n_clusters", 16))
+        elif self.max_clusters > 0:
+            requested_regions = min(requested_regions, self.max_clusters)
+        self.num_regions = max(requested_regions, 1)
+        self.intervention_batch_size = int(getattr(args, "sic_intervention_batch_size", 4))
+        self.use_projector = bool(getattr(args, "sic_use_projector", False))
+
+    def forward(self, distiller: Any, batch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+        student_inputs = batch["student_inputs"]
+        teacher_inputs = batch.get("teacher_inputs")
+        if teacher_inputs is None:
+            raise RuntimeError("teacher_inputs are missing while running SCVA+SIC.")
+
+        student_outputs = distiller.student(**student_inputs)
+        teacher_logit_positions = None
+        with torch.no_grad():
+            # Keep labels available to sparse-SCVA response-mask bookkeeping,
+            # but tell the wrapper not to compute the unused teacher CE.
+            teacher_forward_inputs = dict(teacher_inputs)
+            teacher_forward_inputs["_vlm_skip_loss"] = True
+            teacher_labels = teacher_inputs.get("labels")
+            if torch.is_tensor(teacher_labels) and teacher_labels.ndim == 2:
+                teacher_logit_positions = teacher_labels.ne(IGNORE_INDEX).any(dim=0).nonzero(as_tuple=True)[0]
+                if teacher_logit_positions.numel() > 0:
+                    # SCVA consumes hidden states and attention, while SIC only
+                    # consumes teacher logits at response positions.
+                    teacher_forward_inputs["logits_to_keep"] = teacher_logit_positions
+            teacher_outputs = distiller.teacher(**teacher_forward_inputs)
+
+        ce = student_outputs.loss
+        if ce is None:
+            raise RuntimeError("Student model did not return CE loss; labels may be missing.")
+
+        cluster_cache = self.scva._build_cluster_cache(
+            student_outputs,
+            teacher_outputs,
+            student_inputs,
+            teacher_inputs,
+        )
+        # A zero joint-loss weight is used by component-ablation recipes. Skip
+        # the disabled branch entirely, rather than paying for a loss whose
+        # gradients would later be multiplied by zero. This is particularly
+        # important for SIC because it performs extra intervention forwards.
+        scva_kd = ce.new_zeros(())
+        if self.lambda_v != 0.0:
+            scva_kd = self.scva._scva_loss(
+                student_outputs,
+                teacher_outputs,
+                student_inputs,
+                teacher_inputs,
+                layer_pairs=getattr(distiller, "scva_layer_pairs", None),
+                cluster_cache=cluster_cache,
+            )
+
+        sic_kd = ce.new_zeros(())
+        if self.lambda_sic != 0.0:
+            sic_kd = self._sic_loss(
+                distiller,
+                student_outputs,
+                teacher_outputs,
+                student_inputs,
+                teacher_inputs,
+                teacher_logit_positions=teacher_logit_positions,
+                cluster_cache=cluster_cache,
+            )
+
+        total = self.ce_weight * ce + self.lambda_v * scva_kd + self.lambda_sic * sic_kd
+        out: Dict[str, torch.Tensor] = {
+            "loss": total,
+            "hard_loss": ce.detach(),
+            "scva_loss": scva_kd.detach(),
+            "sic_loss": sic_kd.detach(),
+        }
+        out.update(self.scva._scalarize_counts(ce))
+        out.update(self._scalarize_sic_counts(ce))
+        return out
+
+    def _scalarize_sic_counts(self, like: torch.Tensor) -> Dict[str, torch.Tensor]:
+        counts = getattr(self, "_last_sic_counts", None) or {}
+        return {f"sic_{key}": like.new_tensor(float(value)) for key, value in counts.items()}
+
+    def _projector(self, distiller: Any) -> Optional[nn.Module]:
+        if not self.use_projector:
+            return None
+        projectors = getattr(distiller, "projectors", None)
+        if projectors is None:
+            raise RuntimeError("SIC projector is enabled but Distiller has no projectors.")
+        if isinstance(projectors, nn.ModuleDict) and "sic" in projectors:
+            return projectors["sic"]
+        if isinstance(projectors, nn.ModuleList) and len(projectors) > 0:
+            return projectors[0]
+        if isinstance(projectors, nn.ModuleDict) and len(projectors) > 0:
+            return next(iter(projectors.values()))
+        raise RuntimeError("SIC projector is enabled but no projector module was created.")
+
+    def _sic_loss(
+        self,
+        distiller: Any,
+        student_outputs,
+        teacher_outputs,
+        student_inputs: Dict[str, Any],
+        teacher_inputs: Dict[str, Any],
+        teacher_logit_positions: Optional[torch.Tensor] = None,
+        cluster_cache: Optional[list[Optional[Dict[str, Any]]]] = None,
+    ) -> torch.Tensor:
+        counts: Dict[str, int] = {
+            "valid": 0,
+            "skipped_mask": 0,
+            "skipped_no_clusters": 0,
+            "skipped_empty_response": 0,
+        }
+        self._last_sic_counts = counts
+
+        s_logits = getattr(student_outputs, "logits", None)
+        t_logits = getattr(teacher_outputs, "logits", None)
+        if s_logits is None or t_logits is None:
+            raise RuntimeError("SIC requires both student and teacher logits.")
+
+        student_hidden0 = student_outputs.hidden_states[0]
+        teacher_hidden0 = teacher_outputs.hidden_states[0]
+        teacher_hidden = _last_hidden(teacher_outputs)
+        teacher_vision_mask = getattr(teacher_outputs, "vision_feature_mask", None)
+        student_vision_mask = getattr(student_outputs, "vision_feature_mask", None)
+        if teacher_vision_mask is None or student_vision_mask is None:
+            counts["skipped_mask"] = int(teacher_hidden.shape[0])
+            return t_logits.new_zeros(())
+
+        s_embed = _embedding_weight(distiller.student)
+        t_embed = _embedding_weight(distiller.teacher)
+        projector = self._projector(distiller)
+
+        sample_losses = []
+        batch_size = int(teacher_hidden.shape[0])
+        for b in range(batch_size):
+            t_resp_idx = _response_indices(_slice_batch(teacher_inputs, b, batch_size), teacher_hidden.device)
+            s_resp_idx = _response_indices(_slice_batch(student_inputs, b, batch_size), teacher_hidden.device)
+            if t_resp_idx is None or s_resp_idx is None:
+                counts["skipped_empty_response"] += 1
+                continue
+
+            region_data = (
+                cluster_cache[b]
+                if cluster_cache is not None and b < len(cluster_cache)
+                else self.scva._cluster_sample_regions(
+                    teacher_hidden,
+                    teacher_vision_mask,
+                    student_vision_mask,
+                    teacher_inputs,
+                    student_inputs,
+                    b,
+                )
+            )
+            if region_data is None:
+                counts["skipped_mask"] += 1
+                continue
+
+            t_v_idx = region_data["teacher_vision_indices"]
+            s_v_idx = region_data["student_vision_indices"]
+            n_t_v = int(t_v_idx.numel())
+            n_s_v = int(s_v_idx.numel())
+
+            with torch.no_grad():
+                teacher_cluster_onehot, student_cluster_onehot = _fixed_region_onehots(
+                    teacher_hidden[b, t_v_idx].float(),
+                    region_data["teacher_labels"],
+                    region_data["teacher_grid"],
+                    region_data["student_grid"],
+                    n_s_v,
+                    self.num_regions,
+                )
+
+            n_clusters = int(teacher_cluster_onehot.shape[-1])
+            if n_clusters == 0 or student_cluster_onehot.sum().item() == 0:
+                counts["skipped_no_clusters"] += 1
+                continue
+
+            T_aligned = min(int(t_resp_idx.numel()), int(s_resp_idx.numel()))
+            t_resp = t_resp_idx[:T_aligned]
+            s_resp = s_resp_idx[:T_aligned]
+
+            # SIC only uses assistant-response positions. Slicing logits before
+            # FP32 log-softmax avoids allocating [1, full_seq_len, vocab] tensors.
+            if teacher_logit_positions is not None and teacher_logit_positions.numel() > 0:
+                position_lookup = torch.full(
+                    (teacher_inputs["labels"].shape[-1],),
+                    -1,
+                    dtype=torch.long,
+                    device=t_resp.device,
+                )
+                position_lookup[teacher_logit_positions.to(t_resp.device)] = torch.arange(
+                    teacher_logit_positions.numel(), device=t_resp.device
+                )
+                t_logit_idx = position_lookup[t_resp]
+            else:
+                t_logit_idx = t_resp
+            t_full_log_probs = F.log_softmax(t_logits[b, t_logit_idx].float(), dim=-1)
+            s_full_log_probs = F.log_softmax(s_logits[b, s_resp].float(), dim=-1)
+
+            # u_t: confidence of the teacher's full-image next-token distribution.
+            t_probs_resp = t_full_log_probs.exp()
+            entropy = -(t_probs_resp * t_full_log_probs).sum(dim=-1)
+            u = (-entropy / max(math.log(max(t_logits.shape[-1], 2)), 1e-6)).exp()
+
+            t_one = _slice_batch(teacher_inputs, b, batch_size)
+            s_one = _slice_batch(student_inputs, b, batch_size)
+            active_regions = [
+                m
+                for m in range(self.num_regions)
+                if teacher_cluster_onehot[:, m].bool().any()
+                or student_cluster_onehot[:, m].bool().any()
+            ]
+            region_batch_size = (
+                len(active_regions)
+                if self.intervention_batch_size <= 0
+                else self.intervention_batch_size
+            )
+            cluster_losses = []
+            for start in range(0, len(active_regions), region_batch_size):
+                region_indices = active_regions[start : start + region_batch_size]
+                t_masked_inputs = _with_masked_cluster_embeds_batch(
+                    t_one,
+                    teacher_hidden0[b : b + 1],
+                    t_v_idx,
+                    teacher_cluster_onehot,
+                    region_indices,
+                    response_indices=t_resp,
+                )
+                s_masked_inputs = _with_masked_cluster_embeds_batch(
+                    s_one,
+                    student_hidden0[b : b + 1],
+                    s_v_idx,
+                    student_cluster_onehot,
+                    region_indices,
+                    response_indices=s_resp,
+                )
+
+                with torch.no_grad():
+                    t_masked_outputs = distiller.teacher(**t_masked_inputs)
+                s_masked_outputs = distiller.student(**s_masked_inputs)
+
+                t_masked_log_probs = F.log_softmax(t_masked_outputs.logits.float(), dim=-1)
+                s_masked_log_probs = F.log_softmax(s_masked_outputs.logits.float(), dim=-1)
+
+                t_delta = t_full_log_probs.unsqueeze(0) - t_masked_log_probs
+                s_delta = s_full_log_probs.unsqueeze(0) - s_masked_log_probs
+                t_direction = _semantic_direction(t_delta, t_embed)
+                s_direction = _semantic_direction(s_delta, s_embed)
+                s_direction, t_direction = _align_dims(s_direction, t_direction, projector)
+
+                cosine_loss = 1.0 - F.cosine_similarity(s_direction, t_direction, dim=-1, eps=1e-6)
+                cluster_loss = (u.to(cosine_loss.device).unsqueeze(0) * cosine_loss).sum()
+                cluster_losses.append(cluster_loss)
+
+            if cluster_losses:
+                sample_losses.append(torch.stack(cluster_losses).sum() / u.sum().clamp_min(1e-6))
+                counts["valid"] += 1
+
+        if not sample_losses:
+            return t_logits.new_zeros(())
+        return torch.stack(sample_losses).mean()

@@ -98,7 +98,7 @@ class TrainingArguments(TrainingArguments):
     gc_dynamic_limit: int = field(default=125, metadata={"help": "gc_chunk default limit - (128, 125) sized matrices works for Qwen2b. gc_dynamic_limit would be 125 and gc_p|q_chunk_size would be 128"})
     #!new kd loss weight
     kd_weight: float = field(default=0.01, metadata={"help": "weight of kd loss in total loss (used by `default` criterion)"})
-    kd_loss_type: str = field(default="ce_only", metadata={"help": "kd criterion: one of {ce_only, default, default_distillation, emkd, em_kd, sre, joint, unit_aligned, scva, cgkd, scva_cgkd, draft, mcw_kd, dskd_v2_with_eta}"})
+    kd_loss_type: str = field(default="ce_only", metadata={"help": "kd criterion: one of {ce_only, default, default_distillation, emkd, em_kd, sre, joint, unit_aligned, scva, cgkd, scva_cgkd, scva_sic, draft, mcw_kd, dskd_v2_with_eta}"})
     # dwa-kd loss weight/config
     ce_rate: float = field(default=1.0, metadata={"help": "DWA-KD supervised CE loss weight"})
     kd_rate: float = field(default=1.0, metadata={"help": "DWA-KD dual-space KD loss weight"})
@@ -182,6 +182,14 @@ class TrainingArguments(TrainingArguments):
     scva_cgkd_ce_weight: float = field(default=1.0, metadata={"help": "L_CE coefficient in the SCVA+CGKD joint loss (draft notation)."})
     scva_cgkd_lambda_v: float = field(default=1.0, metadata={"help": "λ_v: weight on SCVA term in the SCVA+CGKD joint loss."})
     scva_cgkd_lambda_g: float = field(default=1.0, metadata={"help": "λ_g: weight on CGKD term in the SCVA+CGKD joint loss."})
+    # SCVA + Semantic Intervention Consistency (SIC)
+    scva_sic_ce_weight: float = field(default=1.0, metadata={"help": "L_CE coefficient in the SCVA+SIC joint loss."})
+    scva_sic_lambda_v: float = field(default=1.0, metadata={"help": "Weight on the SCVA term in the SCVA+SIC joint loss."})
+    scva_sic_lambda_sic: float = field(default=1.0, metadata={"help": "Weight on the SIC term in the SCVA+SIC joint loss."})
+    sic_num_regions: int = field(default=16, metadata={"help": "Fixed number of semantic regions/interventions per image for SIC."})
+    sic_max_clusters: int = field(default=0, metadata={"help": "Optional upper bound for SIC regions; <=0 disables the cap."})
+    sic_intervention_batch_size: int = field(default=4, metadata={"help": "Number of SIC region interventions evaluated in each teacher/student forward; <=0 batches every non-empty region."})
+    sic_use_projector: bool = field(default=True, metadata={"help": "Project student SIC directions into the teacher embedding dimension."})
     ds_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
     deepspeed_config: str = field(default=None, metadata={"help": "DeepSpeed config json file path"})
     # new args for span loss

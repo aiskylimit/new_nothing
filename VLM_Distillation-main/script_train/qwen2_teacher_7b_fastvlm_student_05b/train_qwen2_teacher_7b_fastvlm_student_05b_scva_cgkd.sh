@@ -13,8 +13,8 @@ RUN_NAME="${RUN_NAME:-qwen2_teacher_7b_fastvlm_student_05b_scva_cgkd}"
 OUTPUT_DIR="${PROJECT_DIR}/outputs/${RUN_NAME}"
 PERCENT_DATA="${PERCENT_DATA:-1.0}"
 PER_DEVICE_BS="${PER_DEVICE_BS:-4}"
-GRAD_ACCUM="${GRAD_ACCUM:-8}"
-DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"
+GRAD_ACCUM="${GRAD_ACCUM:-1}"
+DATALOADER_WORKERS="${DATALOADER_WORKERS:-4}"
 MASTER_PORT="${MASTER_PORT:-29501}"
 
 cd "${PROJECT_DIR}"
@@ -46,6 +46,7 @@ torchrun \
   --save_total_limit 2 \
   --logging_steps 50 \
   --dataloader_num_workers "${DATALOADER_WORKERS}" \
+  --train_sampling_strategy group_by_length \
   --max_len 2048 \
   --image_resolution low \
   --resume_from none \

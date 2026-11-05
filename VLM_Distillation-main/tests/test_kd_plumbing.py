@@ -396,6 +396,16 @@ class KDPlumbingTests(unittest.TestCase):
                 distiller.training_args = SimpleNamespace(kd_loss_type=kd_loss_type)
                 self.assertTrue(distiller._needs_attention_outputs())
 
+    def test_scva_family_does_not_request_vision_attention(self):
+        from src.distiller import Distiller
+
+        distiller = object.__new__(Distiller)
+        distiller.use_sparse_scva_attention = False
+        for kd_loss_type in ("sre", "scva", "scva_cgkd", "scva_sic", "sic", "draft"):
+            with self.subTest(kd_loss_type=kd_loss_type):
+                distiller.training_args = SimpleNamespace(kd_loss_type=kd_loss_type)
+                self.assertFalse(distiller._needs_vision_attention_outputs())
+
     def test_vlm_forward_respects_disabled_attention_outputs(self):
         from src.model.model import VLMModel
 
@@ -416,6 +426,69 @@ class KDPlumbingTests(unittest.TestCase):
 
         self.assertFalse(encoder.forward_kwargs["output_attentions"])
         self.assertTrue(encoder.forward_kwargs["output_hidden_states"])
+
+    def test_vlm_forward_allows_lightweight_intervention_outputs(self):
+        from src.model.model import VLMModel
+
+        class RecordingEncoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = torch.nn.Parameter(torch.ones(()))
+                self.config = SimpleNamespace()
+                self.forward_kwargs = None
+
+            def forward(self, **kwargs):
+                self.forward_kwargs = kwargs
+                return kwargs
+
+        encoder = RecordingEncoder()
+        model = VLMModel(encoder, output_attentions=True)
+        model(
+            input_ids=torch.ones(1, 2, dtype=torch.long),
+            _vlm_output_attentions=False,
+            _vlm_output_hidden_states=False,
+            _vlm_disable_scva_capture=True,
+        )
+
+        self.assertFalse(encoder.forward_kwargs["output_attentions"])
+        self.assertFalse(encoder.forward_kwargs["output_hidden_states"])
+        self.assertNotIn("_vlm_disable_scva_capture", encoder.forward_kwargs)
+
+    def test_vlm_forward_temporarily_uses_sdpa_for_intervention(self):
+        from src.model.model import VLMModel
+
+        class LanguageModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.config = SimpleNamespace(
+                    _attn_implementation="eager",
+                    attn_implementation="eager",
+                )
+
+        class RecordingEncoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = torch.nn.Parameter(torch.ones(()))
+                self.config = SimpleNamespace()
+                self.model = torch.nn.Module()
+                self.model.language_model = LanguageModel()
+                self.backend_during_forward = None
+
+            def forward(self, **kwargs):
+                self.backend_during_forward = self.model.language_model.config._attn_implementation
+                return kwargs
+
+        encoder = RecordingEncoder()
+        model = VLMModel(encoder, output_attentions=True)
+        model(
+            input_ids=torch.ones(1, 2, dtype=torch.long),
+            _vlm_output_attentions=False,
+            _vlm_disable_scva_capture=True,
+            _vlm_attention_backend="sdpa",
+        )
+
+        self.assertEqual(encoder.backend_during_forward, "sdpa")
+        self.assertEqual(encoder.model.language_model.config._attn_implementation, "eager")
 
     def test_attention_backend_defaults_to_sdpa_except_fastvlm(self):
         from src.model.model import VLMModel
@@ -712,6 +785,72 @@ class KDPlumbingTests(unittest.TestCase):
         self.assertEqual(criterion.kmeans_iters, 15)
         self.assertEqual(criterion.attention_layer, -2)
         self.assertEqual(criterion.min_vision_tokens, 8)
+
+    def test_scva_sic_joint_builds_and_reads_arguments(self):
+        from src.criterions import SCVASICCriterion, build_criterion
+
+        args = SimpleNamespace(
+            kd_loss_type="scva_sic",
+            scva_sic_ce_weight=0.7,
+            scva_sic_lambda_v=0.2,
+            scva_sic_lambda_sic=0.4,
+            sic_num_regions=12,
+            sic_max_clusters=8,
+            sic_use_projector=True,
+        )
+        criterion = build_criterion(args)
+
+        self.assertIsInstance(criterion, SCVASICCriterion)
+        self.assertEqual(criterion.ce_weight, 0.7)
+        self.assertEqual(criterion.lambda_v, 0.2)
+        self.assertEqual(criterion.lambda_sic, 0.4)
+        self.assertEqual(criterion.num_regions, 8)
+        self.assertTrue(criterion.use_projector)
+
+    def test_scva_sic_masked_inputs_replace_ids_and_visual_tensors(self):
+        from src.criterions.scva_sic import _with_masked_cluster_embeds
+
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "pixel_values": torch.randn(1, 3, 2, 2),
+            "attention_mask": torch.ones(1, 4, dtype=torch.long),
+        }
+        hidden = torch.ones(1, 4, 3)
+        masked = _with_masked_cluster_embeds(
+            inputs,
+            hidden,
+            vision_indices=torch.tensor([1, 2]),
+            cluster_onehot=torch.tensor([[1.0, 0.0], [0.0, 1.0]]),
+            cluster_idx=0,
+        )
+
+        torch.testing.assert_close(masked["input_ids"], inputs["input_ids"])
+        self.assertNotIn("pixel_values", masked)
+        self.assertFalse(masked["_vlm_output_attentions"])
+        self.assertFalse(masked["_vlm_output_hidden_states"])
+        self.assertTrue(masked["_vlm_disable_scva_capture"])
+        self.assertEqual(masked["_vlm_attention_backend"], "sdpa")
+        torch.testing.assert_close(masked["inputs_embeds"][:, 1], torch.zeros(1, 3))
+        torch.testing.assert_close(masked["inputs_embeds"][:, 2], torch.ones(1, 3))
+
+    def test_scva_sic_auto_creates_named_projector(self):
+        from src.distiller import Distiller
+
+        distiller = Distiller.__new__(Distiller)
+        torch.nn.Module.__init__(distiller)
+        distiller.student_hidden_dim = 4
+        distiller.teacher_hidden_dim = 6
+        distiller.training_args = SimpleNamespace(
+            kd_loss_type="scva_sic",
+            sic_use_projector=True,
+            teacher_layer_mapping=[],
+        )
+        distiller.model_args = SimpleNamespace(projector_config_path=None, proj_dim=3)
+
+        distiller.set_projector()
+
+        self.assertEqual(set(distiller.projectors), {"sic"})
+        self.assertEqual(tuple(distiller.projectors["sic"].weight.shape), (6, 4))
 
     def test_scva_resolves_layer_pairs_once(self):
         from src.model.scva_attention import resolve_layer_pairs

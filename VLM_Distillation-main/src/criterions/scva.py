@@ -37,11 +37,11 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, Optional
 
-import numpy as np
+import cupy as cp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from sklearn.cluster import DBSCAN
+from cuml.cluster import DBSCAN
 
 from src.model.scva_attention import resolve_layer_pairs
 
@@ -149,7 +149,7 @@ def _vision_distance_matrix(
     grid_rows: int,
     grid_cols: int,
     spatial_weight: float,
-) -> np.ndarray:
+) -> torch.Tensor:
     """Distance matrix matching span_propose_attn: cosine distance + spatial distance."""
     hidden_norm = F.normalize(hidden_states.float(), p=2, dim=-1)
     cosine_distance = 1.0 - hidden_norm @ hidden_norm.T
@@ -160,7 +160,7 @@ def _vision_distance_matrix(
     total = (total + total.T) / 2
     total = total.clamp_min(0)
     total.fill_diagonal_(0)
-    return total.detach().cpu().numpy().astype(np.float64)
+    return total.detach().contiguous()
 
 
 def _cluster_vision_tokens_dbscan(
@@ -175,17 +175,38 @@ def _cluster_vision_tokens_dbscan(
         return torch.zeros(hidden_states.size(0), dtype=torch.long, device=hidden_states.device)
 
     distance_matrix = _vision_distance_matrix(hidden_states, grid_rows, grid_cols, spatial_weight)
-    upper = distance_matrix[np.triu_indices_from(distance_matrix, k=1)]
-    if upper.size == 0:
-        labels = np.zeros(hidden_states.size(0), dtype=np.int64)
+    if not distance_matrix.is_cuda:
+        raise RuntimeError("SCVA cuML DBSCAN requires CUDA hidden states.")
+    upper_indices = torch.triu_indices(
+        distance_matrix.shape[0],
+        distance_matrix.shape[1],
+        offset=1,
+        device=distance_matrix.device,
+    )
+    upper = distance_matrix[upper_indices[0], upper_indices[1]]
+    if upper.numel() == 0:
+        labels = torch.zeros(hidden_states.size(0), dtype=torch.long, device=hidden_states.device)
     else:
-        eps = float(np.percentile(upper, eps_percentile))
+        eps = float(torch.quantile(upper, float(eps_percentile) / 100.0).item())
         min_samples = max(1, min(int(min_samples), hidden_states.size(0)))
-        labels = DBSCAN(eps=eps, min_samples=min_samples, metric="precomputed").fit_predict(distance_matrix)
+        with cp.cuda.Device(distance_matrix.device.index):
+            cupy_distances = cp.from_dlpack(distance_matrix)
+            cupy_labels = DBSCAN(
+                eps=eps,
+                min_samples=min_samples,
+                metric="precomputed",
+                algorithm="brute",
+                output_type="cupy",
+                calc_core_sample_indices=False,
+            ).fit_predict(cupy_distances)
+            labels = torch.utils.dlpack.from_dlpack(cupy_labels).to(
+                device=hidden_states.device,
+                dtype=torch.long,
+            )
 
-        if np.all(labels == -1):
-            labels = np.zeros(hidden_states.size(0), dtype=np.int64)
-    return torch.tensor(labels, dtype=torch.long, device=hidden_states.device)
+        if bool(labels.eq(-1).all()):
+            labels = torch.zeros_like(labels)
+    return labels
 
 
 def _cluster_onehot_from_labels(labels: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -305,6 +326,82 @@ class SCVACriterion(nn.Module):
         counts = getattr(self, "_last_scva_counts", None) or {}
         return {f"scva_{k}": like.new_tensor(float(v)) for k, v in counts.items()}
 
+    def _cluster_sample_regions(
+        self,
+        teacher_hidden: torch.Tensor,
+        teacher_vision_mask: torch.Tensor,
+        student_vision_mask: torch.Tensor,
+        teacher_inputs: Dict[str, Any],
+        student_inputs: Dict[str, Any],
+        sample_idx: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Cluster one sample once and retain both teacher and student mappings."""
+        t_v_mask = teacher_vision_mask[sample_idx].to(device=teacher_hidden.device, dtype=torch.bool)
+        s_v_mask = student_vision_mask[sample_idx].to(device=teacher_hidden.device, dtype=torch.bool)
+        if t_v_mask.sum().item() < self.min_vision_tokens or s_v_mask.sum().item() < self.min_vision_tokens:
+            return None
+
+        t_v_idx = t_v_mask.nonzero(as_tuple=True)[0]
+        s_v_idx = s_v_mask.nonzero(as_tuple=True)[0]
+        n_t_v = int(t_v_idx.numel())
+        n_s_v = int(s_v_idx.numel())
+
+        with torch.no_grad():
+            teacher_grid = _grid_from_inputs(teacher_inputs, sample_idx, n_t_v)
+            student_grid = _grid_from_inputs(student_inputs, sample_idx, n_s_v)
+            cluster_labels = _cluster_vision_tokens_dbscan(
+                teacher_hidden[sample_idx, t_v_idx].float(),
+                teacher_grid[0],
+                teacher_grid[1],
+                self.spatial_weight,
+                self.dbscan_min_samples,
+                self.dbscan_eps_percentile,
+            )
+            teacher_cluster_onehot, remapped_labels = _cluster_onehot_from_labels(cluster_labels)
+            student_cluster_onehot = _map_teacher_clusters_to_student_onehot(
+                remapped_labels,
+                teacher_grid,
+                student_grid,
+                n_s_v,
+                teacher_cluster_onehot.shape[-1],
+            )
+
+        return {
+            "teacher_vision_indices": t_v_idx,
+            "student_vision_indices": s_v_idx,
+            "teacher_grid": teacher_grid,
+            "student_grid": student_grid,
+            "teacher_labels": remapped_labels,
+            "teacher_onehot": teacher_cluster_onehot,
+            "student_onehot": student_cluster_onehot,
+        }
+
+    def _build_cluster_cache(
+        self,
+        student_outputs,
+        teacher_outputs,
+        student_inputs: Dict[str, Any],
+        teacher_inputs: Dict[str, Any],
+    ) -> list[Optional[Dict[str, Any]]]:
+        """Build reusable SCVA/SIC region data for one model batch."""
+        teacher_hidden = _last_hidden(teacher_outputs)
+        teacher_vision_mask = getattr(teacher_outputs, "vision_feature_mask", None)
+        student_vision_mask = getattr(student_outputs, "vision_feature_mask", None)
+        cache: list[Optional[Dict[str, Any]]] = [None] * int(teacher_hidden.shape[0])
+        if teacher_vision_mask is None or student_vision_mask is None:
+            return cache
+
+        for sample_idx in range(teacher_hidden.shape[0]):
+            cache[sample_idx] = self._cluster_sample_regions(
+                teacher_hidden,
+                teacher_vision_mask,
+                student_vision_mask,
+                teacher_inputs,
+                student_inputs,
+                sample_idx,
+            )
+        return cache
+
     def _scva_loss(
         self,
         student_outputs,
@@ -312,6 +409,7 @@ class SCVACriterion(nn.Module):
         student_inputs: Dict[str, Any],
         teacher_inputs: Dict[str, Any],
         layer_pairs: Optional[list[tuple[int, int]]] = None,
+        cluster_cache: Optional[list[Optional[Dict[str, Any]]]] = None,
     ) -> torch.Tensor:
         counts: Dict[str, int] = {
             "valid": 0,
@@ -361,14 +459,24 @@ class SCVACriterion(nn.Module):
 
         sample_losses = []
         for b in range(teacher_hidden.shape[0]):
-            t_v_mask = teacher_vision_mask[b].to(device=teacher_hidden.device, dtype=torch.bool)
-            s_v_mask = student_vision_mask[b].to(device=teacher_hidden.device, dtype=torch.bool)
-            if t_v_mask.sum().item() < self.min_vision_tokens or s_v_mask.sum().item() < self.min_vision_tokens:
+            region_data = (
+                cluster_cache[b]
+                if cluster_cache is not None and b < len(cluster_cache)
+                else self._cluster_sample_regions(
+                    teacher_hidden,
+                    teacher_vision_mask,
+                    student_vision_mask,
+                    teacher_inputs,
+                    student_inputs,
+                    b,
+                )
+            )
+            if region_data is None:
                 counts["skipped_mask"] += 1
                 continue
 
-            t_v_idx = t_v_mask.nonzero(as_tuple=True)[0]
-            s_v_idx = s_v_mask.nonzero(as_tuple=True)[0]
+            t_v_idx = region_data["teacher_vision_indices"]
+            s_v_idx = region_data["student_vision_indices"]
             n_t_v = int(t_v_idx.numel())
             n_s_v = int(s_v_idx.numel())
 
@@ -387,29 +495,8 @@ class SCVACriterion(nn.Module):
                 counts["skipped_empty_student_response"] += 1
                 continue
 
-            # Cluster teacher vision-token hidden states using the same
-            # semantic + spatial distance idea as span_propose_attn.py, then
-            # map teacher cluster membership onto the student patch grid.
-            # Clustering is done once per sample and shared across all layer pairs.
-            with torch.no_grad():
-                teacher_grid = _grid_from_inputs(teacher_inputs, b, n_t_v)
-                student_grid = _grid_from_inputs(student_inputs, b, n_s_v)
-                cluster_labels = _cluster_vision_tokens_dbscan(
-                    teacher_hidden[b, t_v_idx].float(),
-                    teacher_grid[0],
-                    teacher_grid[1],
-                    self.spatial_weight,
-                    self.dbscan_min_samples,
-                    self.dbscan_eps_percentile,
-                )
-                teacher_cluster_onehot, remapped_labels = _cluster_onehot_from_labels(cluster_labels)
-                student_cluster_onehot = _map_teacher_clusters_to_student_onehot(
-                    remapped_labels,
-                    teacher_grid,
-                    student_grid,
-                    n_s_v,
-                    teacher_cluster_onehot.shape[-1],
-                )
+            teacher_cluster_onehot = region_data["teacher_onehot"]
+            student_cluster_onehot = region_data["student_onehot"]
             if teacher_cluster_onehot.shape[-1] == 0 or student_cluster_onehot.sum().item() == 0:
                 counts["skipped_no_clusters"] += 1
                 continue

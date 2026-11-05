@@ -45,6 +45,7 @@ from rouge_metric import compute_metrics
 
 from peft import PeftModel
 from eval_loop import check_gen_backend, evaluate, evaluate_dev_and_test
+from mto import TaskWeighting, task_rows
 
 torch.set_num_threads(4)
 
@@ -219,12 +220,24 @@ def pt_loss(args, model, model_batch, no_model_batch):
     return lm_loss
 
 
-def get_distil_loss(args, teacher_logits, no_model_batch, logits):
+def teacher_gold_prob(teacher_logits, label):
+    """--kd-token-weight teacher: the teacher's probability of the gold token at each label position, 0 where
+    the label is -100. Under no_grad: a weight, not a path for gradients."""
+    with torch.no_grad():
+        t = teacher_logits.float()
+        logp = t.gather(-1, label.clamp(min=0).unsqueeze(-1)).squeeze(-1) - torch.logsumexp(t, dim=-1)
+        return logp.exp() * (label != -100)
+
+
+def get_distil_loss(args, teacher_logits, no_model_batch, logits, token_weight=None):
     if args.model_parallel:
         raise NotImplementedError
+    elif token_weight is not None and not ("sfkl" in args.type or "fkl" in args.type or args.type == "kd"):
+        raise NotImplementedError("--kd-token-weight works with fkl and sfkl only")
     else:
         if "sfkl" in args.type:
-            distil_loss = skewed_forward_kl(logits, teacher_logits, no_model_batch, lam=args.skew_alpha)
+            distil_loss = skewed_forward_kl(logits, teacher_logits, no_model_batch, lam=args.skew_alpha,
+                                            token_weight=token_weight)
         elif "srkl" in args.type:
             distil_loss = skewed_reverse_kl(logits, teacher_logits, no_model_batch, lam=args.skew_alpha)
         elif "jsd" in args.type:
@@ -232,7 +245,7 @@ def get_distil_loss(args, teacher_logits, no_model_batch, logits):
         elif "tvd" in args.type:
             distil_loss = tv_distance(logits, teacher_logits, no_model_batch)
         elif "fkl" in args.type or args.type == "kd":
-            distil_loss = forward_kl(logits, teacher_logits, no_model_batch)
+            distil_loss = forward_kl(logits, teacher_logits, no_model_batch, token_weight=token_weight)
         elif "rkl" in args.type:
             distil_loss = reverse_kl(logits, teacher_logits, no_model_batch)
         elif "csd" in args.type:
@@ -494,6 +507,39 @@ def compute_hidden_span_loss(s_hidden_state, t_hidden_state, All_Indices,
 
     return span_loss
 
+
+def subset_hidden(hidden, rows):
+    """a hidden-state list (None at the layers not kept) restricted to some rows"""
+    return [None if h is None else h[rows] for h in hidden]
+
+
+def task_losses(args, loss_func, logits, label, rows_by_task, kd_ratio, teacher_logits=None,
+                s_hidden=None, t_hidden=None, model_batch=None, no_model_batch=None):
+    """--mto: {task: (task loss, its KD part)}, each task's rows taken alone, with the terms and kd_ratio of
+    the batch loss in finetune(). CE and KD are token means over the task's rows; the span loss pairs spans
+    within a row only, so on one task's rows it is that task's span loss (inside the KD part, or added on its
+    own with --span-schedule constant)."""
+    out = {}
+    for t, r in rows_by_task.items():
+        lab = label[r]
+        lm = loss_func(logits[r].float().reshape(-1, logits.shape[-1]), lab.reshape(-1))
+        if teacher_logits is None:
+            out[t] = (lm, None)
+            continue
+        kd = get_distil_loss(args, teacher_logits[r], {"label": lab}, logits[r])
+        span_term = 0.0
+        if t_hidden is not None:
+            span = args.w_span_loss * compute_overall_span_loss(
+                model_batch["attention_mask"][r], subset_hidden(s_hidden, r), subset_hidden(t_hidden, r),
+                no_model_batch["offset_mapping"][r], [no_model_batch["span_offsets"][i] for i in r.tolist()], args)
+            if args.span_schedule == "constant":
+                span_term = span
+            else:
+                kd = kd + span
+        out[t] = ((1 - kd_ratio) * lm + kd_ratio * kd + span_term, kd)
+    return out
+
+
 def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, optimizer: AdamW, lr_scheduler, dataset, device, teacher_model=None):
     print_rank("Start Fine-tuning")
 
@@ -544,7 +590,25 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
     for layer in model.module.get_decoder().layers:
         h_layer = layer.register_forward_hook(capture_hook_fn)
         hook_handles.append(h_layer)
-    
+
+    mto = TaskWeighting(args, {r.get("task") for r in dataset["train"].raw}, device) if args.mto != "none" else None
+
+    def famo_rescore():
+        """this step's micro-batches scored again with the updated model, with the teacher outputs kept from
+        the step: {task: [task loss per micro-batch]}"""
+        curr = {}
+        with torch.no_grad():
+            for mb, nmb, win, lab, rows, kdr, t_logits, t_hidden in mto.cache:
+                student_captured_hidden.clear()
+                student_captured_hidden.append(None)
+                lg = model(**mb, use_cache=False, logits_to_keep=win).logits
+                per_task = task_losses(args, loss_func, lg, lab, rows, kdr, t_logits,
+                                       list(student_captured_hidden), t_hidden, mb, nmb)
+                for t, (l, _) in per_task.items():
+                    curr.setdefault(t, []).append(l)
+        mto.cache.clear()
+        return curr
+
     for epoch in range(args.epochs):
         sampler.set_epoch(epoch)
 
@@ -614,43 +678,90 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
             outputs = model(**model_batch, use_cache=False, logits_to_keep=window)
             
             logits = outputs.logits
-            if args.model_parallel:
-                raise NotImplementedError
-            else:
-                lm_loss = loss_func(logits.float().reshape(-1, logits.shape[-1]), label_batch["label"].reshape(-1))
-            
-            if teacher_model is not None:
-                # --w-span-loss 0 skips the span loss and the teacher's hidden states
+            if mto is not None:
+                # --mto: the loss of each task's rows (CE, KD, span loss as below), combined by mto.py
+                rows_by_task = task_rows(no_model_batch["task"], label.device)
                 use_span = args.w_span_loss > 0
-                with torch.no_grad():
-                    teacher_model.eval()
-                    teacher_logits, teacher_hidden = teacher_forward(args, teacher_model, model_batch,
-                                                                     no_model_batch["dataset"], window, use_span)
-
-                distil_loss = get_distil_loss(args, teacher_logits, label_batch, logits)
-
-                if use_span:
-                    spans_offsets = no_model_batch["span_offsets"]
-                    offset_mapping = no_model_batch["offset_mapping"]
-
-                    span_loss = compute_overall_span_loss(model_batch['attention_mask'],
-                                                          student_captured_hidden, teacher_hidden,
-                                                          offset_mapping, spans_offsets, args)
-                    span_loss = args.w_span_loss * span_loss
-                    distil_loss = distil_loss + span_loss
-                # loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * (distil_loss + span_loss)
-                # BAM teacher annealing: the target moves from the teacher to the gold labels as training goes
                 kd_ratio = 1 - global_step / args.total_iters if args.kd_schedule == "anneal" else args.kd_ratio
-                loss = (1 - kd_ratio) * lm_loss + kd_ratio * distil_loss
+                teacher_logits, teacher_hidden = None, None
+                if teacher_model is not None:
+                    with torch.no_grad():
+                        teacher_model.eval()
+                        teacher_logits, teacher_hidden = teacher_forward(args, teacher_model, model_batch,
+                                                                         no_model_batch["dataset"], window, use_span)
+                    if not use_span:
+                        teacher_hidden = None
+                per_task = task_losses(args, loss_func, logits, label_batch["label"], rows_by_task, kd_ratio,
+                                       teacher_logits, list(student_captured_hidden), teacher_hidden,
+                                       model_batch, no_model_batch)
+                loss = mto.combine({t: l for t, (l, _) in per_task.items()})
+                if teacher_model is not None:   # logged as ds_loss: the mean of the task KD parts
+                    distil_loss = torch.stack([torch.as_tensor(kd, dtype=torch.float, device=label.device).detach()
+                                               for _, kd in per_task.values()]).mean()
+                if mto.mode == "famo":
+                    mto.cache.append((model_batch, no_model_batch, window, label_batch["label"], rows_by_task,
+                                      kd_ratio, teacher_logits, teacher_hidden))
             else:
-                loss = lm_loss
+                if args.model_parallel:
+                    raise NotImplementedError
+                else:
+                    lm_loss = loss_func(logits.float().reshape(-1, logits.shape[-1]), label_batch["label"].reshape(-1))
+            
+                if teacher_model is not None:
+                    # --w-span-loss 0 skips the span loss and the teacher's hidden states
+                    use_span = args.w_span_loss > 0
+                    with torch.no_grad():
+                        teacher_model.eval()
+                        teacher_logits, teacher_hidden = teacher_forward(args, teacher_model, model_batch,
+                                                                         no_model_batch["dataset"], window, use_span)
+
+                    token_weight = None
+                    if args.kd_token_weight == "teacher":
+                        token_weight = teacher_gold_prob(teacher_logits, label_batch["label"])
+                    distil_loss = get_distil_loss(args, teacher_logits, label_batch, logits, token_weight)
+
+                    span_term = 0.0  # --span-schedule constant: the span loss outside the KD weight
+                    if use_span:
+                        spans_offsets = no_model_batch["span_offsets"]
+                        offset_mapping = no_model_batch["offset_mapping"]
+
+                        span_loss = compute_overall_span_loss(model_batch['attention_mask'],
+                                                              student_captured_hidden, teacher_hidden,
+                                                              offset_mapping, spans_offsets, args)
+                        span_loss = args.w_span_loss * span_loss
+                        if args.span_schedule == "constant":
+                            span_term = span_loss
+                        else:
+                            distil_loss = distil_loss + span_loss
+                    # loss = (1 - args.kd_ratio) * lm_loss + args.kd_ratio * (distil_loss + span_loss)
+                    # BAM teacher annealing: the target moves from the teacher to the gold labels as training goes
+                    kd_ratio = 1 - global_step / args.total_iters if args.kd_schedule == "anneal" else args.kd_ratio
+                    if token_weight is None:
+                        lm_term = (1 - kd_ratio) * lm_loss
+                    else:
+                        # --kd-token-weight teacher: each token's CE gets what its KD weight leaves,
+                        # (1 - kd_ratio * w_t) CE_t; distil_loss already holds the w_t KD_t
+                        gold = label_batch["label"].reshape(-1)
+                        ce = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]), gold,
+                                             ignore_index=-100, reduction="none")
+                        mask = (gold != -100).float()
+                        lm_term = torch.sum((1 - kd_ratio * token_weight.reshape(-1)) * ce * mask) / mask.sum()
+                    loss = lm_term + kd_ratio * distil_loss + span_term
+                else:
+                    loss = lm_loss
                 
             if args.lm_data_dir is not None:
                 assert args.lm_coef is not None
                 loss += args.lm_coef * pt_loss(args, model, pt_model_batch, pt_no_model_batch)
                 
             model.backward(loss)
+            boundary = model.is_gradient_accumulation_boundary()
             model.step()
+            if mto is not None and boundary:
+                if mto.mode == "famo":
+                    mto.update(famo_rescore())
+                else:
+                    mto.end_step()
              
             dist.all_reduce(loss, dist.ReduceOp.SUM, group=dp_group)
             global_loss = loss.item() / dp_world_size
@@ -700,6 +811,10 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                 print_rank("*" * 100)
                 save_rank(log_str, os.path.join(args.save, "log.txt"))
                 total_loss, total_distil_loss, total_time = 0.0, 0.0, 0.0
+                if mto is not None:
+                    mto_line = mto.log_line()
+                    print_rank(mto_line)
+                    save_rank(mto_line, os.path.join(args.save, "log.txt"))
 
                 # --- MEMORY MEASUREMENT BLOCK ---
                 allocated   = torch.cuda.memory_allocated() / 1e9
@@ -820,7 +935,8 @@ def main():
     
     if args.teacher_model_type is None:
         args.teacher_model_type = args.model_type
-    
+    assert args.mto == "none" or args.kd_token_weight == "none", "--mto does not split --kd-token-weight by task"
+
     if args.teacher_peft_paths is not None and args.do_train:
         # every train dataset needs its teacher, and a name that matches no dataset is a typo
         names, rows = set(teacher_peft_paths(args)), set(r["dataset"] for r in dataset["train"].raw)

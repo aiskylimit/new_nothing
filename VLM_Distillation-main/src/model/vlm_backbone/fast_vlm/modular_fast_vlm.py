@@ -202,7 +202,17 @@ class FastVlmModel(LlavaModel):
             Only "full" supported.
         """
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
-        image_outputs = self.vision_tower(pixel_values, return_dict=True, **kwargs)
+        # SCVA consumes language-decoder attention only. Never forward its
+        # output_attentions setting into FastVLM's timm vision tower.
+        for key in ("output_attentions", "output_hidden_states", "use_cache", "cache_position"):
+            kwargs.pop(key, None)
+        image_outputs = self.vision_tower(
+            pixel_values,
+            return_dict=True,
+            output_attentions=False,
+            output_hidden_states=False,
+            **kwargs,
+        )
 
         # since the vision tower is hybrid in FastVLM, its output needs to be handled differently from Llava
         selected_image_feature = image_outputs.last_hidden_state
@@ -234,8 +244,8 @@ class FastVlmModel(LlavaModel):
         vision_feature_select_strategy (`str`, *optional*):
             The feature selection strategy used to select the vision feature from the vision backbone. Only "full" supported.
         """
-        if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+        if input_ids is None and inputs_embeds is None:
+            raise ValueError("You must specify input_ids, inputs_embeds, or both")
 
         if inputs_embeds is None:
             inputs_embeds = self.get_input_embeddings()(input_ids)

@@ -8,6 +8,8 @@
 # SUBSET=a: train on a fixed subset where dataset d keeps rows prop. to n_d^a, drawn once with the seed (the
 # same rows in every run, BAM included); at 0.5 that's 41,183 of the 148,583 rows. Same 5 epochs over it, so
 # no row is seen more often than in full-data training.
+# MTO=equal|famo: weight the EE, NER and RE losses (mto.py): equal = their mean, famo = FAMO weights; default
+# none = one token mean over the batch. Saved under sft_0.6B_mt_v2[_subset0.5]_mto<MTO>.
 # Standalone: run.sh-style GPU and PORT (defaults below).
 
 GPUS=(${GPU:-7})
@@ -24,6 +26,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE                   --nnodes $NN
 DATA=mt_v2
 BASE_PATH=.
 SUBSET=${SUBSET:-}
+MTO=${MTO:-none}
 # model
 CKPT_NAME="qwen3-0.6B"
 CKPT="Qwen/Qwen3-0.6B"
@@ -40,7 +43,7 @@ EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_0.6B_${DATA}${SUBSET:+_subset${SUBSET}}"
+SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_0.6B_${DATA}${SUBSET:+_subset${SUBSET}}$([ "${MTO}" != none ] && echo "_mto${MTO}")"
 # seed
 SEED=42
 
@@ -74,6 +77,7 @@ OPTS+=" --lr-decay-style wrmup_cosine"
 OPTS+=" --weight-decay 1e-2"
 OPTS+=" --clip-grad 1.0"
 OPTS+=" --epochs ${EPOCHS}"
+OPTS+=" --mto ${MTO}"
 # length: NER prompts need 480
 OPTS+=" --max-length ${MAX_LENGTH}"
 OPTS+=" --max-prompt-length 480"

@@ -102,7 +102,7 @@ class Distiller(nn.Module):
 
     def _should_use_sparse_scva_attention(self) -> bool:
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
-        if kd_loss_type not in {"scva", "scva_cgkd", "draft"}:
+        if kd_loss_type not in {"scva", "scva_cgkd", "scva_sic", "draft"}:
             return False
         if not bool(getattr(self.training_args, "scva_sparse_attention", True)):
             return False
@@ -171,10 +171,22 @@ class Distiller(nn.Module):
     def _needs_vision_attention_outputs(self) -> bool:
         if getattr(self, "use_sparse_scva_attention", False):
             return False
-        # SRE consumes text-decoder attention only.  Keeping the vision backend
-        # on SDPA/Flash avoids eager vision attention without changing SRE.
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
-        return self._needs_attention_outputs() and kd_loss_type != "sre"
+        # These criteria consume decoder attention (or no attention), never the
+        # vision encoder's internal attention maps.  Keep the vision tower on
+        # SDPA and avoid retaining its quadratic attention tensors.
+        decoder_only_attention_losses = {
+            "sre",
+            "scva",
+            "scva_cgkd",
+            "scva_sic",
+            "sic",
+            "draft",
+        }
+        if kd_loss_type in decoder_only_attention_losses:
+            return False
+        # Preserve the conservative behaviour for unknown/future criteria.
+        return self._needs_attention_outputs()
 
     @staticmethod
     def _infer_text_hidden_dim(model: nn.Module, fallback: int) -> int:
@@ -277,6 +289,14 @@ class Distiller(nn.Module):
                     ),
                 }
             )
+        elif kd_loss_type == "scva_sic" and bool(getattr(self.training_args, "sic_use_projector", True)):
+            projector = nn.Linear(
+                self.student_hidden_dim,
+                self.teacher_hidden_dim,
+                dtype=torch.bfloat16,
+            )
+            nn.init.xavier_uniform_(projector.weight)
+            self.projectors = nn.ModuleDict({"sic": projector})
         elif self.model_args.projector_config_path is not None:
             self.projectors = nn.ModuleDict()
             with open(self.model_args.projector_config_path) as f:

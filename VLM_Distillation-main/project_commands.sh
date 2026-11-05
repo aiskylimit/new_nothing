@@ -8,7 +8,7 @@ DOWNLOAD_ROOT=/mnt/local/aiskylimit_new_nothing/VLM_Distillation-main
 DOWNLOAD_DATA_DIR="${DOWNLOAD_ROOT}/train_data"
 DATA_DIR="${PROJECT_DIR}/train_data"
 
-TRAIN_ENV=/mnt/local/uvenvs/vlm-distill-train/bin/activate
+TRAIN_ENV=/mnt/local/uvenvs/vlm-distill-train-3/bin/activate
 TRAIN_DIR="${PROJECT_DIR}/script_train/qwen2_teacher_7b_fastvlm_student_05b"
 EVAL_SCRIPT="${PROJECT_DIR}/project_commands_eval.sh"
 
@@ -16,6 +16,21 @@ BASE_MODEL="${BASE_MODEL:-${DOWNLOAD_ROOT}/models/KamilaMila/FastVLM-0.5B}"
 
 source "${TRAIN_ENV}"
 cd "${PROJECT_DIR}"
+
+# Fail before torchrun launches four ranks if CuPy discovers headers from a
+# different CUDA major version (for example nvidia/cu13 with CUDA 12 NVRTC).
+python - <<'PY'
+import cupy as cp
+from cuml.cluster import DBSCAN
+
+probe = cp.arange(4, dtype=cp.float32)
+assert float(probe.sum().item()) == 6.0
+print(
+    "cuML preflight OK:",
+    f"CuPy {cp.__version__}, runtime {cp.cuda.runtime.runtimeGetVersion()},",
+    f"device {cp.cuda.runtime.getDevice()}",
+)
+PY
 
 # ============================================================
 # 1. Prepare datasets
@@ -51,13 +66,22 @@ fi
 
 
 # ============================================================
-# 3. Remaining train + eval jobs
+# 2. SCVA + SIC layer-range tuning jobs
 # ============================================================
 
 JOBS=(
 #   "train_qwen2_teacher_7b_fastvlm_student_05b_emkd.sh|qwen2_teacher_7b_fastvlm_student_05b_emkd"
 #   "train_qwen2_teacher_7b_fastvlm_student_05b_mcw_kd.sh|qwen2_teacher_7b_fastvlm_student_05b_mcw_kd"
-  "train_qwen2_teacher_7b_fastvlm_student_05b_sre.sh|qwen2_teacher_7b_fastvlm_student_05b_sre"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_sre.sh|qwen2_teacher_7b_fastvlm_student_05b_sre"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_scva.sh|qwen2_teacher_7b_fastvlm_student_05b_scva"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_sic.sh|qwen2_teacher_7b_fastvlm_student_05b_sic"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_mid.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_mid"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_high.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_high"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_scva_only.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_scva_only"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_sic_only.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_sic_only"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_4.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_4"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12"
 )
 
 for job in "${JOBS[@]}"; do
@@ -79,10 +103,10 @@ for job in "${JOBS[@]}"; do
     printf '\n============================================================\n'
     printf '[%s] START TRAIN: %s\n' \
         "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
-    printf 'GPUs: 0,1,2,3\n'
+    printf 'GPUs: 4,5,6,7\n'
     printf '============================================================\n'
 
-    if CUDA_VISIBLE_DEVICES=0,1,2,3 bash "${train_path}"; then
+    if CUDA_VISIBLE_DEVICES=4,5,6,7 bash "${train_path}"; then
 
         printf '\n=== [%s] TRAIN EXIT SUCCESS: %s (exit_code=0) ===\n' \
             "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
@@ -109,10 +133,10 @@ for job in "${JOBS[@]}"; do
     printf '\n============================================================\n'
     printf '[%s] START EVAL: %s\n' \
         "$(date '+%Y-%m-%d %H:%M:%S')" "${run_name}"
-    printf 'GPU: 0\n'
+    printf 'GPU: 4\n'
     printf '============================================================\n'
 
-    if CUDA_VISIBLE_DEVICES=0 bash "${EVAL_SCRIPT}" \
+    if CUDA_VISIBLE_DEVICES=4 bash "${EVAL_SCRIPT}" \
         "${output_dir}" "${BASE_MODEL}"; then
 
         printf '\n=== [%s] EVAL SUCCESS: %s (exit_code=0) ===\n' \

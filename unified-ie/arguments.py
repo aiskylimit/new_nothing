@@ -160,6 +160,15 @@ def add_hp_args(parser: argparse.ArgumentParser):
                        help="constant: loss = (1 - kd_ratio) CE + kd_ratio KD; anneal: BAM teacher annealing "
                             "(Clark et al. 2019), the KD weight falls linearly from 1 to 0 over training and "
                             "--kd-ratio is ignored")
+    group.add_argument("--kd-token-weight", type=str, default="none", choices=["none", "teacher"],
+                       help="none: every label token gets the KD weight; teacher: token t gets kd_ratio * w_t with "
+                            "w_t = the teacher's probability of the gold token, and its CE gets the rest, "
+                            "(1 - kd_ratio * w_t) CE_t + kd_ratio * w_t KD_t (fkl and sfkl only)")
+    group.add_argument("--mto", type=str, default="none", choices=["none", "equal", "famo"],
+                       help="task weighting (mto.py): none = one token mean over the batch (as before); equal = "
+                            "mean of the per-task losses (ee, ner, re); famo = FAMO (Liu et al. 2023) weights")
+    group.add_argument("--famo-lr", type=float, default=0.025, help="FAMO: Adam LR of the task logits")
+    group.add_argument("--famo-gamma", type=float, default=0.01, help="FAMO: weight decay of the task logits")
 
     group.add_argument('--warmup-iters', type=int, default=0,
                        help='percentage of data to warmup on (.01 = 1% of all '
@@ -179,6 +188,9 @@ def add_hp_args(parser: argparse.ArgumentParser):
                             "entity/type, RE subject/relation/object): legacy = the original EventKD search, each "
                             "string after the previous one starting at the top of the prompt; response = each string "
                             "where the answer JSON writes it")
+    group.add_argument("--span-schedule", type=str, default="kd", choices=["kd", "constant"],
+                       help="kd: the span loss is part of the KD term and gets its weight (with --kd-schedule "
+                            "anneal it fades out with the KD loss); constant: added on its own, w_span_loss all along")
 
     return parser
 

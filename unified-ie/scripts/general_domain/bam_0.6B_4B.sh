@@ -12,6 +12,17 @@
 #                         type, argument, role; NER entity, type; RE subject, relation, object)
 #   SPAN_LOCATE=response  with W_SPAN > 0: every span where the answer JSON writes it; legacy = the original
 #                         EventKD search (first span usually in the input sentence, the rest in the answer)
+#   SPAN_SCHEDULE=kd      with W_SPAN > 0: the span loss is part of the KD term (fades with annealing);
+#                         constant = added on its own with weight W_SPAN all through training
+#   KD_TOKEN_WEIGHT=none  teacher = each label token's KD weight times the teacher's probability of the gold
+#                         token, its CE gets the rest (learn the gold label where the teacher is wrong or unsure)
+#   MTO=none              one token mean over the batch; equal = mean of the EE, NER, RE losses; famo = FAMO
+#                         task weights (mto.py). Each task's loss is CE, KD and span loss of its rows
+#   S_LAYERS="25 28"      student layers of the span loss; T_LAYERS="33 36" the teacher layers they pair with
+#   T_LAYERS="33 36"      (index as in HF hidden_states). Other values add _L<student>to<teacher> to the run dir
+#   DATASET=              all source datasets of DATA; one name (ace, conll03, fewrel, ...) = only its rows and
+#                         its one teacher, so no multi-teacher: with KD_SCHEDULE=constant that is plain
+#                         single-teacher KD, as in the EventKD paper. Saved under bam_0.6B_4B_<DATA>_<DATASET>/
 #   SUBSET=               all train rows; 0.5 = fixed square-root subset (same rows as the SFT student's SUBSET=0.5)
 #   TEACHERS=             name=lora_dir,...; empty = best dev epoch of each teacher run in results/ below
 # e.g. KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh ee_v1
@@ -53,7 +64,21 @@ KD_RATIO=${KD_RATIO:-0.9}
 KD_TYPE=${KD_TYPE:-fkl}
 W_SPAN=${W_SPAN:-0}
 SPAN_LOCATE=${SPAN_LOCATE:-response}
+SPAN_SCHEDULE=${SPAN_SCHEDULE:-kd}
+KD_TOKEN_WEIGHT=${KD_TOKEN_WEIGHT:-none}
+MTO=${MTO:-none}
 SUBSET=${SUBSET:-}
+S_LAYERS=${S_LAYERS:-25 28}
+T_LAYERS=${T_LAYERS:-33 36}
+DATASET=${DATASET:-}
+if [ -n "${DATASET}" ]; then
+    run=$(for t in ${TEACHER_RUNS}; do [ "${t%%=*}" = "${DATASET}" ] && echo ${t}; done)
+    if [ -z "${run}" ]; then
+        echo "no teacher for dataset ${DATASET} in ${DATA}"
+        exit 1
+    fi
+    TEACHER_RUNS=${run}
+fi
 TEACHERS=${TEACHERS:-}
 if [ -z "${TEACHERS}" ]; then
     for t in ${TEACHER_RUNS}; do
@@ -82,8 +107,9 @@ EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")${SUBSET:+_subset${SUBSET}}
-SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}/${RUN}"
+RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")$([ "${KD_TOKEN_WEIGHT}" = teacher ] && echo "_tw")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")$([ "${W_SPAN}" != 0 ] && [ "${SPAN_SCHEDULE}" = constant ] && echo "_spanconst")${SUBSET:+_subset${SUBSET}}$([ "${MTO}" != none ] && echo "_mto${MTO}")
+[ "${S_LAYERS}" != "25 28" ] || [ "${T_LAYERS}" != "33 36" ] && RUN+="_L${S_LAYERS// /-}to${T_LAYERS// /-}"
+SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}${DATASET:+_${DATASET}}/${RUN}"
 # seed
 SEED=42
 
@@ -103,6 +129,7 @@ OPTS+=" --data-dir ${DATA_DIR}"
 OPTS+=" --num-workers 0"
 OPTS+=" --dev-num -1"
 [ -n "${SUBSET}" ] && OPTS+=" --subset-alpha ${SUBSET}"
+[ -n "${DATASET}" ] && OPTS+=" --datasets ${DATASET}"
 # score each source dataset in its own labels; dev answers every epoch, test answers when the dev score
 # (mean per-dataset F1; for mt_v2 the mean of the EE, NER and RE scores) improves
 OPTS+=" --label-map ${LABEL_MAP}"
@@ -122,6 +149,8 @@ OPTS+=" --clip-grad 1.0"
 OPTS+=" --epochs ${EPOCHS}"
 OPTS+=" --kd-schedule ${KD_SCHEDULE}"
 OPTS+=" --kd-ratio ${KD_RATIO}"
+OPTS+=" --kd-token-weight ${KD_TOKEN_WEIGHT}"
+OPTS+=" --mto ${MTO}"
 # length
 OPTS+=" --max-length ${MAX_LENGTH}"
 OPTS+=" --max-prompt-length ${MAX_PROMPT}"
@@ -144,8 +173,9 @@ OPTS+=" --type ${KD_TYPE}"
 # span loss
 OPTS+=" --w-span-loss ${W_SPAN}"
 OPTS+=" --span-locate ${SPAN_LOCATE}"
-OPTS+=" --teacher_layer_mapping 33 36"
-OPTS+=" --student_layer_mapping 25 28"
+OPTS+=" --span-schedule ${SPAN_SCHEDULE}"
+OPTS+=" --teacher_layer_mapping ${T_LAYERS}"
+OPTS+=" --student_layer_mapping ${S_LAYERS}"
 # gen: greedy (no --do-sample)
 
 
