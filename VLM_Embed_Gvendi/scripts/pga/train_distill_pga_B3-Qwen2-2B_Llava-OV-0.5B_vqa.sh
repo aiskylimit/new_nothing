@@ -13,10 +13,10 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 # Dùng torchrun để khởi chạy
 # =========================================================================
 
-torchrun --standalone \
+torchrun --master_port=$PORT \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name "models/llava-onevision-qwen2-0.5b-ov-hf" \
-    --teacher_model_name "models/B3_Qwen2_2B" \
+    --model_name "llava-hf/llava-onevision-qwen2-0.5b-ov-hf" \
+    --teacher_model_name "raghavlite/B3_Qwen2_2B" \
     --lora True \
     --teacher_lora True \
     --lora_r 64 \
@@ -26,7 +26,7 @@ torchrun --standalone \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_onevision" \
     --pooling "eos" \
-    --dataset_name "vlm2vec_train/MMEB-train" \
+    --dataset_name "TIGER-Lab/MMEB-train" \
     --subset_name "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -51,7 +51,7 @@ torchrun --standalone \
     --image_resolution "tiny" \
     --teacher_image_resolution "low" \
     --projector_lr 5e-4 \
-    --projector_config_path "./config/projector_pga.json" \
+    --projector_config_path "config/projector_pga.json" \
     --report_to none 
 
 
@@ -91,7 +91,7 @@ do
       --model_backbone llava_onevision \
       --normalize True \
       --bf16 \
-      --dataset_name vlm2vec_eval/MMEB-eval \
+      --dataset_name TIGER-Lab/MMEB-eval \
       --subset_name "${EVAL_SUBSETS[@]}" \
       --dataset_split test \
       --per_device_eval_batch_size "$BATCH_SIZE" \
@@ -101,4 +101,33 @@ do
       --image_resolution "tiny" \
       --report_to none
 
+done
+
+FLICKR_EVAL_BATCH_SIZE=16
+
+for FLICKR_BATCH_SIZE in \
+    "$FLICKR_EVAL_BATCH_SIZE" \
+    "$((FLICKR_EVAL_BATCH_SIZE - 1))" \
+    "$((FLICKR_EVAL_BATCH_SIZE - 2))"
+do
+    FLICKR_OUTPUT_PATH="${OUTPUT_BASE}_flickr30k_b${FLICKR_BATCH_SIZE}"
+
+    echo "Evaluating Flickr30k with batch size $FLICKR_BATCH_SIZE"
+
+    python eval_flickr.py \
+        --model_name "training/B3-Qwen2-2B_Llava-OV-0.5B_pga_vqa/checkpoint-epoch-0" \
+        --encode_output_path "$FLICKR_OUTPUT_PATH" \
+        --lora True \
+        --lora_r 64 \
+        --lora_alpha 64 \
+        --pooling eos \
+        --model_backbone llava_onevision \
+        --normalize True \
+        --bf16 \
+        --dataset_name "nlphuji/flickr30k" \
+        --dataset_split test \
+        --image_dir "vlm2vec_external/flickr30k" \
+        --image_resolution "tiny" \
+        --per_device_eval_batch_size "$FLICKR_BATCH_SIZE" \
+        --report_to none
 done
