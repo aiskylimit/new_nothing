@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
-#vlm_ablation_component
+#1 +10
+#gpu
 #v2
 
 
