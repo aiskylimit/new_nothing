@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
+#1 +10
 #pga-flick
 #v2
 
