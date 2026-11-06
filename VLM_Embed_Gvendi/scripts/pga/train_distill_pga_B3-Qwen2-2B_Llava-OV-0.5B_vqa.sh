@@ -61,7 +61,7 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 # )
 
 # EVAL_BATCH_SIZE=16
-# OUTPUT_BASE="./MMEB-eval_outputs/B3-Qwen2-2B_Llava-OV-0.5B_pga_vqa"
+OUTPUT_BASE="./MMEB-eval_outputs/B3-Qwen2-2B_Llava-OV-0.5B_pga_vqa"
 
 # for BATCH_SIZE in \
 #     "$EVAL_BATCH_SIZE" \
