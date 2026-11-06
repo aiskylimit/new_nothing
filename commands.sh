@@ -1,4 +1,4 @@
-#1 +10
+#2 -11
 #flick
 #v2
 
@@ -30,8 +30,8 @@ export NCCL_DEBUG=WARN
 # cd ./grit
 # bash ./project_commands.sh
 
-cd ./VLM_Embed_Gvendi
-bash ./project_commands_2.sh
+# cd ./VLM_Embed_Gvendi
+# bash ./project_commands_2.sh
 # bash ./project_commands.sh
 
 # cd ./unified-ie
