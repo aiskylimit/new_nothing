@@ -54,10 +54,10 @@ unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/vlm2vec_external/flickr
 # CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_grounding.sh &
 # CUDA_VISIBLE_DEVICES=3 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_vqa.sh &
 
-CUDA_VISIBLE_DEVICES=0 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_vqa.sh &
-CUDA_VISIBLE_DEVICES=1 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_FastVLM-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-2B_Llava-OV-0.5B_vqa.sh &
 CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_FastVLM-0.5B_vqa.sh &
-CUDA_VISIBLE_DEVICES=3 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_vqa.sh &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/pga/train_distill_pga_B3-Qwen2-7B_Llava-OV-0.5B_vqa.sh &
 
 wait 
 
