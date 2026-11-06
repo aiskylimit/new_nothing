@@ -26,7 +26,7 @@ source /mnt/local/uvenvs/vlm2vec-gvendi/bin/activate
 # unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
 # unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
 # unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/vlm2vec_external/flickr30k/flickr30k-images.zip -d ./vlm2vec_external/flickr30k/
+# unzip /mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/vlm2vec_external/flickr30k/flickr30k-images.zip -d ./vlm2vec_external/flickr30k/
 
 # # #
 # # # 4. Unzip the cache
