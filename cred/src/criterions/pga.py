@@ -54,89 +54,147 @@ class PGA(nn.Module):
 
     def extract_last_mean_attention(self, attentions, attention_mask):
         attn = attentions[-1].mean(dim=1)  # [B, L, L]
-        valid = attention_mask.to(device=attn.device, dtype=torch.bool)
 
-        result = []
-        for i in range(attn.shape[0]):
-            valid_idx = valid[i].nonzero(as_tuple=True)[0]  # [L_i]
+        batch_size = attn.size(0)
+        max_length = attn.size(-1)
 
-            if valid_idx.numel() == 0:
-                raise ValueError(f"Sample {i} không có token hợp lệ")
-
-            last_idx = valid_idx[-1]                # query hợp lệ cuối
-            weights = attn[i, last_idx, :]          # [L]
-            result.append(weights)
-
-        return torch.stack(result)
-
-    def pga_loss(
-        self,
-        student_reps: torch.Tensor,  # [N, D_s]
-        teacher_reps: torch.Tensor,  # [N, D_t]
-        eta: float = 0.85,
-        eps: float = 1e-8,
-    ) -> torch.Tensor:
-        if student_reps.ndim != 2 or teacher_reps.ndim != 2:
-            raise ValueError("student_reps và teacher_reps phải có shape [N, D]")
-        if student_reps.size(0) != teacher_reps.size(0):
-            raise ValueError("Student và teacher phải có cùng số mẫu")
-        if student_reps.size(0) < 2:
-            raise ValueError("PGA cần ít nhất 2 mẫu")
-        if not 0 < eta <= 1:
-            raise ValueError("eta phải nằm trong (0, 1]")
-
-        # Eq. (7): Gram matrix bằng dot product, không normalize embedding.
-        # Tính trong float32 để eigendecomposition ổn định hơn khi train bf16.
-        hs = student_reps.float()
-        gs = hs @ hs.T  # [N, N]
-
-        with torch.no_grad():
-            ht = teacher_reps.detach().float()
-            gt = ht @ ht.T  # [N, N]
-
-            # Eq. (8)-(9): phân rã phổ và giữ các thành phần chính.
-            eigenvalues, eigenvectors = torch.linalg.eigh(gt)
-            eigenvalues = eigenvalues.clamp_min(0)
-
-            # eigh trả về thứ tự tăng dần -> đảo lại.
-            eigenvalues = eigenvalues.flip(0)
-            eigenvectors = eigenvectors.flip(1)
-
-            total_energy = eigenvalues.sum()
-            if total_energy <= eps:
-                raise ValueError("Teacher Gram matrix có năng lượng gần bằng 0")
-
-            cumulative = eigenvalues.cumsum(dim=0) / total_energy
-            k = int(torch.searchsorted(cumulative.contiguous(), eta).item()) + 1
-
-            top_values = eigenvalues[:k]
-            top_vectors = eigenvectors[:, :k]
-            gt_principal = (top_vectors * top_values.unsqueeze(0)) @ top_vectors.T
-
-            # Center Gram matrix: C @ G @ C, không cần tạo C tường minh.
-            gt_centered = (
-                gt_principal
-                - gt_principal.mean(dim=0, keepdim=True)
-                - gt_principal.mean(dim=1, keepdim=True)
-                + gt_principal.mean()
-            )
-
-        gs_centered = (
-            gs
-            - gs.mean(dim=0, keepdim=True)
-            - gs.mean(dim=1, keepdim=True)
-            + gs.mean()
+        left_padding = (
+            attention_mask[:, -1].sum() == batch_size
         )
 
-        # Eq. (10): 1 - centered kernel alignment.
-        numerator = (gs_centered * gt_centered).sum()
-        student_norm = torch.linalg.vector_norm(gs_centered)
-        teacher_norm = torch.linalg.vector_norm(gt_centered)
+        if left_padding:
+            eos_indices = torch.full(
+                (batch_size,),
+                max_length - 1,
+                device=attn.device,
+                dtype=torch.long
+            )
+        else:
+            num_padding_tokens = (attention_mask == 0).sum(dim=1)
+            eos_indices = (
+                max_length - num_padding_tokens - 1
+            ).to(attn.device)
 
-        if teacher_norm <= eps:
-            raise ValueError("Teacher principal Gram matrix sau centering gần bằng 0")
+        return attn[
+            torch.arange(batch_size, device=attn.device),
+            eos_indices,
+            :
+        ]
 
-        cka = numerator / (student_norm * teacher_norm + eps)
+    @staticmethod
+    def attention_pool(hidden_states, attention_scores, eps=1e-8):
+        """
+        hidden_states: [N, D]
+        attention_scores: [N]
+        """
+        assert hidden_states.ndim == 2
+        assert attention_scores.ndim == 1
+        assert hidden_states.size(0) == attention_scores.size(0)
+        assert hidden_states.size(0) > 0
+
+        weights = attention_scores / attention_scores.sum().clamp_min(eps)
+
+        return torch.sum(
+            hidden_states * weights.unsqueeze(-1),
+            dim=0
+        )
+
+    # def pga_loss(
+    #     self,
+    #     student_reps: torch.Tensor,  # [N, D_s]
+    #     teacher_reps: torch.Tensor,  # [N, D_t]
+    #     eta: float = 0.85,
+    #     eps: float = 1e-8,
+    # ) -> torch.Tensor:
+    #     if student_reps.ndim != 2 or teacher_reps.ndim != 2:
+    #         raise ValueError("student_reps và teacher_reps phải có shape [N, D]")
+    #     if student_reps.size(0) != teacher_reps.size(0):
+    #         raise ValueError("Student và teacher phải có cùng số mẫu")
+    #     if student_reps.size(0) < 2:
+    #         raise ValueError("PGA cần ít nhất 2 mẫu")
+    #     if not 0 < eta <= 1:
+    #         raise ValueError("eta phải nằm trong (0, 1]")
+
+    #     # Eq. (7): Gram matrix bằng dot product, không normalize embedding.
+    #     # Tính trong float32 để eigendecomposition ổn định hơn khi train bf16.
+    #     hs = student_reps.float()
+    #     gs = hs @ hs.T  # [N, N]
+
+    #     with torch.no_grad():
+    #         ht = teacher_reps.detach().float()
+    #         gt = ht @ ht.T  # [N, N]
+
+    #         # Eq. (8)-(9): phân rã phổ và giữ các thành phần chính.
+    #         eigenvalues, eigenvectors = torch.linalg.eigh(gt)
+    #         eigenvalues = eigenvalues.clamp_min(0)
+
+    #         # eigh trả về thứ tự tăng dần -> đảo lại.
+    #         eigenvalues = eigenvalues.flip(0)
+    #         eigenvectors = eigenvectors.flip(1)
+
+    #         total_energy = eigenvalues.sum()
+    #         if total_energy <= eps:
+    #             raise ValueError("Teacher Gram matrix có năng lượng gần bằng 0")
+
+    #         cumulative = eigenvalues.cumsum(dim=0) / total_energy
+    #         k = int(torch.searchsorted(cumulative.contiguous(), eta).item()) + 1
+
+    #         top_values = eigenvalues[:k]
+    #         top_vectors = eigenvectors[:, :k]
+    #         gt_principal = (top_vectors * top_values.unsqueeze(0)) @ top_vectors.T
+
+    #         # Center Gram matrix: C @ G @ C, không cần tạo C tường minh.
+    #         gt_centered = (
+    #             gt_principal
+    #             - gt_principal.mean(dim=0, keepdim=True)
+    #             - gt_principal.mean(dim=1, keepdim=True)
+    #             + gt_principal.mean()
+    #         )
+
+    #     gs_centered = (
+    #         gs
+    #         - gs.mean(dim=0, keepdim=True)
+    #         - gs.mean(dim=1, keepdim=True)
+    #         + gs.mean()
+    #     )
+
+    #     # Eq. (10): 1 - centered kernel alignment.
+    #     numerator = (gs_centered * gt_centered).sum()
+    #     student_norm = torch.linalg.vector_norm(gs_centered)
+    #     teacher_norm = torch.linalg.vector_norm(gt_centered)
+
+    #     if teacher_norm <= eps:
+    #         raise ValueError("Teacher principal Gram matrix sau centering gần bằng 0")
+
+    #     cka = numerator / (student_norm * teacher_norm + eps)
+    #     return 1.0 - cka
+
+    
+    def pga_loss(
+        self, student_reps: torch.Tensor, teacher_reps: torch.Tensor, eps: float = 1e-8,
+    ) -> torch.Tensor:
+
+        hs = student_reps.float()
+        ht = teacher_reps.detach().float()
+
+        # Center features
+        hs = hs - hs.mean(dim=0, keepdim=True)
+        ht = ht - ht.mean(dim=0, keepdim=True)
+
+        # Gram matrices
+        gs = hs @ hs.T
+        gt = ht @ ht.T
+
+        # Linear CKA
+        numerator = (gs * gt).sum()
+
+        student_norm = torch.linalg.vector_norm(gs)
+        teacher_norm = torch.linalg.vector_norm(gt)
+
+        cka = numerator / (
+            student_norm * teacher_norm + eps
+        )
+
         return 1.0 - cka
 
     def forward(self, distiller, input_data):
@@ -199,186 +257,91 @@ class PGA(nn.Module):
         
         
         #------ KD MSE Loss Part ------
-        proj_teacher_qry_reps = projectors['t2s'](all_teacher_qry_reps)
-        proj_teacher_pos_reps = projectors['t2s'](all_teacher_pos_reps)
+        # proj_teacher_qry_reps = projectors['t2s'](all_teacher_qry_reps)
+        # proj_teacher_pos_reps = projectors['t2s'](all_teacher_pos_reps)
 
         # Tính MSE giữa các đại diện đã được projector
-        mse_loss = nn.MSELoss()(torch.cat([proj_teacher_qry_reps, proj_teacher_pos_reps], dim=0), torch.cat([proj_teacher_qry_reps, proj_teacher_pos_reps], dim=0))
+        mse_loss = torch.zeros_like(contrastive_loss)
+        # mse_loss = nn.MSELoss()(torch.cat([all_student_qry_reps, all_student_pos_reps], dim=0), 
+        #                         torch.cat([proj_teacher_qry_reps, proj_teacher_pos_reps], dim=0))
         
-        cur_idx_qry_img = 0
-        cur_idx_pos_img = 0
 
-        student_special_ids = torch.tensor(
-            list(
-                set(
-                    list(student_tokenizer.added_tokens_encoder.values()) +
-                    student_tokenizer.all_special_ids
-                )
-            ),
-            device=student_qry_input['input_ids'].device,
-            dtype=torch.long
-        )
+        intra_loss = contrastive_loss.new_zeros(())
+        inter_loss = contrastive_loss.new_zeros(())
 
-        teacher_special_ids = torch.tensor(
-            list(
-                set(
-                    list(teacher_tokenizer.added_tokens_encoder.values()) +
-                    teacher_tokenizer.all_special_ids
-                )
-            ),
-            device=teacher_qry_input['input_ids'].device,
-            dtype=torch.long
-        )
+        # stu_qry = extract_modality_tokens(
+        #     student_processor, student_qry_input, student_qry_image_features,
+        #     student_qry_attention, student_qry_hidden_states, student_model.model_backbone
+        # )
+        # stu_pos = extract_modality_tokens(
+        #     student_processor, student_pos_input, student_pos_image_features,
+        #     student_pos_attention, student_pos_hidden_states, student_model.model_backbone
+        # )
+        # tea_qry = extract_modality_tokens(
+        #     teacher_processor, teacher_qry_input, teacher_qry_image_features,
+        #     teacher_qry_attention, teacher_qry_hidden_states, teacher_model.model_backbone
+        # )
+        # tea_pos = extract_modality_tokens(
+        #     teacher_processor, teacher_pos_input, teacher_pos_image_features,
+        #     teacher_pos_attention, teacher_pos_hidden_states, teacher_model.model_backbone
+        # )
 
-        num_student_text_qry_tokens = count_clean_text_tokens(student_qry_input, student_special_ids)
-        num_student_text_pos_tokens = count_clean_text_tokens(student_pos_input, student_special_ids)
+        # stu_img, tea_img, stu_txt, tea_txt = [], [], [], []
 
-        num_teacher_text_qry_tokens = count_clean_text_tokens(teacher_qry_input, teacher_special_ids)
-        num_teacher_text_pos_tokens = count_clean_text_tokens(teacher_pos_input, teacher_special_ids)
+        # for s_batch, t_batch in ((stu_qry, tea_qry), (stu_pos, tea_pos)):
+        #     for s, t in zip(s_batch, t_batch):
 
-        # Extract last mean attention for both student and teacher
+        #         # Skip if either model has an empty modality
+        #         if any(x[k].size(1) == 0 for x in (s, t) for k in ("image", "text")):
+        #             continue
 
-        stu_last_mean_attn_qry = self.extract_last_mean_attention(student_qry_attention, student_qry_input['attention_mask']) # [B, L]
-        stu_last_mean_attn_pos = self.extract_last_mean_attention(student_pos_attention, student_pos_input['attention_mask'])
+        #         for sample, key, buffer in (
+        #             (s, "image", stu_img),
+        #             (t, "image", tea_img),
+        #             (s, "text", stu_txt),
+        #             (t, "text", tea_txt),
+        #         ):
+        #             hidden = sample[key][-1]             # [N, D]
+        #             attn = sample[f"{key}_attention"]
 
-        tea_last_mean_attn_qry = self.extract_last_mean_attention(teacher_qry_attention, teacher_qry_input['attention_mask'])
-        tea_last_mean_attn_pos = self.extract_last_mean_attention(teacher_pos_attention, teacher_pos_input['attention_mask'])
+        #             pooled = (
+        #                 self.attention_pool(hidden, attn[-1])
+        #                 if attn is not None else hidden.mean(dim=0)
+        #             )
+        #             buffer.append(pooled)
 
-        # SCL loss
 
-        stu_vision_pooled_reps = []
-        tea_vision_pooled_reps = []
-        stu_text_pooled_reps = []
-        tea_text_pooled_reps = []
 
-        for i in range(batch_size):
-            # 1. QUERY Processing
-            if student_qry_image_features is not None and teacher_qry_image_features is not None:
-                if cur_idx_qry_img < len(student_qry_image_features) and cur_idx_qry_img < len(teacher_qry_image_features):
-                    # --- Vision ---
-                    stu_feat = student_qry_image_features[cur_idx_qry_img]
-                    tea_feat = teacher_qry_image_features[cur_idx_qry_img]
-                    
-                
-                    last_stu_text_hidden_state, last_stu_vision_hidden_state = get_hidden_text_vision(
-                        student_qry_hidden_states[-1][i],
-                        num_student_text_qry_tokens[i].item(),
-                        stu_feat.size(0),
-                        student_qry_input['attention_mask'][i]
-                    )
-                    
 
-                    last_stu_text_attn, last_stu_vision_attn = get_attn_text_vision(
-                        stu_last_mean_attn_qry[i],
-                        num_student_text_qry_tokens[i].item(),
-                        stu_feat.size(0),
-                        student_qry_input['attention_mask'][i]
-                    )
+        # if len(stu_img) > 1:
+        #     sv, tv, st, tt = [
+        #         torch.stack(x) for x in (stu_img, tea_img, stu_txt, tea_txt)
+        #     ]
 
-                    last_tea_text_hidden_state, last_tea_vision_hidden_state = get_hidden_text_vision(
-                        teacher_qry_hidden_states[-1][i],
-                        num_teacher_text_qry_tokens[i].item(),
-                        tea_feat.size(0),
-                        teacher_qry_input['attention_mask'][i]
-                    )
+        #     img_proj = projectors["t2s_img"]
+        #     txt_proj = projectors["t2s_txt"]
 
-                    last_tea_text_attn, last_tea_vision_attn = get_attn_text_vision(
-                        tea_last_mean_attn_qry[i],
-                        num_teacher_text_qry_tokens[i].item(),
-                        tea_feat.size(0),
-                        teacher_qry_input['attention_mask'][i]
-                    )
+        #     tv = img_proj(tv.to(next(img_proj.parameters()).dtype))
+        #     tt = txt_proj(tt.to(next(txt_proj.parameters()).dtype))
 
-                    stu_text_pooled_rep = (last_stu_text_hidden_state * last_stu_text_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-                    tea_text_pooled_rep = (last_tea_text_hidden_state * last_tea_text_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-                    stu_vision_pooled_rep = (last_stu_vision_hidden_state * last_stu_vision_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-                    tea_vision_pooled_rep = (last_tea_vision_hidden_state * last_tea_vision_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-
-                    # print('============================')
-                    # print('stu_text_pooled_rep.shape:', stu_text_pooled_rep.shape)
-                    # print('tea_text_pooled_rep.shape:', tea_text_pooled_rep.shape)
-                    # print('stu_vision_pooled_rep.shape:', stu_vision_pooled_rep.shape)
-                    # print('tea_vision_pooled_rep.shape:', tea_vision_pooled_rep.shape)
-
-                    stu_text_pooled_reps.append(stu_text_pooled_rep)  # [D]
-                    tea_text_pooled_reps.append(tea_text_pooled_rep)  # [D]
-                    stu_vision_pooled_reps.append(stu_vision_pooled_rep)  # [D]
-                    tea_vision_pooled_reps.append(tea_vision_pooled_rep)  # [D]
-
-            # 2. POSITIVE Processing (Tương tự Query)
-            if student_pos_image_features is not None and teacher_pos_image_features is not None:
-                if cur_idx_pos_img < len(student_pos_image_features) and cur_idx_pos_img < len(teacher_pos_image_features):
-                    # --- Vision ---
-                    stu_feat_pos = student_pos_image_features[cur_idx_pos_img]
-                    tea_feat_pos = teacher_pos_image_features[cur_idx_pos_img]
-
-                    last_stu_text_hidden_state, last_stu_vision_hidden_state = get_hidden_text_vision(
-                        student_pos_hidden_states[-1][i],
-                        num_student_text_pos_tokens[i].item(),
-                        stu_feat_pos.size(0),
-                        student_pos_input['attention_mask'][i]
-                    )
-
-                    last_stu_text_attn, last_stu_vision_attn = get_attn_text_vision(
-                        stu_last_mean_attn_pos[i],
-                        num_student_text_pos_tokens[i].item(),
-                        stu_feat_pos.size(0),
-                        student_pos_input['attention_mask'][i]
-                    )
-
-                    last_tea_text_hidden_state, last_tea_vision_hidden_state = get_hidden_text_vision(
-                        teacher_pos_hidden_states[-1][i],
-                        num_teacher_text_pos_tokens[i].item(),
-                        tea_feat_pos.size(0),
-                        teacher_pos_input['attention_mask'][i]
-                    )
-
-                    last_tea_text_attn, last_tea_vision_attn = get_attn_text_vision(
-                        tea_last_mean_attn_pos[i],
-                        num_teacher_text_pos_tokens[i].item(),
-                        tea_feat_pos.size(0),
-                        teacher_pos_input['attention_mask'][i]
-                    )
-
-                    stu_text_pooled_rep = (last_stu_text_hidden_state * last_stu_text_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-                    tea_text_pooled_rep = (last_tea_text_hidden_state * last_tea_text_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-                    stu_vision_pooled_rep = (last_stu_vision_hidden_state * last_stu_vision_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-                    tea_vision_pooled_rep = (last_tea_vision_hidden_state * last_tea_vision_attn.unsqueeze(-1)).sum(dim=0)  # [D]
-
-                    # print('============================')
-                    # print('stu_text_pooled_rep.shape:', stu_text_pooled_rep.shape)
-                    # print('tea_text_pooled_rep.shape:', tea_text_pooled_rep.shape)
-                    # print('stu_vision_pooled_rep.shape:', stu_vision_pooled_rep.shape)
-                    # print('tea_vision_pooled_rep.shape:', tea_vision_pooled_rep.shape)
-
-                    stu_text_pooled_reps.append(stu_text_pooled_rep)  # [D]
-                    tea_text_pooled_reps.append(tea_text_pooled_rep)  # [D]
-                    stu_vision_pooled_reps.append(stu_vision_pooled_rep)  # [D]
-                    tea_vision_pooled_reps.append(tea_vision_pooled_rep)  # [D]
-
-        stu_vision_pooled_reps = torch.stack(stu_vision_pooled_reps, dim=0)  # [B, D]
-        tea_vision_pooled_reps = torch.stack(tea_vision_pooled_reps, dim=0)  # [B, D]
-        stu_text_pooled_reps = torch.stack(stu_text_pooled_reps, dim=0)      # [B, D]
-        tea_text_pooled_reps = torch.stack(tea_text_pooled_reps, dim=0)      # [B, D]
-
-        proj_tea_vision_pooled_reps = projectors['t2s_img'](tea_vision_pooled_reps)
-        proj_tea_text_pooled_reps = projectors['t2s_txt'](tea_text_pooled_reps)
-
-        # Tính loss giữa các đại diện đã được projector
-        intra_loss = self.mi_loss(stu_vision_pooled_reps, proj_tea_vision_pooled_reps) + self.mi_loss(stu_text_pooled_reps, proj_tea_text_pooled_reps)
-        inter_loss = self.mi_loss(stu_vision_pooled_reps, proj_tea_text_pooled_reps) + self.mi_loss(stu_text_pooled_reps, proj_tea_vision_pooled_reps)
+        #     intra_loss = self.mi_loss(sv, tv) + self.mi_loss(st, tt)
+        #     inter_loss = self.mi_loss(sv, tt) + self.mi_loss(st, tv)
 
         scl_loss = intra_loss + inter_loss
 
-        pga_loss = self.pga_loss(torch.cat([stu_vision_pooled_reps, stu_text_pooled_reps], dim=0), 
-                                 torch.cat([proj_tea_vision_pooled_reps, proj_tea_text_pooled_reps], dim=0))
+        # pga loss
+        pga_loss = self.pga_loss(torch.cat([all_student_qry_reps, all_student_pos_reps], dim=0), 
+                                 torch.cat([all_teacher_qry_reps, all_teacher_pos_reps], dim=0))
 
         kd_loss = (mse_loss + 0.5*scl_loss + pga_loss)
         
-        loss = contrastive_loss + self.kd_loss_weight * kd_loss
+        loss = contrastive_loss +  kd_loss
 
         return {
             'loss': loss,
             'contrastive_loss': contrastive_loss,
-            'kd_loss': kd_loss
+            'kd_loss': kd_loss,
+            "kd_rkd_loss": pga_loss,
+            "kd_loss_mse": mse_loss,
+            "cross_modal_loss": scl_loss,
         }

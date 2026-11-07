@@ -36,6 +36,7 @@ from .span_attn_sigreg import SpanSigregCriterionWeighted
 from .talas_pr import TalasPR
 from .talas_jepa_abl import TalasJepaAbl
 from .pga import PGA
+from .ablation_cred import AblationCred
 
 criterion_list = {
     "contrastive": ContrastiveLoss,
@@ -77,6 +78,7 @@ criterion_list = {
     "talas_pr": TalasPR,
     "talas_abl": TalasJepaAbl,
     "pga": PGA,
+    "ablation_cred": AblationCred,
 }
 
 def build_criterion(args):
