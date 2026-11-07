@@ -5,43 +5,55 @@ set -e
 source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 
-# bash set_base_model_path.sh
+bash set_base_model_path.sh
 # python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
 # python fix_lib.py
 
 # #
 # # 3. Unzip the dataset
 # #
-# mkdir -p vlm2vec_train/MMEB-train/images
-# mkdir -p eval_images
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ImageNet_1K.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/HatefulMemes.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VOC2007.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/OK-VQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/A-OKVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/DocVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/InfographicsVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
+mkdir -p vlm2vec_train/MMEB-train/images
+mkdir -p eval_images
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ImageNet_1K.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/HatefulMemes.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VOC2007.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/OK-VQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/A-OKVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/DocVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/InfographicsVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VisDial.zip -d  ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/CIRR.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VisualNews_t2i.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VisualNews_i2t.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO_t2i.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO_i2t.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/NIGHTS.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/WebQA.zip -d ./vlm2vec_train/MMEB-train/images/
+
 
 # #
 # # 4. Unzip the cache
 # #
-# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_cls.tar.gz -C .
-# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_vqa.tar.gz -C .
-# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_grounding.tar.gz -C .
-# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_7B_cls.tar.gz -C .
+tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_cls.tar.gz -C .
+tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_vqa.tar.gz -C .
+tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_grounding.tar.gz -C .
+tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_7B_cls.tar.gz -C .
 
 
+CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.05 256 0.02 "" 5 none pr # 20% layer for reference
+CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh 1 1 1 1 1.0 0.05 256 0.02 "" 0 12 pr # use threshold=12 for participation
 
-CUDA_VISIBLE_DEVICES=0 bash ./baseline_scripts/train_distill_pga_cls.sh &
-CUDA_VISIBLE_DEVICES=1 bash ./baseline_scripts/train_distill_pga_vqa.sh &
-CUDA_VISIBLE_DEVICES=2 bash ./baseline_scripts/train_distill_ov_pga_cls.sh &
-CUDA_VISIBLE_DEVICES=3 bash ./baseline_scripts/train_distill_ov_pga_vqa.sh &
+
+# CUDA_VISIBLE_DEVICES=0 bash ./baseline_scripts/train_distill_pga_cls.sh &
+# CUDA_VISIBLE_DEVICES=1 bash ./baseline_scripts/train_distill_pga_vqa.sh &
+# CUDA_VISIBLE_DEVICES=2 bash ./baseline_scripts/train_distill_ov_pga_cls.sh &
+# CUDA_VISIBLE_DEVICES=3 bash ./baseline_scripts/train_distill_ov_pga_vqa.sh &
 
 # bash run_time_mem.sh &
 # CUDA_VISIBLE_DEVICES=6 bash ./baseline_scripts/train_distill_span_attn_vqa.sh
