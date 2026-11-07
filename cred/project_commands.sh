@@ -14,36 +14,36 @@ python fix_lib.py
 # #
 mkdir -p vlm2vec_train/MMEB-train/images
 mkdir -p eval_images
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ImageNet_1K.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/HatefulMemes.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VOC2007.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
-unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/images.zip -d ./eval_images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/OK-VQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/A-OKVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/DocVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/InfographicsVQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VisDial.zip -d  ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/CIRR.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VisualNews_t2i.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/VisualNews_i2t.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO_t2i.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/MSCOCO_i2t.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/NIGHTS.zip -d ./vlm2vec_train/MMEB-train/images/
-# unzip /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/WebQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/ImageNet_1K.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/HatefulMemes.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/VOC2007.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/N24News.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/SUN397.zip -d ./vlm2vec_train/MMEB-train/images/
+unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/images.zip -d ./eval_images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/OK-VQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/A-OKVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/DocVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/InfographicsVQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/ChartQA.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/Visual7W.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/MSCOCO.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/VisDial.zip -d  ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/CIRR.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/VisualNews_t2i.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/VisualNews_i2t.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/MSCOCO_t2i.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/MSCOCO_i2t.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/NIGHTS.zip -d ./vlm2vec_train/MMEB-train/images/
+# unzip /mnt/local/aiskylimit_new_nothing/cred/datasets/WebQA.zip -d ./vlm2vec_train/MMEB-train/images/
 
 
 # #
 # # 4. Unzip the cache
 # #
-tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_cls.tar.gz -C .
-# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_vqa.tar.gz -C .
-# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_2B_grounding.tar.gz -C .
-# tar -xzf /mnt/local/aiskylimit_new_nothing/talas_vlm_embed/datasets/B3_Qwen2_7B_cls.tar.gz -C .
+tar -xzf /mnt/local/aiskylimit_new_nothing/cred/datasets/B3_Qwen2_2B_cls.tar.gz -C .
+# tar -xzf /mnt/local/aiskylimit_new_nothing/cred/datasets/B3_Qwen2_2B_vqa.tar.gz -C .
+# tar -xzf /mnt/local/aiskylimit_new_nothing/cred/datasets/B3_Qwen2_2B_grounding.tar.gz -C .
+# tar -xzf /mnt/local/aiskylimit_new_nothing/cred/datasets/B3_Qwen2_7B_cls.tar.gz -C .
 
 
 CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.05 256 0.02 "" 5 none pr &
