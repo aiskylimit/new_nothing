@@ -1,4 +1,4 @@
-#2
+#1 +10
 #data
 #v2
 
@@ -19,7 +19,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-for d in caching vlm2vec_eval vlm2vec_train; do
+for d in datasets vlm2vec_eval vlm2vec_train; do
   rsync -a --delete VLM_Embed_Gvendi/$d/ cred/$d/
 done
 
