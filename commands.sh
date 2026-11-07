@@ -1,5 +1,5 @@
 #1 +10
-#vlm_check
+#vlm_ablation
 #v2
 
 
@@ -43,6 +43,6 @@ export NCCL_DEBUG=WARN
 
 
 cd VLM_Distillation-main
-# bash ./project_commands.sh
-bash ./project_commands_collect_eval_summary.sh
+bash ./project_commands.sh
+# bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
