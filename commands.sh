@@ -1,6 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/VisualNews_i2t/original-00000-of-00001.parquet /mnt/local/@PROJECT@/cred/vlm2vec_train/MMEB-train/VisualNews_i2t
+#1 +10
 #cred
 #v1
 
