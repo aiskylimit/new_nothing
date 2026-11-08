@@ -67,7 +67,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/WebQA.zip /mnt/local/@PROJECT@/cred/datasets
 
 #cred
-#v2
+#v1
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
