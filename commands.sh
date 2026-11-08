@@ -1,6 +1,6 @@
 #d
 #datasets
---url https://huggingface.co/datasets/phongdq/MMEB-train/resolve/main/images_zip/NIGHTS.zip?download=true /mnt/local/datasets
+--hf-dataset phongdq/MMEB-train /mnt/local/datasets
 
 
 
