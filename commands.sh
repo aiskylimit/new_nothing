@@ -1,5 +1,5 @@
-#2
-#log
+#1 +10
+#cred
 #v1
 
 
@@ -27,7 +27,7 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
