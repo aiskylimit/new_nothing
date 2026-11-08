@@ -1,6 +1,6 @@
 #d
 #datasets
---url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/NIGHTS.zip?download=true /mnt/local/datasets
+--url https://huggingface.co/phongdq/Talas-ckpts/resolve/main/ckpt/mini384/bert-checkpoint-epoch2/model.safetensors?download=true /mnt/local/datasets
 
 
 
