@@ -26,7 +26,7 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 
-# cd ./cred
+cd ./cred
 tree ./datasets
 mkdir -p vlm2vec_train/MMEB-train
 mv datasets vlm2vec_train/MMEB-train
