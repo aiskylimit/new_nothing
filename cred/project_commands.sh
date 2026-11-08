@@ -2,7 +2,7 @@
 set -e
 
 
-source /mnt/local/uvenvs/vlm2vec-gvendi/bin/activate
+source /mnt/local/uvenvs/cred/bin/activate
 
 
 # bash set_base_model_path.sh
