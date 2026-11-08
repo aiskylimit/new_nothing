@@ -1,8 +1,9 @@
 #d
 #datasets
---hf-dataset TIGER-Lab/MMEB-train /mnt/local/datasets
+--hf-dataset TIGER-Lab/MMEB-train /mnt/local/@PROJECT@/cred/vlm2vec_train/MMEB-train
 --hf-dataset VoCuc/vlm-teacher-embedding /mnt/local/datasets
---hf-dataset TIGER-Lab/MMEB-eval /mnt/local/datasets
+--hf-dataset TIGER-Lab/MMEB-eval /mnt/local/@PROJECT@/cred/vlm2vec_eval/MMEB-eval
+--url https://huggingface.co/VoCuc/en_core_web_sm/resolve/main/en_core_web_sm.zip /mnt/local/@PROJECT@/cred/en_core_web_sm.zip
 #models
 --hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/cred/models/B3_Qwen2_2B
 --hf raghavlite/B3_Qwen2_7B /mnt/local/@PROJECT@/cred/models/B3_Qwen2_7B
