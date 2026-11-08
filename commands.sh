@@ -1,5 +1,8 @@
 #d
 #datasets
+--url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/NIGHTS.zip?download=true /mnt/local/@PROJECT@/datasets
+
+
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/HatefulMemes.zip /mnt/local/@PROJECT@/cred/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/VOC2007.zip /mnt/local/@PROJECT@/cred/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/N24News.zip /mnt/local/@PROJECT@/cred/datasets
