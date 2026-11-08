@@ -1,4 +1,4 @@
-cat > models/B3_Qwen2_2B/adapter_config.json <<'EOF' &&
+cat > models/B3_Qwen2_2B/adapter_config.json <<'EOF'
 {
   "alpha_pattern": {},
   "auto_mapping": {
@@ -43,6 +43,7 @@ cat > models/B3_Qwen2_2B/adapter_config.json <<'EOF' &&
   "use_rslora": false
 }
 EOF
+
 # cat > models/B3_Qwen2_7B/adapter_config.json <<'EOF'
 # {
 #   "alpha_pattern": {},
