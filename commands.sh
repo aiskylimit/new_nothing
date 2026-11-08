@@ -1,5 +1,5 @@
-#1 +75
-#contra1
+#1 +10
+#log
 #v1
 
 
@@ -25,11 +25,11 @@ export NCCL_DEBUG=WARN
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
-cd ./contra-kd
-bash ./project_commands.sh
 
-# tree /mnt/local/datasets
 # cd ./cred
+# tree ./datasets
+mkdir -p vlm2vec_train/MMEB-train
+mv datasets vlm2vec_train/MMEB-train
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
