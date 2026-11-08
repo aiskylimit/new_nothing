@@ -1,4 +1,8 @@
-#1 +10
+#d
+#datasets
+--hf-dataset VoCuc/vlm-teacher-embedding /mnt/local/datasets
+--hf-dataset TIGER-Lab/MMEB-eval /mnt/local/datasets
+
 #log
 #v1
 
