@@ -1,5 +1,6 @@
 import random
 import os
+import json
 # os.environ["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
 import argparse
 import time
@@ -31,10 +32,11 @@ def parse_args():
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--start", default=0, type=int)
     parser.add_argument("--end", default=-1, type=int)
-    parser.add_argument("--temperature", default=0, type=float)
-    parser.add_argument("--n_sampling", default=1, type=int)
-    parser.add_argument("--top_p", default=1, type=float)
-    parser.add_argument("--max_tokens_per_call", default=2048, type=int)
+    parser.add_argument("--temperature", default=0.6, type=float)
+    parser.add_argument("--n_sampling", default=3, type=int)
+    parser.add_argument("--top_p", default=0.9, type=float)
+    parser.add_argument("--repetition_penalty", default=1.05, type=float)
+    parser.add_argument("--max_tokens_per_call", default=4096, type=int)
     parser.add_argument("--shuffle", action="store_true")
     parser.add_argument("--use_vllm", action="store_true")
     parser.add_argument("--save_outputs", action="store_true")
@@ -48,10 +50,9 @@ def parse_args():
         help="Apply chat template to prompt.",
     )
     parser.add_argument("--pipeline_parallel_size", type=int, default=1)
-    parser.add_argument("--gpu_memory_utilization", type=float, default=0.90)
-    # 0 = de vLLM lay max_position_embeddings cua model (1.5B la 131072), qua
-    # thua vi ta chi sinh toi max_tokens_per_call.
-    parser.add_argument("--max_model_len", type=int, default=0)
+    parser.add_argument("--gpu_memory_utilization", type=float, default=0.8)
+    # 0 = de vLLM lay max_position_embeddings cua model.
+    parser.add_argument("--max_model_len", type=int, default=4096)
     parser.add_argument("--enable_prefix_caching", action="store_true")
     # logprobs khong duoc dung o dau ngoai SamplingParams -> mac dinh tat.
     parser.add_argument("--return_logprobs", action="store_true")
@@ -65,6 +66,15 @@ def parse_args():
         1 if args.temperature == 0 else args.top_p
     )  # top_p must be 1 when using greedy sampling (vllm)
     return args
+
+
+def sampling_tag(args, model_name):
+    return (
+        f"{args.split}_{args.prompt_type}_{args.num_test_sample}"
+        f"_seed{args.seed}_t{args.temperature}_n{args.n_sampling}"
+        f"_topp{args.top_p}_rp{args.repetition_penalty}"
+        f"_len{args.max_tokens_per_call}_{model_name}"
+    )
 
 
 def prepare_data(data_name, args):
@@ -86,7 +96,7 @@ def prepare_data(data_name, args):
     # get out_file name
     dt_string = datetime.now().strftime("%m-%d_%H-%M")
     model_name = "/".join(args.model_name_or_path.split("/")[-2:])
-    out_file_prefix = f"{args.split}_{args.prompt_type}_{args.num_test_sample}_seed{args.seed}_t{args.temperature}_n{args.n_sampling}_topp{args.top_p}_len{args.max_tokens_per_call}_{model_name}"
+    out_file_prefix = sampling_tag(args, model_name)
     output_dir = args.output_dir
     out_file = f"{output_dir}/{out_file_prefix}_s{args.start}_e{args.end}.jsonl"
     os.makedirs(f"{output_dir}", exist_ok=True)
@@ -112,7 +122,7 @@ def setup(args):
     if not args.overwrite:
         for data_name in data_list:
             postfix = "/".join(args.model_name_or_path.split("/")[-2:])
-            out_prefix = f"{args.split}_{args.prompt_type}_{args.num_test_sample}_seed{args.seed}_t{args.temperature}_n{args.n_sampling}_topp{args.top_p}_len{args.max_tokens_per_call}_{postfix}"
+            out_prefix = sampling_tag(args, postfix)
             out_file =  f"{args.output_dir}/{out_prefix}_s{args.start}_e{args.end}.jsonl"
             out_metric_json = out_file.replace(".jsonl", f"_metrics.json")
             
@@ -158,17 +168,27 @@ def setup(args):
         results.append(main(llm, tokenizer, data_name, args))
 
     # add "avg" result to data_list and results
+    def _macro(key):
+        vals = [r[key] for r in results if isinstance(r.get(key), (int, float))]
+        return (sum(vals) / len(vals)) if vals else None
+
+    avg = {"pass@1": _macro("pass@1"), "acc": _macro("acc")}
+    if all("pass@3" in r for r in results):
+        avg["pass@3"] = _macro("pass@3")
     data_list.append("avg")
-    results.append(
-        {
-            "acc": sum([result["acc"] for result in results]) / len(results),
-        }
-    )
+    results.append(avg)
 
     # print all results
     pad = max([len(data_name) for data_name in data_list])
-    print("\t".join(data_name.ljust(pad, " ") for data_name in data_list))
-    print("\t".join([f"{result['acc']:.1f}".ljust(pad, " ") for result in results]))
+    print("".ljust(8) + "\t" + "\t".join(data_name.ljust(pad, " ") for data_name in data_list))
+    for key in ("pass@1", "pass@3"):
+        if not any(key in r for r in results):
+            continue
+        cells = []
+        for result in results:
+            value = result.get(key)
+            cells.append(f"{value:.1f}".ljust(pad, " ") if isinstance(value, (int, float)) else "-".ljust(pad, " "))
+        print(key.ljust(8) + "\t" + "\t".join(cells))
 
 
 def is_multi_choice(answer):
@@ -323,6 +343,7 @@ def main(llm, tokenizer, data_name, args):
                 SamplingParams(
                     temperature=args.temperature,
                     top_p=args.top_p,
+                    repetition_penalty=args.repetition_penalty,
                     max_tokens=args.max_tokens_per_call,
                     n=1,
                     stop=stop_words,
@@ -341,13 +362,25 @@ def main(llm, tokenizer, data_name, args):
 
             outputs = [output.outputs[0].text for output in outputs]
         else:
+            gen_kwargs = {
+                "max_new_tokens": args.max_tokens_per_call,
+                "repetition_penalty": args.repetition_penalty,
+            }
+            if args.temperature > 0:
+                gen_kwargs.update(
+                    do_sample=True,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                )
+            else:
+                gen_kwargs["do_sample"] = False
             outputs = generate_completions(
                 model=llm,
                 tokenizer=tokenizer,
                 prompts=prompts,
-                max_new_tokens=args.max_tokens_per_call,
                 batch_size=16,
                 stop_id_sequences=stop_words,
+                **gen_kwargs,
             )
 
         assert len(outputs) == len(current_prompts)

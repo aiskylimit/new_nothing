@@ -4,12 +4,12 @@ export CUDA_VISIBLE_DEVICES="0"
 export TOKENIZERS_PARALLELISM=false
 
 task_configurations=(
-    "aime24 32" 
-    "amc23 32" 
-    "math500 6" 
-    "minerva 6" 
-    "gpqa 6" 
-    "olympiad 6" 
+    "aime24 3"
+    "amc23 3"
+    "math500 3"
+    "minerva 3"
+    "gpqa 3"
+    "olympiad 3"
 )
 
 # =========================
@@ -18,8 +18,12 @@ task_configurations=(
 MODEL_PATH="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
 OUTPUT_ROOT="outputs_origin"
 SEED=0
-MAX_TOKENS=32768
+MAX_TOKENS=4096
 TEMPERATURE=0.6
+TOP_P=0.9
+REPETITION_PENALTY=1.05
+GPU_MEM_UTIL=0.8
+MAX_MODEL_LEN=4096
 
 for config in "${task_configurations[@]}"; do
   read -r task sample_n <<< "$config"
@@ -40,10 +44,13 @@ for config in "${task_configurations[@]}"; do
       --seed "${SEED}" \
       --temperature "${TEMPERATURE}" \
       --n_sampling "${sample_n}" \
-      --top_p 1 \
+      --top_p "${TOP_P}" \
+      --repetition_penalty "${REPETITION_PENALTY}" \
       --start 0 \
       --end -1 \
       --use_vllm \
       --save_outputs \
-      --apply_chat_template
+      --apply_chat_template \
+      --gpu_memory_utilization "${GPU_MEM_UTIL}" \
+      --max_model_len "${MAX_MODEL_LEN}"
 done

@@ -24,7 +24,9 @@ class IntegratedGradientsAttribution:
       - The baseline is a sequence filled with `baseline_token_id` (often the pad token).
     """
     def __init__(self, model_name, gradient_checkpointing=True):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, trust_remote_code=True, local_files_only=True
+        )
         if not self.tokenizer.is_fast:
             raise SystemExit(
                 "Can fast tokenizer (tokenizer.json) de lay offset_mapping - do la cach duy "
@@ -36,7 +38,8 @@ class IntegratedGradientsAttribution:
             model_name,
             device_map="auto",
             torch_dtype=torch.bfloat16,
-            trust_remote_code=True
+            trust_remote_code=True,
+            local_files_only=True,
         )
         self.model.eval()
 
@@ -64,6 +67,9 @@ class IntegratedGradientsAttribution:
             print("gradient checkpointing: BAT")
         else:
             print("gradient checkpointing: TAT")
+        # So token da di qua forward / backward, de pipeline uoc tinh prep_flops.
+        self.tokens_forwarded = 0
+        self.tokens_backwarded = 0
 
     @torch.no_grad()
     def _embed(self, input_ids):
@@ -181,6 +187,10 @@ class IntegratedGradientsAttribution:
 
             # Sum gradients over the chunk's interpolation points
             total_gradients += grads_chunk.sum(dim=0, keepdim=True)  # -> [1, L, D]
+            # Moi buoc noi suy la mot forward va mot backward tren ca chuoi.
+            n_tokens = int(interpolated_embeddings.shape[0] * interpolated_embeddings.shape[1])
+            self.tokens_forwarded += n_tokens
+            self.tokens_backwarded += n_tokens
             step_pos = chunk_end
 
         avg_gradients = total_gradients / steps  # [1, L, D]
@@ -198,6 +208,115 @@ class IntegratedGradientsAttribution:
 
         return step_scores
     
+
+INPUT_TEMPLATE = "{input}\nPlease reason step by step, and put your final answer within \\boxed{{}}."
+
+
+def attribute_example(calculator, each_data, ig_steps, ig_batch_size, max_input_tokens=0, sample_index=0):
+    """Tinh IG cho mot mau. Tra ve (diem theo segment, status).
+
+    status la "ok", "long" (vuot max_input_tokens) hoac "oom".
+    Mau long/oom nhan diem 0 de van dung so segment.
+    """
+    user_msg = INPUT_TEMPLATE.format(input=each_data["question"])
+    user_tokens = calculator.tokenizer.apply_chat_template(
+        [{"role": "user", "content": user_msg}],
+        tokenize=True,
+        add_generation_prompt=True,
+    )
+
+    pred_thoughts = each_data["segments"]
+    joined = "".join(pred_thoughts)
+    enc = calculator.tokenizer(joined, add_special_tokens=False, return_offsets_mapping=True)
+    assistant_tokens = enc["input_ids"]
+    token_offsets = enc["offset_mapping"]
+
+    seg_char_start, cursor = [], 0
+    for seg in pred_thoughts:
+        seg_char_start.append(cursor)
+        cursor += len(seg)
+
+    token_seg = []
+    si = 0
+    for (c0, c1) in token_offsets:
+        if c1 <= c0:
+            token_seg.append(-1)
+            continue
+        while si + 1 < len(seg_char_start) and c0 >= seg_char_start[si + 1]:
+            si += 1
+        token_seg.append(si)
+
+    first_tok, last_tok = {}, {}
+    for i, sk in enumerate(token_seg):
+        if sk < 0:
+            continue
+        if sk not in first_tok:
+            first_tok[sk] = i
+        last_tok[sk] = i
+
+    assistant_token_spans = []
+    for k in range(len(pred_thoughts)):
+        if k in first_tok:
+            assistant_token_spans.append((first_tok[k], last_tok[k] + 1))
+        else:
+            assistant_token_spans.append((0, 0))
+
+    offset = len(user_tokens)
+    adjusted_spans = [(start + offset, end + offset) if end > start else (0, 0)
+                      for (start, end) in assistant_token_spans]
+
+    answer_string = "</think> So, the final answer is \\boxed{" + each_data["answer"] + "}"
+    answer_tokens = calculator.tokenizer(answer_string, add_special_tokens=False)["input_ids"]
+    answer_tokens_split = calculator.tokenizer.convert_ids_to_tokens(answer_tokens)
+
+    ans_start = None
+    for token_index in range(len(answer_tokens_split)):
+        if "boxed" in answer_tokens_split[token_index]:
+            ans_start = token_index + 1
+    if ans_start is None:
+        raise RuntimeError("Khong thay token boxed trong chuoi dap an cua mau %d" % sample_index)
+    assert "{" in answer_tokens_split[ans_start]
+    ans_end = len(answer_tokens_split)
+    is_end = False
+    stack = 0
+    for m in range(ans_start, len(answer_tokens_split)):
+        if "{" in answer_tokens_split[m] or "}" in answer_tokens_split[m]:
+            for each_tok in answer_tokens_split[m]:
+                if each_tok == "{":
+                    stack += 1
+                elif each_tok == "}":
+                    stack -= 1
+                    if stack == 0:
+                        ans_end = m
+                        is_end = True
+                        break
+            if is_end:
+                break
+
+    full_tokens = user_tokens + assistant_tokens + answer_tokens
+    answer_indices = (
+        ans_start + 1 + len(user_tokens + assistant_tokens),
+        ans_end + len(user_tokens + assistant_tokens),
+    )
+    zero_scores = [[0.0] * max(0, e - st) for (st, e) in adjusted_spans]
+
+    if max_input_tokens and len(full_tokens) > max_input_tokens:
+        print("  bo qua mau %d: %d token > max_input_tokens %d"
+              % (sample_index, len(full_tokens), max_input_tokens))
+        return zero_scores, "long"
+    try:
+        scores = calculator.batch_compute_step_to_answer_attribution_integrated(
+            full_tokens, adjusted_spans, answer_indices,
+            baseline_token_id=calculator.tokenizer.pad_token_id,
+            steps=ig_steps, batch_size=ig_batch_size)
+        return scores, "ok"
+    except OOM_ERROR:
+        print("  OOM o mau %d (%d token), gan diem 0 va chay tiep" % (sample_index, len(full_tokens)))
+        calculator.model.zero_grad(set_to_none=True)
+        gc.collect()
+        torch.cuda.empty_cache()
+        return zero_scores, "oom"
+
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -280,127 +399,18 @@ if __name__ == "__main__":
         del existing
 
     with open(args.output_data_file, write_mode) as f:
-        input_template = "{input}\nPlease reason step by step, and put your final answer within \\boxed{{}}."
-        for n in tqdm(range(done, len(input_data)), initial=done, total=len(input_data)): 
-            each_data = input_data[n]
-            user_msg = input_template.format(input=each_data["question"])
-            user_tokens = attribution_calculator.tokenizer.apply_chat_template(
-                [{"role": "user", "content": user_msg}],
-                tokenize=True,
-                add_generation_prompt=True,
+        for n in tqdm(range(done, len(input_data)), initial=done, total=len(input_data)):
+            importance_scores, status = attribute_example(
+                attribution_calculator, input_data[n],
+                ig_steps=args.ig_steps, ig_batch_size=args.ig_batch_size,
+                max_input_tokens=args.max_input_tokens, sample_index=n,
             )
-            
-            pred_thoughts = each_data["segments"]
-            # Span token cua tung segment lay tu offset_mapping cua CA chuoi da
-            # ghep, khong do do dai token cua tung prefix cong don: tokenize
-            # rieng "".join(segments[:k]) cho so token khac voi chinh doan do khi
-            # nam trong chuoi day du (BPE merge khac o bien) -> span lech vai
-            # token va IG bi gan nham segment.
-            joined = "".join(pred_thoughts)
-            enc = attribution_calculator.tokenizer(
-                joined, add_special_tokens=False, return_offsets_mapping=True
-            )
-            assistant_tokens = enc["input_ids"]
-            token_offsets = enc["offset_mapping"]
-
-            seg_char_start, cursor = [], 0
-            for seg in pred_thoughts:
-                seg_char_start.append(cursor)
-                cursor += len(seg)
-
-            # Token thuoc segment chua ky tu dau tien cua no.
-            token_seg = []
-            si = 0
-            for (c0, c1) in token_offsets:
-                if c1 <= c0:
-                    token_seg.append(-1)
-                    continue
-                while si + 1 < len(seg_char_start) and c0 >= seg_char_start[si + 1]:
-                    si += 1
-                token_seg.append(si)
-
-            # Mot luot duy nhat qua token thay vi quet lai ca mang cho tung
-            # segment: chia "\n\n" cho 100-500 segment tren vai nghin token nen
-            # vong lap long la O(segment x token), cham gap ~100 lan.
-            first_tok, last_tok = {}, {}
-            for i, sk in enumerate(token_seg):
-                if sk < 0:
-                    continue
-                if sk not in first_tok:
-                    first_tok[sk] = i
-                last_tok[sk] = i
-
-            assistant_token_spans = []
-            for k in range(len(pred_thoughts)):
-                if k in first_tok:
-                    assistant_token_spans.append((first_tok[k], last_tok[k] + 1))
-                else:
-                    # Segment khong chiem token nao -> span rong, diem IG = 0.
-                    assistant_token_spans.append((0, 0))
-
-            # Shift segment spans by user prompt length
-            offset = len(user_tokens)
-            adjusted_spans = [(start + offset, end + offset) if end > start else (0, 0)
-                              for (start, end) in assistant_token_spans]
-
-            answer_string = "</think> So, the final answer is \\boxed{" + each_data['answer'] + "}"
-            
-            answer_tokens = attribution_calculator.tokenizer(answer_string, add_special_tokens=False)["input_ids"] 
-            answer_tokens_split = attribution_calculator.tokenizer.convert_ids_to_tokens(answer_tokens)
-
-            for token_index in range(len(answer_tokens_split)):
-                if 'boxed' in answer_tokens_split[token_index]:
-                    ans_start = token_index + 1
-            assert '{' in answer_tokens_split[ans_start]
-            ans_end = len(answer_tokens_split)
-            is_end = False
-            stack = 0
-            for m in range(ans_start, len(answer_tokens_split)):
-                if '{' in answer_tokens_split[m] or '}' in answer_tokens_split[m]:
-                    for each_tok in answer_tokens_split[m]:
-                        if each_tok == "{":
-                            stack += 1
-                        elif each_tok == "}":
-                            stack -= 1
-                            if stack == 0:
-                                ans_end = m #+1
-                                is_end = True
-                                break
-                    if is_end:
-                        break
-            
-            full_tokens = user_tokens + assistant_tokens + answer_tokens
-            answer_indices = (ans_start + 1 + len(user_tokens + assistant_tokens), ans_end + len(user_tokens + assistant_tokens))
-
-            # Diem 0 cho moi segment, giu dung so segment de file IG van thang
-            # hang voi file segment (get_important_segments.py assert dieu nay).
-            zero_scores = [[0.0] * max(0, e - st) for (st, e) in adjusted_spans]
-
-            if args.max_input_tokens and len(full_tokens) > args.max_input_tokens:
-                print("  bo qua mau %d: %d token > --max_input_tokens %d"
-                      % (n, len(full_tokens), args.max_input_tokens))
-                importance_scores = zero_scores
+            if status == "long":
                 skipped_long += 1
-            else:
-                try:
-                    importance_scores = attribution_calculator.batch_compute_step_to_answer_attribution_integrated(
-                        full_tokens, adjusted_spans, answer_indices,
-                        baseline_token_id=attribution_calculator.tokenizer.pad_token_id,
-                        steps=args.ig_steps, batch_size=args.ig_batch_size)
-                except OOM_ERROR:
-                    # Mot mau qua dai khong duoc lam chet ca job nhieu gio. Gan
-                    # diem 0 -> train_mask.py roi ve 3 segment mac dinh cho mau nay.
-                    print("  OOM o mau %d (%d token), gan diem 0 va chay tiep"
-                          % (n, len(full_tokens)))
-                    attribution_calculator.model.zero_grad(set_to_none=True)
-                    gc.collect()
-                    torch.cuda.empty_cache()
-                    importance_scores = zero_scores
-                    skipped_oom += 1
-
+            elif status == "oom":
+                skipped_oom += 1
             input_data[n]["attribution"] = importance_scores
-
-            f.write(json.dumps(input_data[n], ensure_ascii=False) + '\n') 
+            f.write(json.dumps(input_data[n], ensure_ascii=False) + "\n") 
 
    
     # get_important_segments.py chi can 3 so moi segment chu khong can diem tung

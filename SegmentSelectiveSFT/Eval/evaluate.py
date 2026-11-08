@@ -62,23 +62,41 @@ def evaluate(data_name, prompt_type, samples: list=None, file_path: str=None, ma
         score_mat.append(sample['score'])
         idx += len(sample['pred'])
 
-    max_len = max([len(s) for s in score_mat])
+    # Pass@1 = trung binh (so cau dung / n) theo tung bai, roi trung binh theo bai.
+    # Khi moi bai co dung n mau, gia tri nay bang tong lan sinh dung / (n * N).
+    # Pass@k = 1 neu bat ky mau nao dung, 0 neu khong, roi trung binh theo bai.
+    # Tinh tren danh sach diem that, khong pad lap lai mau cuoi.
+    per_problem_mean = []
+    per_problem_any = []
+    lengths = []
+    for s in score_mat:
+        flags = [1.0 if x else 0.0 for x in s]
+        n = len(flags)
+        lengths.append(n)
+        if n == 0:
+            per_problem_mean.append(0.0)
+            per_problem_any.append(0.0)
+            continue
+        per_problem_mean.append(sum(flags) / n)
+        per_problem_any.append(1.0 if any(flags) else 0.0)
 
-    for i, s in enumerate(score_mat):
-        if len(s) < max_len:
-            score_mat[i] = s + [s[-1]] * (max_len - len(s)) # pad
+    def _pct(values):
+        if not values:
+            return 0.0
+        return float(np.round(float(np.mean(values)) * 100, decimals=1))
 
-    # output mean of each column of scores
-    col_means= np.array(score_mat).mean(axis=0)
-    mean_score = list(np.round(col_means * 100, decimals=1))
-
+    pass_at_1 = _pct(per_problem_mean)
     result_json = {
         "num_samples": len(samples),
         "num_scores": len(scores),
         "timeout_samples": timeout_cnt,
         "empty_samples": len([s for s in samples if not s['pred'][-1]]),
-        "acc": mean_score[0]
+        "pass@1": pass_at_1,
+        # acc giu lai de bang tong hop cu van doc duoc; gia tri nay la Pass@1.
+        "acc": pass_at_1,
     }
+    if lengths and all(n == lengths[0] and n > 1 for n in lengths):
+        result_json["pass@%d" % lengths[0]] = _pct(per_problem_any)
 
     # each type score
     if "type" in samples[0]:

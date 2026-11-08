@@ -210,8 +210,10 @@ silently misalign every downstream span, and a zero-length segment divides by ze
 - IG attribution is the expensive stage: `ig_steps=50` forward+backward passes over the full sequence
   per sample, on a 7B model. Paragraph splitting also produces far more segments per trace (~100-500)
   than the paper's cue splitting (~10-30), which changes how many segments clear the 70% mass threshold.
-- Eval benchmarks and samples/question: `aime24:32 amc23:32 math500:6 minerva:6 gpqa:6 olympiad:6`,
-  temperature 0.6, top_p 1, max 32768 tokens, prompt type `deepseek-longcot` (the prompt string matches
-  what `train_mask.py` builds, so training and eval stay aligned).
+- Eval benchmarks: `aime24 amc23 math500 minerva gpqa olympiad`, 3 samples/question.
+  temperature 0.6, top_p 0.9, repetition_penalty 1.05, max_tokens 4096, vLLM `max_model_len` 4096,
+  `gpu_memory_utilization` 0.8, tensor parallel 1 unless `--gpu` lists more devices.
+  `pass@1` is the mean over all generations; `pass@3` is 1 when any of the 3 is correct.
+  Prompt type `deepseek-longcot` matches the string `train_mask.py` builds.
 - W&B is off everywhere (`REPORT_TO=none`, `WANDB_MODE=disabled`); set `REPORT_TO=wandb` +
   `WANDB_PROJECT` to re-enable.

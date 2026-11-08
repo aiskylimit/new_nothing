@@ -6,6 +6,7 @@ from transformers import TrainerCallback, TrainingArguments, TrainerState, Train
 import torch
 import argparse
 import sys
+import time
 from trl import SFTTrainer, SFTConfig
 from datasets import load_dataset
 from unsloth import is_bfloat16_supported
@@ -26,6 +27,23 @@ else:
 DEFAULT_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
 
+class LossHistoryCallback(TrainerCallback):
+    """Ghi loss moi lan Trainer log, de pipeline luu epoch_loss_history."""
+
+    def __init__(self):
+        self.history = []
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if not logs or "loss" not in logs:
+            return control
+        self.history.append({
+            "step": int(state.global_step),
+            "epoch": float(state.epoch or 0.0),
+            "loss": float(logs["loss"]),
+        })
+        return control
+
+
 class EarlyStopAtEpochCallback(TrainerCallback):
     """Dung som tai --stop_at_epoch. Mac dinh tat (0 = chay du --epochs).
 
@@ -42,7 +60,7 @@ class EarlyStopAtEpochCallback(TrainerCallback):
         return control
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_names", default="GAIR/LIMO", type=str)
     parser.add_argument("--model_name_or_path", default="Qwen/Qwen2.5-7B-Instruct", type=str)
@@ -93,8 +111,10 @@ def parse_args():
     parser.add_argument("--segment_mode", default=DEFAULT_MODE, choices=sorted(SEGMENT_PATTERNS))
     parser.add_argument("--mask", action="store_true")
     parser.add_argument("--apply_all", action="store_true")
+    parser.add_argument("--save_strategy", default="epoch", choices=["no", "epoch", "steps"])
+    parser.add_argument("--save_total_limit", type=int, default=3)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.use_lora = not args.full_finetune
     args.target_modules = [m.strip() for m in args.target_modules.split(",") if m.strip()]
 
@@ -110,268 +130,319 @@ def parse_args():
             )
     return args
 
-args = parse_args()
+def run(args):
+    TOKEN_STATS["raw"] = 0
+    TOKEN_STATS["retained"] = 0
+    SKIPPED["n"] = 0
 
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name = args.model_name_or_path,
-    max_seq_length = args.max_seq_length, # Choose any for long context!
-    load_in_4bit = args.load_in_4bit,  # 4 bit quantization to reduce memory
-    full_finetuning = not args.use_lora,
-)
-
-if not args.deepseek:
-    # Chat template ChatML (Qwen). apply_chat_template(add_generation_prompt=True)
-    # ket thuc bang "<|im_start|>assistant\n" - day cung la prefix ma
-    # Eval/math_eval.py sinh ra luc eval, nen response_template phai khop.
-    if args.think_prefix == "special":
-        tokenizer.add_special_tokens({"additional_special_tokens": ["<think>", "</think>", "<|reason_pad|>"]})
-        model.resize_token_embeddings(len(tokenizer))
-    think_str = "" if args.think_prefix == "none" else "<think>\n"
-    instruction_template = "<|im_start|>user"
-    response_template = "<|im_start|>assistant\n" + think_str
-else:
-    # Template cua DeepSeek R1 tu chen "<think>\n" sau <｜Assistant｜>.
-    think_str = ""
-    instruction_template = "<｜begin▁of▁sentence｜><｜User｜>"
-    response_template = "<｜Assistant｜><think>\n"
-
-# Mask bam theo offset ky tu nen khong con do chuoi token cua response_template
-# nua; doi lai kiem tra mot lan o day rang chat template dung la ket thuc bang
-# prefix ta mong doi. Sai --deepseek/--think_prefix se lo ra ngay tai buoc nay
-# thay vi tao ra label sai am tham.
-_probe = tokenizer.apply_chat_template(
-    [{"role": "user", "content": "probe"}], tokenize=False, add_generation_prompt=True
-)
-if not (_probe + think_str).endswith(response_template):
-    raise SystemExit(
-        "Chat template cua %r ket thuc bang %r, khong khop response_template %r.\n"
-        "Kiem tra co dat dung --deepseek (cho DeepSeek R1) hay --think_prefix (cho Qwen) khong."
-        % (args.model_name_or_path, (_probe + think_str)[-40:], response_template)
+    _load_kwargs = dict(
+        model_name=args.model_name_or_path,
+        max_seq_length=args.max_seq_length,
+        load_in_4bit=args.load_in_4bit,
+        full_finetuning=not args.use_lora,
     )
-print("Chat template khop response_template: %r" % response_template)
+    try:
+        model, tokenizer = FastLanguageModel.from_pretrained(**_load_kwargs, local_files_only=True)
+    except TypeError:
+        model, tokenizer = FastLanguageModel.from_pretrained(**_load_kwargs)
 
-if not tokenizer.is_fast:
-    raise SystemExit(
-        "Can fast tokenizer (tokenizer.json) de lay offset_mapping - do la cach duy nhat "
-        "xac dinh dung bien segment trong chuoi token. Model %r chi co tokenizer cham."
-        % args.model_name_or_path
-    )
-
-args.run_name = args.model_name_or_path.split("/")[-1] + "max_seq_" + str(args.max_seq_length) + "lr_" + str(args.learning_rate) + "epochs_" + str(args.epochs)
-if not args.output_dir:
-    # Quy uoc ten: eval.sh dung lai chuoi nay de tim checkpoint moi nhat.
-    suffix = ""
-    if not args.mask:
-        # Khong --mask = long-CoT SFT thuong (supervise ca response). Doi ten
-        # thu muc de checkpoint baseline khong de len ban selective.
-        suffix += "_fullsft"
-    if args.use_lora:
-        suffix += "_lora"
-    args.output_dir = f"./checkpoints/{args.model_name_or_path.split('/')[-1]}_epoch{args.epochs}_lr{args.learning_rate}_len{args.max_seq_length}{suffix}"
-    args.run_name += suffix
-
-USE_GC = not args.no_gradient_checkpointing
-model.config.use_cache = False
-
-if args.use_lora:
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r = args.lora_r,
-        target_modules = args.target_modules,
-        lora_alpha = args.lora_alpha,
-        lora_dropout = args.lora_dropout,
-        bias = "none",
-        # "unsloth" = ban gradient checkpointing tiet kiem VRAM cua unsloth,
-        # can thiet o seq 32768. Trainer khong bat lai (xem SFTConfig ben duoi).
-        use_gradient_checkpointing = "unsloth" if USE_GC else False,
-        random_state = args.seed,
-        use_rslora = False,
-        loftq_config = None,
-    )
-    trainer_gc = False
-else:
-    if USE_GC:
-        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    if not args.deepseek:
+        # Chat template ChatML (Qwen). apply_chat_template(add_generation_prompt=True)
+        # ket thuc bang "<|im_start|>assistant\n" - day cung la prefix ma
+        # Eval/math_eval.py sinh ra luc eval, nen response_template phai khop.
+        if args.think_prefix == "special":
+            tokenizer.add_special_tokens({"additional_special_tokens": ["<think>", "</think>", "<|reason_pad|>"]})
+            model.resize_token_embeddings(len(tokenizer))
+        think_str = "" if args.think_prefix == "none" else "<think>\n"
+        instruction_template = "<|im_start|>user"
+        response_template = "<|im_start|>assistant\n" + think_str
     else:
-        model.gradient_checkpointing_disable()
-    trainer_gc = USE_GC
+        # Template cua DeepSeek R1 tu chen "<think>\n" sau <｜Assistant｜>.
+        think_str = ""
+        instruction_template = "<｜begin▁of▁sentence｜><｜User｜>"
+        response_template = "<｜Assistant｜><think>\n"
 
-# dataset.map(batched=True) duoc phep tra ve it dong hon dau vao, nen mau hong
-# bi bo han thay vi lam ca batch chet.
-SKIPPED = {"n": 0}
-
-
-def segment_char_bounds(segments, offset):
-    """Vi tri [start, end) theo KY TU cua tung segment trong full_text."""
-    bounds, cursor = [], offset
-    for seg in segments:
-        bounds.append((cursor, cursor + len(seg)))
-        cursor += len(seg)
-    return bounds
-
-
-def formatting_prompts_func(examples):
-    questions = examples["question"]
-    outputs = examples["solution"] 
-    segments_ids = examples["selected_spans_ids"]
-
-    input_ids_list = []
-    labels_list = []
-    for prompt, output, segment_id in zip(questions, outputs, segments_ids):
-        messages = [
-            {"role": "user", "content": prompt + "\nPlease reason step by step, and put your final answer within \\boxed{}."},
-        ]
-  
-        input_str = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True
-        )   
-        full_text = input_str + think_str + output
-
-        full_tokens = tokenizer(
-            full_text,
-            truncation=True,
-            max_length=args.max_seq_length,
-            return_offsets_mapping=True,
+    # Mask bam theo offset ky tu nen khong con do chuoi token cua response_template
+    # nua; doi lai kiem tra mot lan o day rang chat template dung la ket thuc bang
+    # prefix ta mong doi. Sai --deepseek/--think_prefix se lo ra ngay tai buoc nay
+    # thay vi tao ra label sai am tham.
+    _probe = tokenizer.apply_chat_template(
+        [{"role": "user", "content": "probe"}], tokenize=False, add_generation_prompt=True
+    )
+    if not (_probe + think_str).endswith(response_template):
+        raise SystemExit(
+            "Chat template cua %r ket thuc bang %r, khong khop response_template %r.\n"
+            "Kiem tra co dat dung --deepseek (cho DeepSeek R1) hay --think_prefix (cho Qwen) khong."
+            % (args.model_name_or_path, (_probe + think_str)[-40:], response_template)
         )
-        input_ids = full_tokens["input_ids"]
-        offsets = full_tokens["offset_mapping"]
-        labels = [-100] * len(input_ids)
+    print("Chat template khop response_template: %r" % response_template)
 
-        # Moc theo KY TU chu khong do do dai token cua tung doan roi cong don.
-        # Tokenize rieng "".join(segments[:k]) cho ra so token khac voi chinh
-        # doan do khi nam trong full_text (BPE merge khac nhau o bien), lam span
-        # lech vai token va mask an sang segment KHONG duoc chon.
-        response_char = len(input_str) + len(think_str)
+    if not tokenizer.is_fast:
+        raise SystemExit(
+            "Can fast tokenizer (tokenizer.json) de lay offset_mapping - do la cach duy nhat "
+            "xac dinh dung bien segment trong chuoi token. Model %r chi co tokenizer cham."
+            % args.model_name_or_path
+        )
 
+    args.run_name = args.model_name_or_path.split("/")[-1] + "max_seq_" + str(args.max_seq_length) + "lr_" + str(args.learning_rate) + "epochs_" + str(args.epochs)
+    if not args.output_dir:
+        # Quy uoc ten: eval.sh dung lai chuoi nay de tim checkpoint moi nhat.
+        suffix = ""
         if not args.mask:
-            supervise = lambda seg_idx: True
-            bounds = None
+            # Khong --mask = long-CoT SFT thuong (supervise ca response). Doi ten
+            # thu muc de checkpoint baseline khong de len ban selective.
+            suffix += "_fullsft"
+        if args.use_lora:
+            suffix += "_lora"
+        args.output_dir = f"./checkpoints/{args.model_name_or_path.split('/')[-1]}_epoch{args.epochs}_lr{args.learning_rate}_len{args.max_seq_length}{suffix}"
+        args.run_name += suffix
+
+    USE_GC = not args.no_gradient_checkpointing
+    model.config.use_cache = False
+
+    if args.use_lora:
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r = args.lora_r,
+            target_modules = args.target_modules,
+            lora_alpha = args.lora_alpha,
+            lora_dropout = args.lora_dropout,
+            bias = "none",
+            # "unsloth" = ban gradient checkpointing tiet kiem VRAM cua unsloth,
+            # can thiet o seq 32768. Trainer khong bat lai (xem SFTConfig ben duoi).
+            use_gradient_checkpointing = "unsloth" if USE_GC else False,
+            random_state = args.seed,
+            use_rslora = False,
+            loftq_config = None,
+        )
+        trainer_gc = False
+    else:
+        if USE_GC:
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         else:
-            segment = split_segments(output, args.segment_mode)
-            # Luon hoc segment dau, gan cuoi va cuoi du IG khong chon chung.
-            add_ids = [0, len(segment) - 2, len(segment) - 1]
-            keep = {i for i in add_ids + list(segment_id) if 0 <= i < len(segment)}
-            bounds = segment_char_bounds(segment, response_char)
-            supervise = lambda seg_idx: seg_idx in keep
+            model.gradient_checkpointing_disable()
+        trainer_gc = USE_GC
 
-        n_supervised = 0
-        for i, (char_start, char_end) in enumerate(offsets):
-            if char_end <= char_start:
-                continue                      # token dac biet, khong anh xa ra ky tu nao
-            if char_start < response_char:
-                continue                      # phan prompt, luon giu -100
-            if bounds is None:
-                labels[i] = input_ids[i]
-                n_supervised += 1
+    # dataset.map(batched=True) duoc phep tra ve it dong hon dau vao, nen mau hong
+    # bi bo han thay vi lam ca batch chet.
+    SKIPPED = {"n": 0}
+    # raw = token dich truoc khi mask/cat. retained = label != -100 thuc su hoc.
+    TOKEN_STATS = {"raw": 0, "retained": 0}
+
+
+    def segment_char_bounds(segments, offset):
+        """Vi tri [start, end) theo KY TU cua tung segment trong full_text."""
+        bounds, cursor = [], offset
+        for seg in segments:
+            bounds.append((cursor, cursor + len(seg)))
+            cursor += len(seg)
+        return bounds
+
+
+    def formatting_prompts_func(examples):
+        questions = examples["question"]
+        outputs = examples["solution"] 
+        segments_ids = examples["selected_spans_ids"]
+
+        input_ids_list = []
+        labels_list = []
+        for prompt, output, segment_id in zip(questions, outputs, segments_ids):
+            messages = [
+                {"role": "user", "content": prompt + "\nPlease reason step by step, and put your final answer within \\boxed{}."},
+            ]
+
+            input_str = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )   
+            full_text = input_str + think_str + output
+            response_char = len(input_str) + len(think_str)
+
+            # Dem token dich tren chuoi CHUA cat. Cat max_seq_length la pruning.
+            raw_enc = tokenizer(full_text, truncation=False, return_offsets_mapping=True)
+            n_raw = 0
+            for char_start, char_end in raw_enc["offset_mapping"]:
+                if char_end > char_start and char_start >= response_char:
+                    n_raw += 1
+            TOKEN_STATS["raw"] += n_raw
+            del raw_enc
+
+            full_tokens = tokenizer(
+                full_text,
+                truncation=True,
+                max_length=args.max_seq_length,
+                return_offsets_mapping=True,
+            )
+            input_ids = full_tokens["input_ids"]
+            offsets = full_tokens["offset_mapping"]
+            labels = [-100] * len(input_ids)
+
+            # Moc theo KY TU chu khong do do dai token cua tung doan roi cong don.
+            # Tokenize rieng "".join(segments[:k]) cho ra so token khac voi chinh
+            # doan do khi nam trong full_text (BPE merge khac nhau o bien), lam span
+            # lech vai token va mask an sang segment KHONG duoc chon.
+            if not args.mask:
+                supervise = lambda seg_idx: True
+                bounds = None
+            else:
+                segment = split_segments(output, args.segment_mode)
+                # Luon hoc segment dau, gan cuoi va cuoi du IG khong chon chung.
+                add_ids = [0, len(segment) - 2, len(segment) - 1]
+                keep = {i for i in add_ids + list(segment_id) if 0 <= i < len(segment)}
+                bounds = segment_char_bounds(segment, response_char)
+                supervise = lambda seg_idx: seg_idx in keep
+
+            n_supervised = 0
+            for i, (char_start, char_end) in enumerate(offsets):
+                if char_end <= char_start:
+                    continue                      # token dac biet, khong anh xa ra ky tu nao
+                if char_start < response_char:
+                    continue                      # phan prompt, luon giu -100
+                if bounds is None:
+                    labels[i] = input_ids[i]
+                    n_supervised += 1
+                    continue
+                # Token thuoc ve segment chua ky tu dau tien cua no.
+                lo, hi = 0, len(bounds) - 1
+                seg_idx = None
+                while lo <= hi:
+                    mid = (lo + hi) // 2
+                    if char_start < bounds[mid][0]:
+                        hi = mid - 1
+                    elif char_start >= bounds[mid][1]:
+                        lo = mid + 1
+                    else:
+                        seg_idx = mid
+                        break
+                if seg_idx is not None and supervise(seg_idx):
+                    labels[i] = input_ids[i]
+                    n_supervised += 1
+
+            if n_supervised == 0:
+                # Toan bo label = -100 thi cross-entropy tra ve nan va lam hong ca
+                # run. Xay ra khi max_seq_length cat mat phan response. Bo mau nay.
+                SKIPPED["n"] += 1
                 continue
-            # Token thuoc ve segment chua ky tu dau tien cua no.
-            lo, hi = 0, len(bounds) - 1
-            seg_idx = None
-            while lo <= hi:
-                mid = (lo + hi) // 2
-                if char_start < bounds[mid][0]:
-                    hi = mid - 1
-                elif char_start >= bounds[mid][1]:
-                    lo = mid + 1
-                else:
-                    seg_idx = mid
-                    break
-            if seg_idx is not None and supervise(seg_idx):
-                labels[i] = input_ids[i]
-                n_supervised += 1
+            TOKEN_STATS["retained"] += n_supervised
 
-        if n_supervised == 0:
-            # Toan bo label = -100 thi cross-entropy tra ve nan va lam hong ca
-            # run. Xay ra khi max_seq_length cat mat phan response. Bo mau nay.
-            SKIPPED["n"] += 1
-            continue
+            input_ids_list.append(input_ids)
+            labels_list.append(labels)
 
-        input_ids_list.append(input_ids)
-        labels_list.append(labels)
+        return {
+            "input_ids": input_ids_list,
+            "labels": labels_list
+        }
+    if "json" in args.data_names or args.data_names.endswith(".jsonl"):
+        dataset = load_dataset("json", data_files=args.data_names)['train']
+    else:
+        dataset = load_dataset(args.data_names, split = args.split)
 
+    dataset = dataset.map(
+        formatting_prompts_func,
+        batched=True,
+        remove_columns=["question", "solution", "answer", "selected_spans_ids", "segments"],  
+        load_from_cache_file=False,
+    )
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    effective_batch = args.per_device_train_batch_size * args.gradient_accumulation_steps * world_size
+    print("=" * 60)
+    print("  che do        : %s | %s" % ("LoRA" if args.use_lora else "full finetune",
+                                         "selective (mask)" if args.mask else "full-CoT SFT"))
+    if args.use_lora:
+        print("  lora          : r=%d alpha=%d dropout=%s" % (args.lora_r, args.lora_alpha, args.lora_dropout))
+        print("  target_modules: %s" % ",".join(args.target_modules))
+    print("  segment_mode  : %s" % args.segment_mode)
+    print("  seq len       : %d" % args.max_seq_length)
+    print("  batch         : %d x %d accum x %d gpu = %d/step" % (
+        args.per_device_train_batch_size, args.gradient_accumulation_steps, world_size, effective_batch))
+    print("  optim         : %s betas=(%s, %s) eps=%s wd=%s" % (
+        args.optim, args.adam_beta1, args.adam_beta2, args.adam_epsilon, args.weight_decay))
+    print("  scheduler     : %s warmup_ratio=%s lr=%s epochs=%d" % (
+        args.lr_scheduler_type, args.warmup_ratio, args.learning_rate, args.epochs))
+    print("  grad ckpt     : %s" % ("unsloth" if (args.use_lora and USE_GC) else ("on" if USE_GC else "off")))
+    print("  output_dir    : %s" % args.output_dir)
+    print("  so mau        : %d%s" % (
+        len(dataset),
+        "" if SKIPPED["n"] == 0 else " (da bo %d mau bi cat mat phan response o max_seq_length=%d)"
+        % (SKIPPED["n"], args.max_seq_length)))
+    if len(dataset) == 0:
+        raise SystemExit("Khong con mau nao sau khi loc - kiem tra --max_seq_length va du lieu dau vao.")
+    print("=" * 60)
+
+    loss_history = LossHistoryCallback()
+    trainer = SFTTrainer(
+        model = model,
+        train_dataset = dataset,
+        tokenizer = tokenizer,
+        dataset_num_proc=2,
+        packing = False,
+        args = SFTConfig(
+            max_seq_length = args.max_seq_length,
+            remove_unused_columns = False,
+            dataset_kwargs = {"skip_prepare_dataset": True},
+            per_device_train_batch_size = args.per_device_train_batch_size,
+            gradient_accumulation_steps = args.gradient_accumulation_steps,
+            warmup_ratio = args.warmup_ratio,
+            num_train_epochs = args.epochs, 
+            learning_rate = args.learning_rate,
+            fp16 = not is_bfloat16_supported(),
+            bf16 = is_bfloat16_supported(),
+            logging_steps = 1,
+            lr_scheduler_type = args.lr_scheduler_type,
+            output_dir = args.output_dir,
+            optim = args.optim,
+            weight_decay = args.weight_decay,
+            adam_beta1 = args.adam_beta1,
+            adam_beta2 = args.adam_beta2,
+            adam_epsilon = args.adam_epsilon,
+            seed = args.seed,
+            report_to = REPORT_TO,
+            run_name = args.run_name,
+            push_to_hub = False,
+            save_strategy = args.save_strategy,
+            overwrite_output_dir=True,
+            save_total_limit = args.save_total_limit,
+            save_only_model=True,
+            gradient_checkpointing=trainer_gc,
+            group_by_length = args.group_by_length,
+            max_grad_norm=args.max_grad_norm,
+        ),
+        callbacks=[EarlyStopAtEpochCallback(args.stop_at_epoch), loss_history],
+    )
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+    train_t0 = time.perf_counter()
+    trainer.train()
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    train_wall_time_sec = time.perf_counter() - train_t0
+    train_peak_vram_gb = (
+        torch.cuda.max_memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0.0
+    )
+    n_params = sum(p.numel() for p in model.parameters())
     return {
-        "input_ids": input_ids_list,
-        "labels": labels_list
+        "model": trainer.model,
+        "tokenizer": tokenizer,
+        "trainer": trainer,
+        "n_params": n_params,
+        "total_raw_tokens": int(TOKEN_STATS["raw"]),
+        "retained_supervised_tokens": int(TOKEN_STATS["retained"]),
+        "train_wall_time_sec": train_wall_time_sec,
+        "train_peak_vram_gb": train_peak_vram_gb,
+        "epoch_loss_history": loss_history.history,
+        "world_size": world_size,
     }
-if "json" in args.data_names or args.data_names.endswith(".jsonl"):
-    dataset = load_dataset("json", data_files=args.data_names)['train']
-else:
-    dataset = load_dataset(args.data_names, split = args.split)
 
-dataset = dataset.map(
-    formatting_prompts_func,
-    batched=True,
-    remove_columns=["question", "solution", "answer", "selected_spans_ids", "segments"],  
-    load_from_cache_file=False,
-)
-gc.collect()
-if torch.cuda.is_available():
-    torch.cuda.empty_cache()
 
-world_size = int(os.environ.get("WORLD_SIZE", "1"))
-effective_batch = args.per_device_train_batch_size * args.gradient_accumulation_steps * world_size
-print("=" * 60)
-print("  che do        : %s | %s" % ("LoRA" if args.use_lora else "full finetune",
-                                     "selective (mask)" if args.mask else "full-CoT SFT"))
-if args.use_lora:
-    print("  lora          : r=%d alpha=%d dropout=%s" % (args.lora_r, args.lora_alpha, args.lora_dropout))
-    print("  target_modules: %s" % ",".join(args.target_modules))
-print("  segment_mode  : %s" % args.segment_mode)
-print("  seq len       : %d" % args.max_seq_length)
-print("  batch         : %d x %d accum x %d gpu = %d/step" % (
-    args.per_device_train_batch_size, args.gradient_accumulation_steps, world_size, effective_batch))
-print("  optim         : %s betas=(%s, %s) eps=%s wd=%s" % (
-    args.optim, args.adam_beta1, args.adam_beta2, args.adam_epsilon, args.weight_decay))
-print("  scheduler     : %s warmup_ratio=%s lr=%s epochs=%d" % (
-    args.lr_scheduler_type, args.warmup_ratio, args.learning_rate, args.epochs))
-print("  grad ckpt     : %s" % ("unsloth" if (args.use_lora and USE_GC) else ("on" if USE_GC else "off")))
-print("  output_dir    : %s" % args.output_dir)
-print("  so mau        : %d%s" % (
-    len(dataset),
-    "" if SKIPPED["n"] == 0 else " (da bo %d mau bi cat mat phan response o max_seq_length=%d)"
-    % (SKIPPED["n"], args.max_seq_length)))
-if len(dataset) == 0:
-    raise SystemExit("Khong con mau nao sau khi loc - kiem tra --max_seq_length va du lieu dau vao.")
-print("=" * 60)
+def main():
+    run(parse_args())
 
-trainer = SFTTrainer(
-    model = model,
-    train_dataset = dataset,
-    tokenizer = tokenizer,
-    dataset_num_proc=2,
-    packing = False,
-    args = SFTConfig(
-        max_seq_length = args.max_seq_length,
-        remove_unused_columns = False,
-        dataset_kwargs = {"skip_prepare_dataset": True},
-        per_device_train_batch_size = args.per_device_train_batch_size,
-        gradient_accumulation_steps = args.gradient_accumulation_steps,
-        warmup_ratio = args.warmup_ratio,
-        num_train_epochs = args.epochs, 
-        learning_rate = args.learning_rate,
-        fp16 = not is_bfloat16_supported(),
-        bf16 = is_bfloat16_supported(),
-        logging_steps = 1,
-        lr_scheduler_type = args.lr_scheduler_type,
-        output_dir = args.output_dir,
-        optim = args.optim,
-        weight_decay = args.weight_decay,
-        adam_beta1 = args.adam_beta1,
-        adam_beta2 = args.adam_beta2,
-        adam_epsilon = args.adam_epsilon,
-        seed = args.seed,
-        report_to = REPORT_TO,
-        run_name = args.run_name,
-        save_strategy = "epoch",
-        overwrite_output_dir=True,
-        save_total_limit = 3,
-        save_only_model=True,
-        gradient_checkpointing=trainer_gc,
-        group_by_length = args.group_by_length,
-        max_grad_norm=args.max_grad_norm,
-    ),
-    callbacks=[EarlyStopAtEpochCallback(args.stop_at_epoch)],
-)
-trainer.train()
+
+if __name__ == "__main__":
+    main()

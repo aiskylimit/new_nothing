@@ -22,11 +22,11 @@
 #   bash eval.sh --model /duong/dan/checkpoint-250 --tag sel_ep5
 #   bash eval.sh --quick                   # kiem nhanh: math500, 100 cau, 1 mau/cau
 #   bash eval.sh --tasks "aime24 math500"  # chi vai task
-#   bash eval.sh --n-sampling 1            # 1 mau/cau cho nhanh (mac dinh 32/6)
+#   bash eval.sh --n-sampling 1            # 1 mau/cau cho nhanh (mac dinh 3)
 #   bash eval.sh --num-test-sample 100     # chi lay 100 cau dau moi task
 #   bash eval.sh --gpu 0,1,2,3 --data-parallel   # 1 task/GPU chay song song
 #   bash eval.sh --gpu 0,1                 # tensor parallel tren 2 GPU
-#   bash eval.sh --max-tokens 16384        # cat ngan sinh cho nhanh
+#   bash eval.sh --max-tokens 4096         # mac dinh 4096, top_p 0.9, repetition_penalty 1.05
 #   bash eval.sh --overwrite               # cham lai tu dau
 #   bash eval.sh --skip-setup / --reinstall / --dry-run
 # -----------------------------------------------------------------------------
@@ -55,22 +55,25 @@ LR="${LR:-5e-5}"
 MAX_SEQ_LENGTH="${MAX_SEQ_LENGTH:-32768}"
 USE_LORA="${USE_LORA:-1}"   # train.sh mac dinh LoRA -> ten thu muc co hau to _lora
 
-# "task so_mau_moi_cau" - lay tu Eval/run_eval.sh goc cua paper.
-TASKS_DEFAULT="aime24:32 amc23:32 math500:6 minerva:6 gpqa:6 olympiad:6"
+# Moi task sinh 3 mau. "task:n" van ghi de so mau cua rieng task do.
+TASKS_DEFAULT="aime24 amc23 math500 minerva gpqa olympiad"
 TASKS="${TASKS:-}"                  # rong = dung TASKS_DEFAULT
-N_SAMPLING="${N_SAMPLING:-}"        # rong = dung so mau rieng cua tung task
+N_SAMPLING="${N_SAMPLING:-}"        # rong = 3 cho moi task; task:n hoac --n-sampling ghi de
+N_SAMPLING_EXPLICIT=0
+[[ -n "$N_SAMPLING" ]] && N_SAMPLING_EXPLICIT=1
 NUM_TEST_SAMPLE="${NUM_TEST_SAMPLE:-}"   # rong = -1 = ca test set
 QUICK=0
 
 SEED="${SEED:-0}"
-MAX_TOKENS="${MAX_TOKENS:-32768}"
+MAX_TOKENS="${MAX_TOKENS:-4096}"
 TEMPERATURE="${TEMPERATURE:-0.6}"
-TOP_P="${TOP_P:-1}"
+TOP_P="${TOP_P:-0.9}"
+REPETITION_PENALTY="${REPETITION_PENALTY:-1.05}"
 PROMPT_TYPE="${PROMPT_TYPE:-deepseek-longcot}"
 
 DATA_PARALLEL=0                          # 1 = chia task ra tung GPU chay song song
-GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.90}"     # KV cache lon hon = nhieu seq dong thoi hon
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-}"       # rong = de vLLM tu lay tu config model
+GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.8}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
 PREFIX_CACHING="${PREFIX_CACHING:-1}"    # n mau/cau dung chung prompt -> bo prefill lap
 LOGPROBS="${LOGPROBS:-0}"                # repo khong dung logprobs, bat chi ton them
 
@@ -102,7 +105,9 @@ while [[ $# -gt 0 ]]; do
     --lr)              LR="$2"; shift 2 ;;
     --max-seq-length)  MAX_SEQ_LENGTH="$2"; shift 2 ;;
     --tasks)           TASKS="$2"; shift 2 ;;
-    --n-sampling)      N_SAMPLING="$2"; shift 2 ;;
+    --n-sampling)      N_SAMPLING="$2"; N_SAMPLING_EXPLICIT=1; shift 2 ;;
+    --top-p)           TOP_P="$2"; shift 2 ;;
+    --repetition-penalty) REPETITION_PENALTY="$2"; shift 2 ;;
     --num-test-sample) NUM_TEST_SAMPLE="$2"; shift 2 ;;
     --quick)           QUICK=1; shift ;;
     --gpu)             GPU="$2"; shift 2 ;;
@@ -206,7 +211,10 @@ fi
 # se mat dap an va accuracy tut gia tao.
 if [[ "$QUICK" == "1" ]]; then
   [[ -n "$TASKS" ]]           || TASKS="math500"
-  [[ -n "$N_SAMPLING" ]]      || N_SAMPLING=1
+  if [[ "$N_SAMPLING_EXPLICIT" == "0" ]]; then
+    N_SAMPLING=1
+    N_SAMPLING_EXPLICIT=1
+  fi
   [[ -n "$NUM_TEST_SAMPLE" ]] || NUM_TEST_SAMPLE=100
 fi
 [[ -n "$TASKS" ]]           || TASKS="$TASKS_DEFAULT"
@@ -324,13 +332,10 @@ resolve_tasks() {
   for spec in $TASKS; do
     task="${spec%%:*}"; n="${spec#*:}"
     [[ "$n" == "$task" ]] && n=""
-    if [[ -n "$N_SAMPLING" ]]; then
+    if [[ "$N_SAMPLING_EXPLICIT" == "1" ]]; then
       n="$N_SAMPLING"
     elif [[ -z "$n" ]]; then
-      case " $TASKS_DEFAULT " in
-        *" ${task}:"*) n="$(echo "$TASKS_DEFAULT" | tr ' ' '\n' | grep "^${task}:" | cut -d: -f2)" ;;
-        *) n=1 ;;
-      esac
+      n=3
     fi
     out="${out}${task}:${n} "
   done
@@ -346,9 +351,9 @@ if [[ "$DATA_PARALLEL" == "1" ]]; then
 else
   echo "    gpu        : ${GPU} (tensor_parallel_size=${NGPU})"
 fi
-echo "    sampling   : t=${TEMPERATURE} top_p=${TOP_P} seed=${SEED} max_tokens=${MAX_TOKENS}"
+echo "    sampling   : t=${TEMPERATURE} top_p=${TOP_P} repetition_penalty=${REPETITION_PENALTY} seed=${SEED} max_tokens=${MAX_TOKENS}"
 echo "    so cau     : $([[ "$NUM_TEST_SAMPLE" == "-1" ]] && echo "ca test set" || echo "${NUM_TEST_SAMPLE} cau dau")"
-echo "    vllm       : gpu_mem=${GPU_MEM_UTIL} prefix_cache=$([[ "$PREFIX_CACHING" == 1 ]] && echo on || echo off) logprobs=$([[ "$LOGPROBS" == 1 ]] && echo on || echo off) max_model_len=${MAX_MODEL_LEN:-auto}"
+echo "    vllm       : gpu_mem=${GPU_MEM_UTIL} prefix_cache=$([[ "$PREFIX_CACHING" == 1 ]] && echo on || echo off) logprobs=$([[ "$LOGPROBS" == 1 ]] && echo on || echo off) max_model_len=${MAX_MODEL_LEN}"
 echo "    output     : Eval/${OUTPUT_ROOT}/<task>/${RUN_TAG}"
 echo "    log        : ${LOG_FILE%.log}*.log"
 echo
@@ -373,6 +378,7 @@ run_tasks() {
       --temperature "${TEMPERATURE}" \
       --n_sampling "${n}" \
       --top_p "${TOP_P}" \
+      --repetition_penalty "${REPETITION_PENALTY}" \
       --start 0 \
       --end -1 \
       --use_vllm \
@@ -441,9 +447,9 @@ SUMMARY_JSON="${ROOT_DIR}/Eval/${OUTPUT_ROOT}/summary.json"
 
 if [[ "$DRY_RUN" != "1" ]]; then
   log "Ket qua"
-  META="$(printf '{"tag":"%s","model":"%s","decoding":"%s","temperature":%s,"top_p":%s,"seed":%s,"max_tokens":%s,"num_test_sample":%s,"prompt_type":"%s"}' \
+  META="$(printf '{"tag":"%s","model":"%s","decoding":"%s","temperature":%s,"top_p":%s,"repetition_penalty":%s,"seed":%s,"max_tokens":%s,"max_model_len":%s,"gpu_memory_utilization":%s,"num_test_sample":%s,"prompt_type":"%s"}' \
     "$RUN_TAG" "$MODEL" "$([[ "$TEMPERATURE" == "0" ]] && echo greedy || echo sampling)" \
-    "$TEMPERATURE" "$TOP_P" "$SEED" "$MAX_TOKENS" "$NUM_TEST_SAMPLE" "$PROMPT_TYPE")"
+    "$TEMPERATURE" "$TOP_P" "$REPETITION_PENALTY" "$SEED" "$MAX_TOKENS" "$MAX_MODEL_LEN" "$GPU_MEM_UTIL" "$NUM_TEST_SAMPLE" "$PROMPT_TYPE")"
 
   python3 - "$ROOT_DIR/Eval/$OUTPUT_ROOT" "$SUMMARY_JSON" "$META" <<'PYSUM'
 import json, sys, glob, os, re, datetime
@@ -462,13 +468,16 @@ for f in sorted(glob.glob(os.path.join(root, "*", "*", "**", "*_metrics.json"), 
         m = json.load(open(f))
     except Exception:
         continue
+    pass1 = m.get("pass@1", m.get("acc"))
     rows.append({
         "task": task,
         "num_test_sample": (int(mo.group(1)) if mo else None),
         "seed": (int(mo.group(2)) if mo else None),
         "temperature": (float(mo.group(3)) if mo else None),
         "n_sampling": (int(mo.group(4)) if mo else None),
-        "acc": m.get("acc"),
+        "pass@1": pass1,
+        "pass@3": m.get("pass@3"),
+        "acc": pass1,
         "num_samples": m.get("num_samples"),
         "empty_samples": m.get("empty_samples"),
         "timeout_samples": m.get("timeout_samples"),
@@ -476,12 +485,17 @@ for f in sorted(glob.glob(os.path.join(root, "*", "*", "**", "*_metrics.json"), 
         "metrics_file": os.path.relpath(f, root),
     })
 
-accs = [r["acc"] for r in rows if isinstance(r["acc"], (int, float))]
+def _avg(key):
+    vals = [r[key] for r in rows if isinstance(r.get(key), (int, float))]
+    return (round(sum(vals) / len(vals), 2) if vals else None)
+
 summary = {
     "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
     **meta,
-    "tasks": {r["task"]: r["acc"] for r in rows},
-    "average_acc": (round(sum(accs) / len(accs), 2) if accs else None),
+    "tasks": {r["task"]: {"pass@1": r["pass@1"], "pass@3": r["pass@3"]} for r in rows},
+    "average_pass@1": _avg("pass@1"),
+    "average_pass@3": _avg("pass@3"),
+    "average_acc": _avg("pass@1"),
     "results": rows,
 }
 
@@ -492,17 +506,22 @@ with open(out_path, "w") as fh:
 if not rows:
     print("  (chua co metrics.json nao trong %s)" % root)
 else:
-    hdr = "  %-12s %7s %4s %8s %10s %8s"
-    print(hdr % ("task", "subset", "n", "acc", "num_samples", "time"))
+    def _cell(v):
+        return "%.1f" % v if isinstance(v, (int, float)) else "-"
+
+    hdr = "  %-12s %7s %4s %8s %8s %10s %8s"
+    print(hdr % ("task", "subset", "n", "pass@1", "pass@3", "num_samples", "time"))
     for r in rows:
         sub = "full" if r["num_test_sample"] == -1 else r["num_test_sample"]
         t = r["time_use_in_second"]
         print(hdr % (r["task"], sub, r["n_sampling"],
-                     "%.1f" % r["acc"] if isinstance(r["acc"], (int, float)) else r["acc"],
+                     _cell(r["pass@1"]), _cell(r["pass@3"]),
                      r["num_samples"],
                      "%d:%02d" % (t // 60, t % 60) if isinstance(t, (int, float)) else "-"))
-    if accs:
-        print(hdr % ("TRUNG BINH", "", "", "%.1f" % (sum(accs) / len(accs)), "", ""))
+    if summary["average_pass@1"] is not None or summary["average_pass@3"] is not None:
+        print(hdr % ("TRUNG BINH", "", "",
+                     _cell(summary["average_pass@1"]), _cell(summary["average_pass@3"]),
+                     "", ""))
 print()
 print("  JSON: %s" % out_path)
 PYSUM
