@@ -1,4 +1,4 @@
-#1 +10
+#i cred.txt
 #cred
 #v1
 
