@@ -1,4 +1,8 @@
-#1 +10
+#d
+#datasets
+--hf-dataset VoCuc/vlm-teacher-embedding /mnt/local/datasets
+--hf-dataset TIGER-Lab/MMEB-eval /mnt/local/@PROJECT@/cred/vlm2vec_eval/MMEB-eval
+
 #log
 #v1
 
@@ -26,8 +30,6 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 # tree /mnt/local/datasets
-rm -rf /mnt/local/aiskylimit_new_nothing/cred/datasets
-mv /mnt/local/datasets /mnt/local/aiskylimit_new_nothing/cred/
 # cd ./cred
 # bash ./project_commands.sh
 
