@@ -138,7 +138,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-generations", type=int, default=4)
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--top-p", type=float, default=0.95)
-    parser.add_argument("--max-new-tokens", type=int, default=32_768)
+    parser.add_argument("--max-new-tokens", type=int, default=4096, choices=(4096,))
     parser.add_argument("--limit", type=int)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(

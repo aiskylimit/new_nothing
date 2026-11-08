@@ -94,8 +94,8 @@ The output directory contains:
 
 ## 2. LoRA fine-tuning
 
-The example below gives a global batch size of 32 automatically. With eight
-processes and per-device batch size one, gradient accumulation is four.
+The training recipe uses an effective batch size of 32 and one
+gradient-accumulation step. With eight processes, the per-device batch size is four.
 `--deepspeed configs/deepspeed_zero3.json` is for multi-GPU training.
 
 ```bash
@@ -104,25 +104,23 @@ torchrun --nproc_per_node 8 -m sgl.training \
   --output-dir checkpoints/qwen2.5-7b-sgl \
   --model-name-or-path Qwen/Qwen2.5-7B-Instruct \
   --global-batch-size 32 \
-  --per-device-train-batch-size 1 \
+  --per-device-train-batch-size 4 \
   --num-train-epochs 6 \
   --learning-rate 5e-5 \
   --warmup-ratio 0.1 \
   --deepspeed configs/deepspeed_zero3.json
 ```
 
-On a single NVIDIA B200 180 GB GPU, use a microbatch of two and four
-gradient-accumulation steps, for an effective batch size of 8. If an unusually
-long sample causes an out-of-memory error, reduce the microbatch to one and keep
-the global batch size at 8.
+On a single GPU, use a per-device batch size of 32 and one gradient-accumulation
+step, for an effective batch size of 32. These are also the training CLI defaults.
 
 ```bash
 python -m sgl.training \
   --mask-dir artifacts/qwen2.5-7b \
   --output-dir checkpoints/qwen2.5-7b-sgl \
   --model-name-or-path Qwen/Qwen2.5-7B-Instruct \
-  --global-batch-size 8 \
-  --per-device-train-batch-size 2 \
+  --global-batch-size 32 \
+  --per-device-train-batch-size 32 \
   --num-train-epochs 6 \
   --learning-rate 5e-5 \
   --warmup-ratio 0.1
@@ -135,6 +133,9 @@ weight decay, and a cosine `LambdaLR` schedule with a 0.1 warmup ratio.
 Artifacts and checkpoints are saved only to local paths.
 
 ## 3. Evaluation
+
+Evaluation always uses a maximum of 4,096 new tokens per response. The
+`--max-new-tokens` option accepts only `4096`.
 
 Evaluation uses MATH-500 (500 problems, `HuggingFaceH4/MATH-500`),
 AIME 2025 (30 problems, `yentinglin/aime_2025`), AIME 2024 (30 problems,
@@ -151,7 +152,7 @@ accelerate launch --num_processes 8 -m sgl.evaluation \
   --num-generations 4 \
   --temperature 0.6 \
   --top-p 0.95 \
-  --max-new-tokens 32768
+  --max-new-tokens 4096
 ```
 
 On a single GPU:
@@ -164,7 +165,7 @@ python -m sgl.evaluation \
   --num-generations 4 \
   --temperature 0.6 \
   --top-p 0.95 \
-  --max-new-tokens 32768
+  --max-new-tokens 4096
 ```
 
 Scoring uses HuggingFace `math-verify` 0.9 conventions:
