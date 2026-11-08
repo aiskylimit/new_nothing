@@ -1,5 +1,5 @@
 #1 +10
-#log
+#cred
 #v1
 
 
@@ -27,10 +27,11 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-tree ./vlm2vec_train
-# mkdir -p vlm2vec_train/MMEB-train
-# mv datasets vlm2vec_train/MMEB-train/
-# bash ./project_commands.sh
+cd vlm2vec_train/MMEB-train
+rsync -avh --progress --remove-source-files datasets/ ./
+find datasets -type d -empty -delete
+cd ../..
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
