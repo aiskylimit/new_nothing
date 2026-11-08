@@ -27,7 +27,7 @@ export NCCL_DEBUG=WARN
 
 
 # cd ./cred
-# tree ./datasets
+tree ./datasets
 mkdir -p vlm2vec_train/MMEB-train
 mv datasets vlm2vec_train/MMEB-train
 # bash ./project_commands.sh
