@@ -1,9 +1,5 @@
-#d
-#models
---hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/cred/models/B3_Qwen2_2B
---hf apple/FastVLM-1.5B /mnt/local/@PROJECT@/cred/models/FastVLM-1.5B
-
-#log
+#1 +120
+#cred4
 #v2
 
 
@@ -31,9 +27,7 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v5}"
-python json_filter.py ./MMEB-eval_outputs_v5 "${JSON_FILTER_DESTINATION}" --overwrite
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
