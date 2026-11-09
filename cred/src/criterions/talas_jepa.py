@@ -205,7 +205,6 @@ class TalasJepa(nn.Module):
             return zL_padded.sum() * 0.0
 
         loss_per_sample = F.relu(pr0 - prL)
-        print(f"pr0: {pr0} - prL: {prL} - acitvate: {loss_per_sample > 0.0}")
 
         return loss_per_sample[valid].mean().to(dtype)
     
