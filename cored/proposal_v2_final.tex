@@ -1,0 +1,446 @@
+\documentclass[12pt,a4paper]{article}
+
+% Packages
+% Tương thích cả pdfLaTeX (T5 cho tiếng Việt, ví dụ trên Overleaf) lẫn
+% XeLaTeX/LuaLaTeX (Unicode trực tiếp qua fontspec).
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \IfFileExists{t5enc.def}{\usepackage[T5]{fontenc}}{\usepackage[T1]{fontenc}}
+\else
+  \usepackage{fontspec}
+\fi
+\IfFileExists{vietnam.ldf}{\usepackage[vietnamese]{babel}}{}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\hypersetup{colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue}
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\KL}{KL}
+\DeclareMathOperator{\JS}{JS}
+\DeclareMathOperator{\Softmax}{Softmax}
+\DeclareMathOperator{\ReLU}{ReLU}
+\DeclareMathOperator{\rank}{rank}
+\newcommand{\sg}[1]{\mathrm{sg}\!\left[#1\right]}
+\newcommand{\pmerge}{\phi_{\mathrm{merge}}}
+
+\title{\textbf{Council-Weighted Reasoning Distillation}}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Giới thiệu}
+Đề xuất này trình bày một phương pháp tối ưu hóa Knowledge Distillation (KD) thông qua kiến trúc Multi-LoRA. Thay vì loại bỏ cứng (hard selection) các reasoning steps, phương pháp giữ lại toàn bộ chuỗi reasoning nhưng gán trọng số khác nhau cho từng bước.
+
+Độ quan trọng của mỗi reasoning step được xác định dựa trên hai tín hiệu từ hội đồng LoRA experts: mức mean uncertainty và mức độ phân hóa về độ tự tin giữa các experts. Các reasoning steps có uncertainty hoặc disagreement cao được tăng trọng số trong quá trình huấn luyện.
+
+Tri thức của hội đồng được tổng hợp bằng cách gộp trực tiếp $M$ expert LoRA trong không gian trọng số (model merging), thay vì học một cơ chế định tuyến riêng (Gate). Adapter đã gộp $\pmerge$ vừa làm tín hiệu teacher cho số hạng KL, vừa làm điểm khởi tạo cho một adapter LoRA đơn, nhằm loại bỏ chi phí tham số phát sinh từ việc giữ đồng thời $M$ adapter tại thời điểm inference.
+
+\section{Tổng quan Kiến trúc}
+
+Cho một mô hình ngôn ngữ với tham số gốc $\theta_{base}$ được đóng băng. Ta gắn thêm $M$ adapter LoRA:
+
+\begin{equation}
+\Phi = \{\phi_1,\phi_2,\dots,\phi_M\}.
+\end{equation}
+
+Mỗi $\phi_m$ gồm các cặp ma trận hạng thấp $(A_m^{(\ell)}, B_m^{(\ell)})$ trên từng mô-đun đích $\ell$, với $A_m^{(\ell)} \in \mathbb{R}^{r\times d_{in}}$, $B_m^{(\ell)} \in \mathbb{R}^{d_{out}\times r}$ và hệ số tỉ lệ $s = \alpha/r$. Bộ chuyển đổi tác động lên trọng số theo dạng cộng tính
+
+\begin{equation}
+     \label{eq:lora}
+     W^{(\ell)}_m = W^{(\ell)}_{base} + s\, B_m^{(\ell)} A_m^{(\ell)},
+     \qquad
+     \rank\!\big(s\, B_m^{(\ell)} A_m^{(\ell)}\big) \le r.
+\end{equation}
+
+Quá trình huấn luyện gồm hai phase:
+
+\begin{itemize}
+\item \textbf{Phase 1 (Diversity Training):} Huấn luyện $M$ LoRA experts nhằm tạo ra các reasoning state khác biệt trong không gian đầu ra. Tính khác biệt là điều kiện tiên quyết: nếu các expert hội tụ về cùng một phân phối dự đoán thì mọi tín hiệu ở Phase 2 đều triệt tiêu, và mọi cách tổng hợp (định tuyến, gộp, hay chọn expert tốt nhất) đều cho cùng kết quả như một expert đơn.
+\item \textbf{Phase 2 (Merging và Distillation):} Đóng băng $\theta_{base}$ và $\Phi$. Bước thứ nhất tính trọng số $w_i$ của từng reasoning step từ hội đồng, đồng thời gộp $M$ expert trong không gian trọng số thành một adapter hạng $r$ duy nhất $\pmerge$. Bước thứ hai chưng cất $\theta_{base}+\pmerge$ vào một adapter student $\tilde\theta$, khởi tạo $\tilde\theta \leftarrow \pmerge$, với hàm mục tiêu NLL có trọng số cộng KL.
+\end{itemize}
+
+Tại inference, chỉ $\tilde\theta$ được gộp tĩnh vào base model: số lượng tham số bằng đúng base cộng với một adapter LoRA hạng $r$ duy nhất, bất kể $M$ lớn đến đâu.
+
+\section{Ký hiệu và Phân rã Chuỗi Suy luận}
+\label{sec:notation}
+
+Cả hai phase đều làm việc trên chuỗi reasoning của teacher đã được chia thành các step; mục này cố định cách chia đó và các đại lượng dùng lại xuyên suốt.
+
+Teacher sinh một chuỗi $R = (r_1, \dots, r_T)$, được chia thành $S$ reasoning step $\mathcal{S} = \{s_1, \dots, s_S\}$ theo ranh giới đoạn văn; step $s_i$ gồm $T_i$ token $(y_{i,1}, \dots, y_{i,T_i})$. Các step là đoạn con liên tiếp, không chồng lấn, và token ranh giới không thuộc step nào nên $\sum_i T_i \le T$. Trọng số được gán ở mức step, không ở mức token.
+
+Với $x$ là đề bài, phân phối sinh token của adapter $\phi$ là $\hat p_{i,t}^{\phi} = p_{\theta_{base}+\phi}(\cdot \mid x, s_{<i}, y_{i,<t})$; ký hiệu $\hat p_{i,t}^{(m)}$ cho $\phi_m$. NLL chuẩn hóa độ dài của $\phi$ trên step $s_i$:
+
+\begin{equation}
+\label{eq:nll}
+\mathcal{L}_i^{\phi}
+=
+-\frac{1}{T_i}\sum_{t=1}^{T_i}
+\log \hat p_{i,t}^{\phi}(y_{i,t}).
+\end{equation}
+
+Phân phối đồng thuận của hội đồng:
+
+\begin{equation}
+\label{eq:pbar}
+\bar{p}_{i,t} = \frac{1}{M}\sum_{m=1}^{M}\hat{p}_{i,t}^{(m)}.
+\end{equation}
+
+Đáp án cuối cùng được xử lý như một đoạn riêng với trọng số cố định bằng $1$, nhờ vậy mọi phương pháp được so sánh đều tính loss trên cùng một tập token.
+
+\section{Phase 1: Diversity Training}
+\label{sec:phase1}
+
+Phase 1 huấn luyện $M$ experts sao cho chúng vừa chính xác vừa khác biệt. Chỉ riêng NLL sẽ kéo mọi expert về cùng một nghiệm, nên cần các cơ chế đẩy chúng ra xa nhau. Bốn cơ chế dưới đây bổ sung phân hóa ở bốn tầng khác nhau: dữ liệu mỗi expert nhìn thấy, gradient dùng để cập nhật, không gian tham số, và phân phối đầu ra. Hai cơ chế đầu là ngẫu nhiên, hai cơ chế sau là hàm phạt tường minh.
+
+\subsection{Phân vùng dữ liệu theo expert}
+\label{sec:partition}
+
+Tầng thứ nhất: mỗi expert $m$ chỉ huấn luyện số hạng NLL trên một tập con ngẫu nhiên $\mathcal{D}_m \subset \mathcal{D}$, với $|\mathcal{D}_m| \approx \kappa\,|\mathcal{D}|$, các $\mathcal{D}_m$ lấy độc lập nên chồng lấn từng phần. Đây là bagging: mỗi expert là một ước lượng trên một mẫu bootstrap khác nhau, nên phương sai giữa các expert được bơm từ phương sai lấy mẫu của dữ liệu, một nguồn phân hóa không tự tắt khi huấn luyện hội tụ.
+
+\subsection{Step-level Gradient Dropout}
+
+Tầng thứ hai tác động ở mức lấy mẫu gradient. Với gradient của expert $m$ trên step $i$ là $g_{i,m} = \nabla_{\phi_m}\mathcal{L}_i^{(m)}$, gradient thực sự dùng để cập nhật là
+
+\begin{equation}
+\label{eq:graddropout}
+\tilde{g}_{i,m} = d_{i,m}\, g_{i,m},
+\qquad
+d_{i,m} \sim \mathrm{Bernoulli}(1-p_{drop}).
+\end{equation}
+
+Mỗi expert do đó chỉ quan sát một tập con ngẫu nhiên của tín hiệu huấn luyện, và các tập con này khác nhau giữa các expert.
+
+\subsection{Phân hóa trong không gian tham số}
+\label{sec:rep}
+
+Hai tầng trên là ngẫu nhiên và không đảm bảo các expert hội tụ về những nghiệm khác nhau. Tầng thứ ba là một hàm phạt tường minh ràng buộc độc lập hai không gian con của adapter: không gian sinh bởi các hàng của $A$ (chiếu vào) và không gian sinh bởi các cột của $B$ (chiếu ra). Với cặp expert $(p,q)$ trên mô-đun $\ell$:
+
+\begin{equation}
+\label{eq:dualortho}
+\mathcal{L}_{ortho}^{(\ell)}(p,q)
+=
+\frac{\left\|A_p^{(\ell)} \left(A_q^{(\ell)}\right)^{\top}\right\|_F^2}
+     {\left\|A_p^{(\ell)}\right\|_F^2 \left\|A_q^{(\ell)}\right\|_F^2}
++
+\frac{\left\|\left(B_p^{(\ell)}\right)^{\top} B_q^{(\ell)}\right\|_F^2}
+     {\left\|B_p^{(\ell)}\right\|_F^2 \left\|B_q^{(\ell)}\right\|_F^2},
+\end{equation}
+
+\begin{equation}
+\label{eq:reportho}
+\mathcal{L}_{rep}^{ortho}(\Phi)
+=
+\frac{1}{|\mathcal{M}|\binom{M}{2}}
+\sum_{\ell \in \mathcal{M}}
+\sum_{1 \le p < q \le M}
+\mathcal{L}_{ortho}^{(\ell)}(p,q),
+\end{equation}
+
+với $\mathcal{M}$ là tập các mô-đun đích. Mỗi số hạng là thương của một chuẩn Frobenius bình phương với một đại lượng dương nên không âm, và bằng không khi và chỉ khi $A_p A_q^{\top} = 0$ (không gian hàng của $A_p$ trực giao với của $A_q$) và $B_p^{\top} B_q = 0$ (không gian cột của $B_p$ trực giao với của $B_q$). Cực tiểu hóa nó buộc mỗi expert khai thác một tập chiều khác nhau của không gian biểu diễn.
+
+\subsection{Phân hóa trong không gian đầu ra}
+\label{sec:jsloss}
+
+Tầng thứ tư nhắm thẳng vào đại lượng ta thực sự quan tâm. Trực giao trong không gian trọng số (tầng ba) là điều kiện cần nhưng chưa đủ: ánh xạ từ trọng số sang phân phối đầu ra là phi tuyến, nên hai bộ tham số trực giao vẫn có thể sinh ra phân phối token gần như giống hệt nhau.
+
+Một hàm phạt tác động trực tiếp lên phân phối dự đoán được bổ sung, đo bằng phân kỳ Jensen--Shannon giữa các expert với nhau, lấy phân phối đồng thuận \eqref{eq:pbar} làm tâm:
+
+\begin{equation}
+\label{eq:jstoken}
+\JS_{i,t}
+=
+\frac{1}{M}\sum_{m=1}^{M}
+\KL\!\left(\hat{p}_{i,t}^{(m)} \,\middle\|\, \sg{\bar{p}_{i,t}}\right),
+\end{equation}
+
+trong đó toán tử chặn gradient $\sg{\cdot}$ là cần thiết để tránh vòng phản hồi, khi mỗi expert vừa bị đẩy ra xa điểm đồng thuận vừa kéo chính điểm đó về phía mình.
+
+Vì $\frac{1}{M}\sum_m \hat p_{i,t}^{(m)} = \bar p_{i,t}$, khai triển \eqref{eq:jstoken} cho một đồng nhất thức entropy:
+
+\begin{equation}
+\label{eq:jsidentity}
+\JS_{i,t}
+=
+\mathcal{H}\!\left(\bar{p}_{i,t}\right)
+-
+\frac{1}{M}\sum_{m=1}^{M}\mathcal{H}\!\left(\hat{p}_{i,t}^{(m)}\right),
+\qquad 0 \le \JS_{i,t} \le \log M,
+\end{equation}
+
+với cận trên đạt khi các phân phối có giá đôi một rời nhau. Vế phải chính là tín hiệu disagreement $V_i$ mà Phase 2 dùng để gán trọng số: hàm phạt của Phase 1 tối ưu trực tiếp đại lượng đó, nên hai phase nhất quán với nhau. Nếu thay bằng phép so với một mô hình tham chiếu bên ngoài, các expert có thể cùng lệch theo một hướng và vẫn cho mức disagreement bằng không.
+
+Disagreement của cả step là trung bình theo token:
+
+\begin{equation}
+\label{eq:jsstep}
+\JS_i = \frac{1}{T_i}\sum_{t=1}^{T_i}\JS_{i,t}.
+\end{equation}
+
+Hàm phạt áp một biên $\gamma$ lên đại lượng đó:
+
+\begin{equation}
+\label{eq:jssteploss}
+\mathcal{L}_{JS}
+=
+\frac{1}{S}\sum_{i=1}^{S} \ReLU\!\left(\gamma - \JS_i\right).
+\end{equation}
+
+Biên $\gamma$ khiến hàm phạt tự tắt khi mức phân kỳ đã đủ, tránh đẩy các expert ra xa vô hạn và làm hỏng chất lượng ngôn ngữ. Biên được áp sau khi gộp theo step để khớp mức chi tiết với tín hiệu $V_i$ ở Phase 2.
+
+\subsection{Hàm mục tiêu Phase 1}
+
+Hàm mục tiêu của Phase 1 gộp NLL với hai số hạng phạt của tầng ba và tầng bốn:
+
+\begin{equation}
+\label{eq:phase1}
+\mathcal{L}_{Phase1}
+=
+\sum_{i=1}^{S}\sum_{m=1}^{M}\mathbb{1}[\text{mẫu} \in \mathcal{D}_m]\,\mathcal{L}_i^{(m)}
++
+\lambda_{rep}\,\mathcal{L}_{rep}^{ortho}(\Phi)
++
+\lambda_{div}\,\mathcal{L}_{JS}.
+\end{equation}
+
+Tầng một và tầng hai không xuất hiện trong công thức: phân vùng dữ liệu nằm ở chỉ báo $\mathbb{1}[\text{mẫu} \in \mathcal{D}_m]$, còn gradient dropout tác động khi lấy gradient của số hạng NLL. Hai số hạng phạt bổ trợ nhau vì trực giao về trọng số không kéo theo khác biệt về đầu ra, và ngược lại.
+
+\paragraph{Điều kiện chuyển sang Phase 2.}
+Phase 2 chỉ có ý nghĩa nếu hội đồng thực sự phân hóa, nên trước khi chuyển ta kiểm tra: $V_i$ phân vị $90$ trên tập train phải vượt một ngưỡng (ví dụ $0{,}05$ nats), $\JS_i$ trung bình phải tiến gần biên $\gamma$, và độ tương đồng trọng số giữa các expert phải phân tán rõ. Không đạt nghĩa là các expert vẫn gần như trùng nhau và Phase 2 sẽ không mang lại gì hơn một expert đơn.
+
+\section{Phase 2: Merging và Distillation}
+\label{sec:phase2}
+
+Phase 1 để lại một hội đồng $M$ expert bất đồng với nhau một cách có ý nghĩa. Phase 2 khai thác sự bất đồng đó thành hai thứ, rồi hợp nhất chúng vào một adapter duy nhất:
+
+\begin{itemize}
+\item Mục~\ref{sec:signals} đọc hội đồng để gán cho mỗi step một trọng số $w_i$, cho biết step nào đáng học kỹ.
+\item Mục~\ref{sec:merging} gộp $M$ expert thành một adapter $\pmerge$, cho biết hội đồng dự đoán gì.
+\item Mục~\ref{sec:distill} huấn luyện adapter student cuối cùng $\tilde\theta$ bằng cả hai: $w_i$ định vị trọng tâm học, $\pmerge$ làm tín hiệu teacher.
+\end{itemize}
+
+Trong suốt Phase 2, $\theta_{base}$ và toàn bộ $\Phi$ đóng băng; chỉ $\pmerge$ (một phép biến đổi đại số, không huấn luyện) và $\tilde\theta$ được tạo ra.
+
+\subsection{Uncertainty của Expert Council và Trọng số Step}
+\label{sec:signals}
+
+Bước đầu tiên biến hội đồng thành một trọng số cho mỗi step. Ta đo hai đại lượng bổ sung nhau rồi kết hợp lại.
+
+\paragraph{Mean Uncertainty.}
+Entropy trung bình của expert $m$ trên step $s_i$ là $E_i^{(m)} = \frac{1}{T_i}\sum_{t=1}^{T_i}\mathcal{H}(\hat{p}_{i,t}^{(m)})$, và tín hiệu thứ nhất là trung bình trên toàn hội đồng:
+
+\begin{equation}
+\label{eq:U}
+U_i = \frac{1}{M}\sum_{m=1}^{M} E_i^{(m)}.
+\end{equation}
+
+$U_i$ cao cho thấy các expert nhìn chung không chắc chắn tại step này.
+
+\paragraph{Disagreement.}
+Đại lượng $U_i$ chỉ tóm tắt độ nhọn của từng phân phối riêng lẻ, nên không phân biệt được trường hợp các expert cùng tự tin nhưng hướng về những đáp án khác nhau. Dùng phân phối đồng thuận \eqref{eq:pbar}:
+
+\begin{equation}
+\label{eq:V}
+V_i
+=
+\frac{1}{T_i}\sum_{t=1}^{T_i}
+\left[
+\mathcal{H}\!\left(\bar{p}_{i,t}\right)
+-
+\frac{1}{M}\sum_{m=1}^{M}\mathcal{H}\!\left(\hat{p}_{i,t}^{(m)}\right)
+\right].
+\end{equation}
+
+So với \eqref{eq:jsidentity}, $V_i$ chính là trung bình theo token của $\JS_{i,t}$, tức đúng đại lượng mà hàm phạt \eqref{eq:jssteploss} ở Phase 1 đã tối ưu. Về mặt lý thuyết thông tin \cite{cover2006elements}, đây là mutual information giữa biến dự đoán và chỉ số expert; luôn không âm, bằng không khi mọi expert dự đoán giống hệt nhau, và lớn khi các expert tự tin nhưng phân kỳ.
+
+\paragraph{Relative Disagreement.}
+Lấy trung bình đồng nhất thức \eqref{eq:jsidentity} trên các token của step, ta thu được một phân rã chính xác của uncertainty toàn phần:
+
+\begin{equation}
+\label{eq:decomp}
+\bar{\mathcal{H}}_i
+\;:=\;
+\frac{1}{T_i}\sum_{t=1}^{T_i}\mathcal{H}\!\left(\bar{p}_{i,t}\right)
+\;=\;
+U_i + V_i .
+\end{equation}
+
+Đây là phân rã uncertainty quen thuộc: $U_i$ là thành phần aleatoric (không khử được dù mô hình hoàn hảo), $V_i$ là thành phần epistemic (phản ánh disagreement giữa các giả thuyết khả dĩ) \cite{houlsby2011bald,depeweg2018decomposition}; Malinin và cộng sự \cite{malinin2020endd} dùng đúng phân rã này cho một hội đồng trong bối cảnh distillation.
+
+Vì $0 \le V_i \le \bar{\mathcal{H}}_i$, trần của $V_i$ thay đổi theo từng step, nên so $V_i$ giữa hai step là so hai đại lượng trên hai thang khác nhau. Cách xử lý chuẩn cho độ đo dựa trên mutual information là chuẩn hóa bằng entropy \cite{nguyen2010nmi}; mẫu số tự nhiên chính là trần nói trên, và ta dùng ở dạng tỉ số chênh:
+
+\begin{equation}
+\label{eq:rho}
+\rho_i \;:=\; \frac{V_i / \bar{\mathcal{H}}_i}{1 - V_i / \bar{\mathcal{H}}_i} \;=\; \frac{V_i}{U_i} \;\in\; [0,\infty),
+\end{equation}
+
+tức lượng epistemic uncertainty tính trên một đơn vị aleatoric uncertainty: phần disagreement \emph{vượt trên} mức mà độ khó nội tại của step đã giải thích được. $\rho_i$ không bị chặn trên nên giữ được độ phân giải ở vùng disagreement cao.
+
+\paragraph{Trọng số Step.}
+Hai tín hiệu được chuẩn hóa z-score trong phạm vi từng mẫu ($\mu, \sigma$ lấy trên $S$ step của mẫu đó) thành $\hat{U}_i, \hat{\rho}_i$, rồi
+
+\begin{equation}
+\label{eq:w}
+w_i = 1 + \lambda_U \tanh(\hat{U}_i) + \lambda_D \tanh(\hat{\rho}_i)
+\;\in\; [\,1-\lambda_U-\lambda_D,\; 1+\lambda_U+\lambda_D\,].
+\end{equation}
+
+Với $\lambda_U = \lambda_D = 0{,}5$ thì $w_i \in [0,2]$. Các step có uncertainty cao hoặc disagreement tương đối cao nhận trọng số lớn hơn; các step đuôi dư thừa, nơi cả hai tín hiệu đều thấp, bị kéo về cận dưới. Đây là cơ chế giảm mềm prefix (Mục~\ref{sec:softtrunc}). Trọng số $w_i$ này được dùng lại nguyên vẹn ở cả hai số hạng loss của Bước C.
+
+\subsection{Model Merging}
+\label{sec:merging}
+
+Song song với việc tính $w_i$, ta gộp $M$ expert đã đóng băng thành \emph{một} adapter $\pmerge$, bằng cách cộng các cập nhật trọng số của chúng lại. Mỗi expert $m$ đóng góp vào mỗi mô-đun $\ell$ một lượng cập nhật
+
+\begin{equation}
+\label{eq:deltaw}
+\Delta W_m^{(\ell)} = s\, B_m^{(\ell)} A_m^{(\ell)},
+\end{equation}
+
+và $\pmerge$ là một tổ hợp của các $\Delta W_m^{(\ell)}$ này.
+
+\paragraph{Vì sao gộp cố định, không phải Gate.}
+Một cơ chế định tuyến (Gate) học trọng số riêng cho từng step chỉ có ích nếu \emph{expert nào tốt cho step nào} là một hàm không tầm thường của ngữ cảnh. Phase 1 làm các expert khác nhau đi, nhưng không dạy expert nào chuyên về một loại step cụ thể (không có nhãn loại step). Khi không có sự chuyên biệt đó, trọng số tổ hợp tốt nhất là một hằng số chung cho mọi step, và một hằng số như vậy chính là một phép gộp cố định. Gộp cố định cho cùng hiệu quả kỳ vọng mà không tốn thêm tham số Gate và không phải giữ $M$ adapter khi inference.
+
+\paragraph{Ba cách gộp.}
+\begin{itemize}
+\item \textbf{Ghép khối (cat):} nối trực tiếp các ma trận $B_m$ và $A_m$. Kết quả bằng đúng trung bình cộng $\frac{1}{M}\sum_m \Delta W_m^{(\ell)}$, nhưng hạng của cập nhật gộp tăng từ $r$ lên $Mr$.
+\item \textbf{TIES} \cite{yadav2023ties}: trước khi cộng, cắt bỏ các thành phần độ lớn nhỏ của mỗi expert, rồi bầu chọn một dấu chung cho từng tham số và chỉ trung bình các expert đồng thuận dấu. Hạng giữ nguyên $r$.
+\item \textbf{DARE-TIES} \cite{yu2024dare}: drop ngẫu nhiên một tỉ lệ $p$ các thành phần cập nhật rồi rescale $1/(1-p)$, sau đó áp TIES. Hạng giữ nguyên $r$.
+\end{itemize}
+
+\paragraph{Vì sao xử lý xung đột dấu.}
+Trung bình cộng trực tiếp bị \emph{giao thoa} \cite{yadav2023ties}: nếu hai expert đẩy cùng một tham số theo hai hướng ngược nhau, phép trung bình triệt tiêu cả hai và làm mất thông tin. Phase 1 cố ý ép các expert phân kỳ, nên xung đột dấu ở đây nhiều hơn so với model merging thông thường; TIES và DARE giải quyết xung đột trước khi cộng nên tránh được mất mát đó.
+
+\paragraph{Vì sao phải giữ hạng $r$.}
+Mục tiêu cuối là triển khai \emph{một} adapter hạng $r$ ($\tilde\theta$). Ở Bước C, số hạng KL kéo $\tilde\theta$ khớp với teacher $\theta_{base}+\pmerge$; KL bằng không khi và chỉ khi cập nhật trọng số của $\tilde\theta$ trùng đúng $\Delta W_{merge}^{(\ell)}$. Nhưng $\tilde\theta$ là LoRA hạng $r$ nên cập nhật của nó luôn có hạng $\le r$. Nếu bản thân $\pmerge$ có hạng lớn hơn $r$ (ghép khối cho hạng $Mr$), $\tilde\theta$ \emph{không thể} tái tạo nó và KL không bao giờ về không. TIES và DARE giữ $\pmerge$ ở hạng $r$, tức nằm trong lớp hàm mà $\tilde\theta$ biểu diễn được. Vì vậy $\pmerge$ được tạo bằng TIES hoặc DARE-TIES, không dùng ghép khối.
+
+\paragraph{Trọng số gộp.}
+Phép gộp cần một véc-tơ trọng số cho $M$ expert; ta dùng $1/M$ (trung bình ensemble). Trọng số theo validation loss được để làm ablation.
+
+\subsection{Khởi tạo và Distillation Student}
+\label{sec:distill}
+
+Đến đây ta có đủ hai đầu vào: trọng số $w_i$ (Mục~\ref{sec:signals}) và adapter gộp $\pmerge$ (Mục~\ref{sec:merging}). Bước C huấn luyện adapter cuối cùng $\tilde\theta$ dùng cả hai, và đây là adapter duy nhất còn lại khi inference.
+
+\paragraph{Khởi tạo.}
+Student $\tilde\theta$ được khởi tạo trực tiếp bằng $\pmerge$:
+
+\begin{equation}
+\label{eq:studentinit}
+\tilde\theta \leftarrow \pmerge.
+\end{equation}
+
+Teacher là $\theta_{base}+\pmerge$, nên $\tilde\theta \leftarrow \pmerge$ khiến student bằng đúng teacher ngay từ bước $0$: số hạng KL bằng không, đúng cực tiểu toàn cục của nó, và gradient của KL triệt tiêu. Bước gradient đầu tiên do đó thuần theo hướng NLL có trọng số, còn KL sau đó hoạt động như một phạt gần kề giữ $\tilde\theta$ trong lân cận teacher.
+
+Khởi tạo bằng một expert đơn $\phi_m$ thì kém hơn: không expert nào một mình bằng $\pmerge$ khi các expert thực sự bất đồng, nên KL ban đầu dương và các bước gradient đầu bị nó kéo student đi ngang không gian trọng số về phía $\pmerge$ theo hướng lệch với gradient NLL, đồng thời thông tin của $M-1$ expert còn lại phải tái tạo lại trong lớp hạng $r$. Việc chọn expert theo $\argmin_m \mathcal{L}_{val}^{(m)}$ cũng không ổn định khi các expert gần nhau về validation loss, và warm-start có thể làm hại khả năng tổng quát hóa \cite{ash2020warmstarting}.
+
+\paragraph{Tín hiệu teacher.}
+Tín hiệu teacher là phân phối sinh bởi model đã gộp:
+
+\begin{equation}
+\label{eq:pteacher}
+p_{teacher,i,t} = \hat{p}_{i,t}^{\pmerge}, \qquad \hat{p}^{\pmerge} \text{ sinh bởi } \theta_{base} + \pmerge.
+\end{equation}
+
+Vì $\pmerge$ không phụ thuộc tham số của $\tilde\theta$, toàn bộ $p_{teacher,i,t}$ có thể tính và lưu trước khi bước distillation bắt đầu; KL được tính trên toàn bộ từ vựng.
+
+\paragraph{Hàm mục tiêu kết hợp.}
+Bước distillation dùng đồng thời hai tín hiệu. Số hạng NLL tái sử dụng nguyên trọng số $w_i$ ở \eqref{eq:w}, áp lên NLL của chính $\tilde\theta$ (ký hiệu $\mathcal{L}_i^{(\tilde\theta)}$), chuẩn hóa theo step:
+
+\begin{equation}
+\label{eq:nllstudent}
+\widetilde{\mathcal{L}}_{NLL} = \frac{\sum_{i=1}^{S} w_i\, \mathcal{L}_i^{(\tilde\theta)}}{\sum_{i=1}^{S} w_i}.
+\end{equation}
+
+Số hạng KL đo độ lệch giữa phân phối teacher và $\tilde\theta$ tại mỗi step, chuẩn hóa theo cùng $w_i$:
+
+\begin{equation}
+\label{eq:klstudent}
+D_i = \frac{1}{T_i}\sum_{t=1}^{T_i} \KL\!\left(p_{teacher,i,t} \,\middle\|\, p_{\tilde\theta,i,t}\right),
+\qquad
+\widetilde{\mathcal{L}}_{KL} = \frac{\sum_{i=1}^{S} w_i\, D_i}{\sum_{i=1}^{S} w_i}.
+\end{equation}
+
+Hai số hạng bắt buộc phải đi cùng nhau: bỏ $\widetilde{\mathcal{L}}_{NLL}$ khiến $\tilde\theta$ chỉ còn phụ thuộc vào cách model gộp diễn giải dữ liệu, mất neo về nhãn gốc và $w_i$ mất tác dụng; bỏ $\widetilde{\mathcal{L}}_{KL}$ khiến bước này suy biến về SFT warm-start và đánh mất tri thức tổng hợp mà bước merging tạo ra. Hàm mục tiêu đầy đủ là
+
+\begin{equation}
+\label{eq:distill}
+\mathcal{L}_{distill} = \widetilde{\mathcal{L}}_{NLL} + \lambda_{KL}\,\widetilde{\mathcal{L}}_{KL}.
+\end{equation}
+
+Chỉ $(\tilde A, \tilde B)$ được cập nhật; $\theta_{base}$, $\Phi$ và $\pmerge$ đóng băng.
+
+\subsection{Giảm mềm prefix}
+\label{sec:softtrunc}
+
+Cơ chế trọng số ở Mục~\ref{sec:signals} có một hệ quả đáng nói khi so với các cách rút gọn CoT khác. Các đề xuất đó cắt cứng: tìm prefix tối thiểu đủ dùng rồi chỉ SFT trên prefix. Ở đây các step đuôi dư thừa có $U_i$ và $\rho_i$ thấp nên $w_i$ tiến về cận dưới, đóng góp ít vào cả \eqref{eq:nllstudent} lẫn \eqref{eq:klstudent} nhưng không bị loại bỏ. Đây là phiên bản mềm, khả vi của việc chọn prefix: không có ngưỡng cứng, không mất thông tin do cắt nhầm, và tín hiệu đến từ hội đồng chứ không từ một vòng self-judge riêng.
+
+\subsection{Suy luận và Đánh giá}
+\label{sec:inference}
+
+Sau khi $\tilde\theta$ hội tụ, nó được gộp tĩnh vào base model theo \eqref{eq:lora}:
+
+\begin{equation}
+\label{eq:weffstudent}
+W_{eff}^{(\ell)} = W_{base}^{(\ell)} + s\,\tilde B^{(\ell)} \tilde A^{(\ell)}, \qquad \ell \in \mathcal M.
+\end{equation}
+
+Việc sinh văn bản từ $\tilde\theta$ không cần tải $\Phi$ hay $\pmerge$: số lượng tham số tại inference bằng đúng base model cộng với một adapter LoRA hạng $r$ duy nhất, bất kể $M$.
+
+Để tách phần đóng góp của từng thành phần, ta so $\tilde\theta$ đầy đủ với ba cấu hình tham chiếu trên cùng một engine và cùng cấu hình sinh mẫu: (i) $\theta_{base}+\pmerge$ chưa qua distillation; (ii) $\tilde\theta$ huấn luyện chỉ với $\widetilde{\mathcal{L}}_{NLL}$ ($\lambda_{KL} = 0$); (iii) $\tilde\theta$ huấn luyện đầy đủ theo \eqref{eq:distill}. So sánh (i) với (iii) cho biết distillation vào một adapter đơn có đánh đổi năng lực so với dùng thẳng $\pmerge$; so sánh (ii) với (iii) cô lập đóng góp riêng của số hạng KL.
+
+\begin{thebibliography}{9}
+
+\bibitem{houlsby2011bald}
+N.~Houlsby, F.~Huszár, Z.~Ghahramani, và M.~Lengyel.
+\newblock Bayesian Active Learning for Classification and Preference Learning.
+\newblock \emph{arXiv:1112.5745}, 2011.
+
+\bibitem{depeweg2018decomposition}
+S.~Depeweg, J.~M. Hernández-Lobato, F.~Doshi-Velez, và S.~Udluft.
+\newblock Decomposition of Uncertainty in Bayesian Deep Learning for Efficient and Risk-sensitive Learning.
+\newblock Trong \emph{Proceedings of the 35th International Conference on Machine Learning (ICML)}, PMLR 80:1184--1193, 2018.
+
+\bibitem{malinin2020endd}
+A.~Malinin, B.~Mlodozeniec, và M.~J.~F. Gales.
+\newblock Ensemble Distribution Distillation.
+\newblock Trong \emph{International Conference on Learning Representations (ICLR)}, 2020.
+
+\bibitem{nguyen2010nmi}
+N.~X. Vinh, J.~Epps, và J.~Bailey.
+\newblock Information Theoretic Measures for Clusterings Comparison: Variants, Properties, Normalization and Correction for Chance.
+\newblock \emph{Journal of Machine Learning Research}, 11:2837--2854, 2010.
+
+\bibitem{cover2006elements}
+T.~M. Cover và J.~A. Thomas.
+\newblock \emph{Elements of Information Theory}.
+\newblock Wiley, ấn bản lần 2, 2006.
+
+\bibitem{ash2020warmstarting}
+J.~Ash và C.~Adams.
+\newblock On Warm-Starting Neural Network Training.
+\newblock Trong \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2020.
+
+\bibitem{yadav2023ties}
+P.~Yadav, D.~Tam, L.~Choshen, C.~Raffel, và M.~Bansal.
+\newblock TIES-Merging: Resolving Interference When Merging Models.
+\newblock Trong \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2023.
+
+\bibitem{yu2024dare}
+L.~Yu, B.~Yu, H.~Yu, F.~Huang, và Y.~Li.
+\newblock Language Models are Super Mario: Absorbing Abilities from Homologous Models as a Free Lunch.
+\newblock Trong \emph{Proceedings of the 41st International Conference on Machine Learning (ICML)}, 2024.
+
+\end{thebibliography}
+
+\end{document}

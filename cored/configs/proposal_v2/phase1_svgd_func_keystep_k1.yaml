@@ -1,0 +1,35 @@
+# proposal_v2 Phase 1 — SVGD function-space repulsion, CHỈ áp trên "key step"
+# (top 10% step theo entropy base model, xem proposal_v2/keystep_select.py).
+# Giả thuyết: lực đẩy svgd_func trải đều mọi step (phase1_svgd_func_k1.yaml) bị pha
+# loãng — V vẫn FAIL (98.4% step V≈0). Tập trung ngân sách đẩy vào key step, giữ NLL
+# thuần trên các step "nền" (số học/tính toán chắc chắn), để không lãng phí và không
+# làm hỏng phần mọi expert lẽ ra nên đồng thuận.
+# Giữ nguyên mọi siêu tham số khác so với phase1_svgd_func_k1.yaml, chỉ thêm keystep_dir.
+model_name: Qwen/Qwen2.5-7B-Instruct
+train_file: data/train_s1k_prefixed.jsonl
+out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1
+
+epochs: 3
+lr: 5.0e-5
+lora_r: 16
+lora_alpha: 16
+lora_dropout: 0.05
+warmup_ratio: 0.1
+global_batch: 32
+max_grad_norm: 1.0
+gradient_checkpointing: true
+cutoff_len: 16384
+segmentation_mode: paragraph
+
+M: 3
+p_drop: 0.1
+lambda_rep: 0.01
+warmup_div_epochs: 1
+
+diversity: svgd_func
+tr_off_k: 1.0
+svgd_sigma: 0.0
+keystep_dir: outputs/proposal_v2/keystep_s1k_prefixed_10pct
+
+seed: 42
+log_every: 5

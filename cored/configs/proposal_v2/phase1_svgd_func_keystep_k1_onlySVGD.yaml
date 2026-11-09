@@ -1,0 +1,32 @@
+# Ablation: giống hệt phase1_svgd_func_keystep_k1.yaml (kịch bản đỉnh cao 7B)
+# NHƯNG p_drop=0.0 VÀ lambda_rep=0.0 -> TẮT ĐỒNG THỜI Step-level Gradient Dropout
+# VÀ Ortho loss, chỉ còn lại SVGD-func repulsion (key-step restricted).
+# "No-Dropout + No-Ortho" = chỉ còn SVGD.
+model_name: Qwen/Qwen2.5-7B-Instruct
+train_file: data/train_s1k_prefixed.jsonl
+out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1_onlySVGD
+
+epochs: 3
+lr: 5.0e-5
+lora_r: 16
+lora_alpha: 16
+lora_dropout: 0.05
+warmup_ratio: 0.1
+global_batch: 32
+max_grad_norm: 1.0
+gradient_checkpointing: true
+cutoff_len: 16384
+segmentation_mode: paragraph
+
+M: 3
+p_drop: 0.0
+lambda_rep: 0.0
+warmup_div_epochs: 1
+
+diversity: svgd_func
+tr_off_k: 1.0
+svgd_sigma: 0.0
+keystep_dir: outputs/proposal_v2/keystep_s1k_prefixed_10pct
+
+seed: 42
+log_every: 5
