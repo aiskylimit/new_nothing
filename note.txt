@@ -1,0 +1,15 @@
+# Chuẩn bị dữ liệu cho hai teacher và chuẩn hóa benchmark
+bash rebuttal/project_commands.sh prepare
+
+# Kiểm tra dữ liệu, môi trường và ba B200
+bash rebuttal/project_commands.sh preflight
+
+# Chạy thử nhỏ, lưu riêng khỏi thí nghiệm chính
+REBUTTAL_RUNS="$PWD/rebuttal/smoke-runs" \
+  bash rebuttal/project_commands.sh smoke
+
+# Với từng cấu hình: train xong rồi eval, sau đó chuyển cấu hình tiếp
+bash rebuttal/project_commands.sh all
+
+# Tổng hợp kết quả và chi phí
+bash rebuttal/project_commands.sh report
