@@ -15,6 +15,15 @@ bash rebuttal/project_commands.sh all
 bash rebuttal/project_commands.sh report
 
 
+# Smoke test in 2x3090
+# Chỉ cần khi chưa cài môi trường/tải assets; cần Internet
+bash rebuttal/smoke_2x3090.sh setup
+bash rebuttal/smoke_2x3090.sh download
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh all
+# GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --settings C
+
+
+
 # ============================================================================
 # HUONG DAN DAY DU: CAI DAT -> TEST TREN 3 B200 -> FULL 15 RUNS
 # ============================================================================
