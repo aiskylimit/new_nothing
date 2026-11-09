@@ -32,151 +32,32 @@ reasoning steps participate in spectral selection; the answer delimiter,
 complete final answer, and native assistant end-of-turn token are always
 supervised.
 
-## Installation
+## Rebuttal run
 
-Python 3.10 or newer is required. `transformers==5.4.0` and `accelerate==1.13.0` are pinned.
+See [the shared rebuttal settings](../REBUTTAL.md) for the current configuration.
+The default is Qwen2.5-7B-Instruct, 3 epochs, seed 42, and effective batch 33
+(11 per GPU, 3 GPUs, accumulation 1).
+
+Install the training package in the training environment:
 
 ```bash
 python -m pip install -e ".[dev]"
+EVAL_PYTHON=/path/to/vllm-env/bin/python bash project_commands.sh
 ```
 
-For optional multi-GPU ZeRO-3 LoRA fine-tuning:
+The launcher builds masks on three GPUs, trains with torchrun on three GPUs,
+then uses the shared P-ALIGN evaluator. Set `EVAL_N=5` to change the number of
+samples per question. Set `EVAL_DATA_DIR` for another normalized JSONL suite.
+Adapter checkpoints remain under `checkpoints/`; evaluation supports them directly.
+
+For evaluation without training:
 
 ```bash
-python -m pip install -e ".[train,dev]"
+python ../palign/src/run_eval.py \
+  --model checkpoints/qwen2.5-7b-sgl \
+  --result-dir outputs/qwen2.5-7b-sgl --n 3
 ```
 
-## 1. Build spectral masks
-
-Each process owns complete samples; no sample or SVD is split across ranks. The model is replicated once per GPU. For example, on eight GPUs:
-
-```bash
-accelerate launch --num_processes 8 -m sgl.build_masks \
-  --model-name-or-path Qwen/Qwen2.5-7B-Instruct \
-  --output-dir artifacts/qwen2.5-7b \
-  --max-samples 1000 \
-  --rank-threshold 0.95 \
-  --selection-threshold 0.8 \
-  --svd-device cuda \
-  --svd-driver gesvd \
-  --dtype bfloat16 \
-  --attn-implementation sdpa
-```
-
-On a single GPU, run `python -m` without Accelerate. Use `--dtype float16`
-if the GPU does not support BF16:
-
-```bash
-python -m sgl.build_masks \
-  --model-name-or-path Qwen/Qwen2.5-7B-Instruct \
-  --output-dir artifacts/qwen2.5-7b \
-  --max-samples 1000 \
-  --rank-threshold 0.95 \
-  --selection-threshold 0.8 \
-  --svd-device cuda \
-  --svd-driver gesvd \
-  --dtype bfloat16 \
-  --attn-implementation sdpa
-```
-
-
-Exact SVD for every long response is intentionally expensive. Use
-`--lm-head-chunk-size` to control logit memory. `--resume` safely resumes
-completed per-rank JSONL shards.
-
-The output directory contains:
-
-- `run_config.json`: immutable analysis configuration.
-- `shards/`: resumable rank-local results.
-- `masks.jsonl`: merged masks sorted by sampled position.
-- `manifest.json`: revisions, policies, software versions, and retention
-  summary.
-
-## 2. LoRA fine-tuning
-
-The training recipe uses an effective batch size of 32 and one
-gradient-accumulation step. With eight processes, the per-device batch size is four.
-`--deepspeed configs/deepspeed_zero3.json` is for multi-GPU training.
-
-```bash
-torchrun --nproc_per_node 8 -m sgl.training \
-  --mask-dir artifacts/qwen2.5-7b \
-  --output-dir checkpoints/qwen2.5-7b-sgl \
-  --model-name-or-path Qwen/Qwen2.5-7B-Instruct \
-  --global-batch-size 32 \
-  --per-device-train-batch-size 4 \
-  --num-train-epochs 6 \
-  --learning-rate 5e-5 \
-  --warmup-ratio 0.1 \
-  --deepspeed configs/deepspeed_zero3.json
-```
-
-On a single GPU, use a per-device batch size of 32 and one gradient-accumulation
-step, for an effective batch size of 32. These are also the training CLI defaults.
-
-```bash
-python -m sgl.training \
-  --mask-dir artifacts/qwen2.5-7b \
-  --output-dir checkpoints/qwen2.5-7b-sgl \
-  --model-name-or-path Qwen/Qwen2.5-7B-Instruct \
-  --global-batch-size 32 \
-  --per-device-train-batch-size 32 \
-  --num-train-epochs 6 \
-  --learning-rate 5e-5 \
-  --warmup-ratio 0.1
-```
-
-The training recipe uses LoRA rank 16, alpha 16, dropout 0.05, and targets
-`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, and
-`down_proj`. It uses AdamW with betas `(0.9, 0.999)`, epsilon `1e-8`, no
-weight decay, and a cosine `LambdaLR` schedule with a 0.1 warmup ratio.
-Artifacts and checkpoints are saved only to local paths.
-
-## 3. Evaluation
-
-Evaluation always uses a maximum of 4,096 new tokens per response. The
-`--max-new-tokens` option accepts only `4096`.
-
-Evaluation uses MATH-500 (500 problems, `HuggingFaceH4/MATH-500`),
-AIME 2025 (30 problems, `yentinglin/aime_2025`), AIME 2024 (30 problems,
-`HuggingFaceH4/aime_2024`), and AMC12 (83 problems,
-`AI-MO/aimo-validation-amc`).
-
-On eight GPUs:
-
-```bash
-accelerate launch --num_processes 8 -m sgl.evaluation \
-  --model-name-or-path checkpoints/qwen2.5-7b-sgl \
-  --output-dir outputs/qwen2.5-7b-sgl \
-  --benchmarks aime25 aime24 amc12 math500 \
-  --num-generations 4 \
-  --temperature 0.6 \
-  --top-p 0.95 \
-  --max-new-tokens 4096
-```
-
-On a single GPU:
-
-```bash
-python -m sgl.evaluation \
-  --model-name-or-path checkpoints/qwen2.5-7b-sgl \
-  --output-dir outputs/qwen2.5-7b-sgl \
-  --benchmarks aime25 aime24 amc12 math500 \
-  --num-generations 4 \
-  --temperature 0.6 \
-  --top-p 0.95 \
-  --max-new-tokens 4096
-```
-
-Scoring uses HuggingFace `math-verify` 0.9 conventions:
-
-- expression extraction for AIME and AMC12 gold answers;
-- LaTeX extraction for MATH-500 gold answers;
-- boxed-LaTeX extraction followed by expression fallback for predictions.
-
-Reported metrics:
-
-- **pass@1**: mean accuracy over K independent generations
-  `sum(correct) / (problems * K)`
-- **pass@3**: unbiased estimator averaged over problems (needs `K >= 3`, default is 4)
-  `1 - C(n - c, 3) / C(n, 3)` per problem, then mean
+The `sgl-evaluate` / `python -m sgl.evaluation` CLI delegates to the same evaluator;
+`--model-name-or-path`, `--output-dir` and `--num-generations` remain accepted aliases.
+Raw outputs, math-verify scores, input hashes, and configuration are persisted.

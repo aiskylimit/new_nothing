@@ -135,9 +135,9 @@ def parse_args() -> argparse.Namespace:
         choices=sorted(BENCHMARKS),
         default=sorted(BENCHMARKS),
     )
-    parser.add_argument("--num-generations", type=int, default=4)
+    parser.add_argument("--num-generations", type=int, default=3)
     parser.add_argument("--temperature", type=float, default=0.6)
-    parser.add_argument("--top-p", type=float, default=0.95)
+    parser.add_argument("--top-p", type=float, default=0.9)
     parser.add_argument("--max-new-tokens", type=int, default=4096, choices=(4096,))
     parser.add_argument("--limit", type=int)
     parser.add_argument("--seed", type=int, default=42)
@@ -600,7 +600,10 @@ def run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    run(parse_args())
+    # The rebuttal CLI shares generation, prompts and grading with P-ALIGN.
+    import runpy
+    common = Path(__file__).resolve().parents[3] / "palign/src/run_eval.py"
+    runpy.run_path(str(common), run_name="__main__")
 
 
 if __name__ == "__main__":

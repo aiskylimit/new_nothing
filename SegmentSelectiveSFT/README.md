@@ -1,5 +1,19 @@
 # Segment-Level Attribution for Selective Learning of Long Reasoning Traces
 
+## Rebuttal configuration
+
+The active wrappers use Qwen2.5-7B-Instruct, LoRA, 3 epochs, seed 42,
+and batch 33 on 3 GPUs (11 each, accumulation 1). See [REBUTTAL.md](../REBUTTAL.md).
+`commands.sh` runs attribution, distributed LoRA training and the shared P-ALIGN
+vLLM/math-verify evaluator; provide `EVAL_PYTHON` for the separate vLLM environment.
+`train.sh` and `eval.sh` are the separate-stage entrypoints. `EVAL_N` defaults to 3.
+One-pass checkpoints are saved under `OUTPUT_DIR/RUN_ID/checkpoint-final`.
+
+The sections below retain the upstream paper examples; use the rebuttal wrappers
+and shared settings for the current experiment. Keep Unsloth train and vLLM eval
+dependencies in separate environments.
+
+
 **Authors:** Siyuan Wang, Yanchen Liu, Xiang Ren
 
 > This repository contains the implementation for our ICLR 2026 paper that introduces a segment-level attribution framework for selectively learning from long chain-of-thought (CoT) reasoning traces. The pipeline consists of three major stages:  

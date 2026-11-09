@@ -51,7 +51,7 @@ COT_MODEL="${COT_MODEL:-deepseek-ai/DeepSeek-R1-Distill-Qwen-7B}"     # model si
 
 # --- GPU ---
 GPU_ATTR="${GPU_ATTR:-0,1}"
-GPU_TRAIN="${GPU_TRAIN:-0}"
+GPU_TRAIN="${GPU_TRAIN:-0,1,2}"
 GPU_COT="${GPU_COT:-0,1,2,3}"
 
 # --- Duong dan du lieu ---

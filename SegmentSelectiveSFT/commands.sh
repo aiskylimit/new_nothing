@@ -5,7 +5,7 @@
 #   bash commands.sh
 #
 # Can san tren may (khong tai HuggingFace luc chay):
-#   model  /mnt/local/_models/aiskylimit_new_nothingnew_2/DeepSeek-R1-Distill-Qwen-1.5B
+#   model  /mnt/local/_models/aiskylimit_new_nothingnew_2/Qwen2.5-7B-Instruct
 #   train  /mnt/local/_data/aiskylimit_new_nothingnew_2/s1k/train.jsonl
 #   bench  /mnt/local/_data/aiskylimit_new_nothingnew_2/<aime24|aime25|amc12|math500|gpqa>/test.jsonl
 #
@@ -18,12 +18,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 VENV="${VENV:-/mnt/local/uvenvs/ssft_onepass}"
-MODEL_DIR="${MODEL_DIR:-/mnt/local/_models/aiskylimit_new_nothingnew_2/DeepSeek-R1-Distill-Qwen-1.5B}"
+MODEL_DIR="${MODEL_DIR:-/mnt/local/_models/aiskylimit_new_nothingnew_2/Qwen2.5-7B-Instruct}"
 TRAIN_JSONL="${TRAIN_JSONL:-/mnt/local/_data/aiskylimit_new_nothingnew_2/s1k/train.jsonl}"
-BENCH_DIR="${BENCH_DIR:-/mnt/local/_data/aiskylimit_new_nothingnew_2}"
-OUTPUT_DIR="${OUTPUT_DIR:-$ROOT/outputs/one_pass}"
-RUN_ID="${RUN_ID:-selective_1p5b}"
-GPU="${GPU:-0}"
+BENCH_DIR="${BENCH_DIR:-$ROOT/../palign/data/raw}"
+OUTPUT_DIR="${OUTPUT_DIR:-$ROOT/outputs/rebuttal}"
+EVAL_PYTHON="${EVAL_PYTHON:-/mnt/local/uvenvs/p-align/bin/python}"
+RUN_ID="${RUN_ID:-ssft_qwen25_7b_seed42}"
+GPU="${GPU:-0,1,2}"
 STAMP="${VENV}/.setup_done_onepass_v1"
 
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -31,10 +32,11 @@ log() { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 
 [[ -d "$MODEL_DIR" ]] || die "Khong thay model local: $MODEL_DIR"
 [[ -f "$TRAIN_JSONL" ]] || die "Khong thay train jsonl: $TRAIN_JSONL"
+[[ -x "$EVAL_PYTHON" ]] || command -v "$EVAL_PYTHON" >/dev/null || die "Can EVAL_PYTHON tro toi env vLLM/math-verify"
 
 # -----------------------------------------------------------------------------
 # 1. Moi truong. one_pass train bang unsloth roi cham diem trong cung process,
-#    nen dung env train. vLLM nam o env khac (torch lech) -> eval bang HF.
+#    nen dung env train. Eval bang vLLM trong subprocess EVAL_PYTHON rieng.
 # -----------------------------------------------------------------------------
 if [[ ! -x "${VENV}/bin/python" ]]; then
   log "Tao venv: ${VENV}"
@@ -78,13 +80,17 @@ python -u "${ROOT}/one_pass.py" \
   --data-dir "$BENCH_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --run-id "$RUN_ID" \
-  --eval-backend hf
+  --eval-backend vllm --eval-python "$EVAL_PYTHON" \
+  --eval-n "${EVAL_N:-3}" --seed "${TRAIN_SEED:-42}" \
+  --epochs "${EPOCHS:-3}" --lr "${LR:-5e-5}" \
+  --nproc-per-node "${NPROC_PER_NODE:-3}" \
+  --batch-size "${BATCH_SIZE:-11}" --grad-accum "${GRAD_ACCUM:-1}"
 
 # -----------------------------------------------------------------------------
 # 2. In ket qua. Checkpoint van nam tren dia neu eval dung giua chung.
 # -----------------------------------------------------------------------------
-SUMMARY="${OUTPUT_DIR}/${RUN_ID}_summary.json"
-COST="${OUTPUT_DIR}/${RUN_ID}_cost.json"
+SUMMARY="${OUTPUT_DIR}/${RUN_ID}/${RUN_ID}_summary.json"
+COST="${OUTPUT_DIR}/${RUN_ID}/${RUN_ID}_cost.json"
 [[ -f "$SUMMARY" ]] || die "Khong thay ${SUMMARY}"
 
 log "Ket qua"
@@ -97,17 +103,8 @@ if cost:
     print("  gpu hours  : %.3f" % cost.get("total_gpu_hours", 0.0))
     print("  retained   : %.1f%%" % cost.get("retained_token_pct", 0.0))
 print("  %-12s %8s %8s %8s" % ("benchmark", "n", "pass@1", "pass@n"))
-for row in summary.get("benchmarks") or []:
-    name = row.get("benchmark", "?")
-    if row.get("error"):
-        print("  %-12s  %s" % (name, row["error"]))
-        continue
-    n = row.get("n_samples", "")
-    p1 = row.get("pass@1")
-    pk = row.get("pass@%s" % n)
-    def cell(v):
-        return "%.3f" % v if isinstance(v, float) else str(v)
-    print("  %-12s %8s %8s %8s" % (name, n, cell(p1), cell(pk)))
+for name, row in (summary.get("benchmarks") or {}).items():
+    print("  %-12s %8s %8s" % (name, row.get("pass@1", ""), row.get("pass@3", "")))
 print()
 print("  summary : %s" % sys.argv[1])
 print("  cost    : %s" % sys.argv[2])

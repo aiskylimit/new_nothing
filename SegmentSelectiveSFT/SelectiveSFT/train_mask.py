@@ -2,7 +2,7 @@ import os
 os.environ["UNSLOTH_COMPILE_DISABLE"] = "1"
 os.environ["UNSLOTH_DISABLE_FAST_GENERATION"] = "1"
 from unsloth import FastLanguageModel 
-from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl
+from transformers import DataCollatorForSeq2Seq, TrainerCallback, TrainingArguments, TrainerState, TrainerControl
 import torch
 import argparse
 import sys
@@ -11,6 +11,8 @@ from trl import SFTTrainer, SFTConfig
 from datasets import load_dataset
 from unsloth import is_bfloat16_supported
 import gc
+import json
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from segment_utils import DEFAULT_MODE, SEGMENT_PATTERNS, split_segments
@@ -73,12 +75,12 @@ def parse_args(argv=None):
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--stop_at_epoch", type=float, default=0,
                         help="0 = chay du --epochs; >0 = dung khi state.epoch dat nguong nay")
-    parser.add_argument("--seed", type=int, default=3407)
+    parser.add_argument("--seed", type=int, default=42)
 
     # --- Optimizer / scheduler ---
     parser.add_argument("--learning_rate", type=float, default=5e-5)
-    parser.add_argument("--per_device_train_batch_size", type=int, default=1)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=32)
+    parser.add_argument("--per_device_train_batch_size", type=int, default=11)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--optim", default="adamw_torch", type=str,
                         help="adamw_torch (mac dinh) hoac adamw_8bit de tiet kiem VRAM optimizer state")
     parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -131,9 +133,8 @@ def parse_args(argv=None):
     return args
 
 def run(args):
-    TOKEN_STATS["raw"] = 0
-    TOKEN_STATS["retained"] = 0
-    SKIPPED["n"] = 0
+    TOKEN_STATS = {"raw": 0, "retained": 0}
+    SKIPPED = {"n": 0}
 
     _load_kwargs = dict(
         model_name=args.model_name_or_path,
@@ -141,6 +142,10 @@ def run(args):
         load_in_4bit=args.load_in_4bit,
         full_finetuning=not args.use_lora,
     )
+    if int(os.environ.get("WORLD_SIZE", "1")) > 1:
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        _load_kwargs["device_map"] = {"": local_rank}
     try:
         model, tokenizer = FastLanguageModel.from_pretrained(**_load_kwargs, local_files_only=True)
     except TypeError:
@@ -225,9 +230,6 @@ def run(args):
 
     # dataset.map(batched=True) duoc phep tra ve it dong hon dau vao, nen mau hong
     # bi bo han thay vi lam ca batch chet.
-    SKIPPED = {"n": 0}
-    # raw = token dich truoc khi mask/cat. retained = label != -100 thuc su hoc.
-    TOKEN_STATS = {"raw": 0, "retained": 0}
 
 
     def segment_char_bounds(segments, offset):
@@ -378,11 +380,12 @@ def run(args):
     trainer = SFTTrainer(
         model = model,
         train_dataset = dataset,
-        tokenizer = tokenizer,
-        dataset_num_proc=2,
-        packing = False,
+        processing_class = tokenizer,
+        data_collator = DataCollatorForSeq2Seq(tokenizer, label_pad_token_id=-100),
         args = SFTConfig(
-            max_seq_length = args.max_seq_length,
+            max_length = args.max_seq_length,
+            dataset_num_proc = 2,
+            packing = False,
             remove_unused_columns = False,
             dataset_kwargs = {"skip_prepare_dataset": True},
             per_device_train_batch_size = args.per_device_train_batch_size,
@@ -426,6 +429,26 @@ def run(args):
         torch.cuda.max_memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0.0
     )
     n_params = sum(p.numel() for p in model.parameters())
+    # Ghi checkpoint cuoi rieng de ca LoRA va full fine-tuning deu eval lai duoc.
+    final_dir = Path(args.output_dir) / "checkpoint-final"
+    trainer.save_model(str(final_dir))
+    if trainer.is_world_process_zero():
+        tokenizer.save_pretrained(str(final_dir))
+    stats = {
+        "n_params": n_params,
+        "total_raw_tokens": int(TOKEN_STATS["raw"]),
+        "retained_supervised_tokens": int(TOKEN_STATS["retained"]),
+        "train_wall_time_sec": train_wall_time_sec,
+        "train_peak_vram_gb": train_peak_vram_gb,
+        "epoch_loss_history": loss_history.history,
+        "world_size": world_size,
+        "effective_batch": effective_batch,
+        "seed": args.seed,
+        "use_lora": args.use_lora,
+        "checkpoint": str(final_dir.resolve()),
+    }
+    if trainer.is_world_process_zero():
+        (Path(args.output_dir) / "training_stats.json").write_text(json.dumps(stats, indent=2) + "\n")
     return {
         "model": trainer.model,
         "tokenizer": tokenizer,

@@ -11,7 +11,7 @@
 #
 # Mac dinh (LoRA tren Qwen2.5-7B-Instruct, du lieu s1K-1.1):
 #   r=16 alpha=16 dropout=0.05 tren q/k/v/o/gate/up/down_proj
-#   lr 5e-5, 3 epoch, seq 32768, batch 1 x accum 32 = 32 mau/step
+#   lr 5e-5, 3 epoch, seq 32768, batch 11 x accum 1 x 3 GPU = 33 mau/step
 #   AdamW betas (0.9, 0.999) eps 1e-8 wd 0.0, cosine + warmup_ratio 0.1
 #
 # Tuy chon:
@@ -47,17 +47,18 @@ ENV_NAME="${ENV_NAME:-ssft_train}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
 MODEL="${MODEL:-Qwen/Qwen2.5-7B-Instruct}"
 DATA="${DATA:-data/s1k/solutions_selected.jsonl}"
-GPU="${GPU:-0}"
+GPU="${GPU:-0,1,2}"
 EPOCHS="${EPOCHS:-3}"
 LR="${LR:-5e-5}"
 LOG_DIR="${LOG_DIR:-logs}"
 
 # 32768 = dung tran max_position_embeddings cua Qwen2.5-7B-Instruct.
 MAX_SEQ_LENGTH="${MAX_SEQ_LENGTH:-32768}"
-# Micro-batch 1 = khong co padding nao (khong co mau khac de pad theo).
-# Effective batch = 1 x 32 = 32 mau/step.
-BATCH_SIZE="${BATCH_SIZE:-1}"
-GRAD_ACCUM="${GRAD_ACCUM:-32}"
+# Rebuttal: 11 mau/GPU x 3 GPU x accum 1 = 33 mau/step.
+BATCH_SIZE="${BATCH_SIZE:-11}"
+GRAD_ACCUM="${GRAD_ACCUM:-1}"
+TRAIN_SEED="${TRAIN_SEED:-42}"
+NPROC_PER_NODE="${NPROC_PER_NODE:-3}"
 GROUP_BY_LENGTH="${GROUP_BY_LENGTH:-0}"   # 1 = gom mau cung do dai, bo padding thua
 # Seq 32768 tren 7B thi gradient checkpointing la bat buoc -> mac dinh BAT.
 NO_GRAD_CKPT="${NO_GRAD_CKPT:-0}"         # 1 = tat (ton VRAM, nhanh hon)
@@ -102,6 +103,8 @@ while [[ $# -gt 0 ]]; do
     --data)            DATA="$2"; shift 2 ;;
     --gpu)             GPU="$2"; shift 2 ;;
     --epochs)          EPOCHS="$2"; shift 2 ;;
+    --seed)            TRAIN_SEED="$2"; shift 2 ;;
+    --nproc-per-node)   NPROC_PER_NODE="$2"; shift 2 ;;
     --lr)              LR="$2"; shift 2 ;;
     --max-seq-length)  MAX_SEQ_LENGTH="$2"; shift 2 ;;
     --batch-size)      BATCH_SIZE="$2"; shift 2 ;;
@@ -147,6 +150,7 @@ echo "=============================================================="
 # =============================================================================
 # 1. Kiem tra so bo
 # =============================================================================
+[[ "$DATA" = /* ]] || DATA="$ROOT_DIR/$DATA"
 [[ -f "$DATA" ]] || die "Khong thay training file: ${DATA}"
 log "Training data: ${DATA} ($(wc -l < "$DATA" | tr -d ' ') dong)"
 
@@ -267,7 +271,8 @@ if [[ "$USE_LORA" == "1" ]]; then
     --target_modules "${TARGET_MODULES}"
   )
   [[ "$LOAD_4BIT" == "1" ]] && TUNE_ARGS+=(--load_in_4bit)
-  TUNE_NAME="LoRA r=${LORA_R} alpha=${LORA_ALPHA} dropout=${LORA_DROPOUT}$([[ "$LOAD_4BIT" == 1 ]] && echo ' (4-bit/QLoRA)')"
+  TUNE_NAME="LoRA r=${LORA_R} alpha=${LORA_ALPHA} dropout=${LORA_DROPOUT}"
+  if [[ "$LOAD_4BIT" == "1" ]]; then TUNE_NAME+=" (4-bit/QLoRA)"; fi
   CKPT_SUFFIX="${CKPT_SUFFIX}_lora"
   LOG_NAME="${LOG_NAME}_lora"
 else
@@ -288,7 +293,7 @@ echo "    tuning     : ${TUNE_NAME}"
 echo "    model      : ${MODEL}"
 echo "    epochs / lr: ${EPOCHS} / ${LR}"
 echo "    seq len    : ${MAX_SEQ_LENGTH}"
-echo "    batch      : ${BATCH_SIZE} x ${GRAD_ACCUM} accum (effective $((BATCH_SIZE * GRAD_ACCUM)))"
+echo "    batch      : ${BATCH_SIZE} x ${GRAD_ACCUM} accum (effective $((BATCH_SIZE * GRAD_ACCUM * NPROC_PER_NODE)))"
 echo "    optim      : ${OPTIM} betas=(${ADAM_BETA1}, ${ADAM_BETA2}) eps=${ADAM_EPSILON} wd=${WEIGHT_DECAY}"
 echo "    scheduler  : ${LR_SCHEDULER} warmup_ratio=${WARMUP_RATIO}"
 echo "    segment    : ${SEGMENT_MODE} (think_prefix=${THINK_PREFIX})"
@@ -298,10 +303,10 @@ echo "    checkpoint : ${CKPT_DIR}"
 echo "    log        : ${LOG_FILE}"
 echo
 
-( cd "${ROOT_DIR}/SelectiveSFT" && run python -u train_mask.py \
+( cd "${ROOT_DIR}/SelectiveSFT" && run torchrun --standalone --nproc_per_node "$NPROC_PER_NODE" train_mask.py \
     --model_name_or_path "${MODEL}" \
-    --data_names "${ROOT_DIR}/${DATA}" \
-    --epochs "${EPOCHS}" \
+    --data_names "$DATA" \
+    --epochs "${EPOCHS}" --seed "$TRAIN_SEED" \
     --learning_rate "${LR}" \
     --max_seq_length "${MAX_SEQ_LENGTH}" \
     --output_dir "${ROOT_DIR}/${CKPT_DIR}" \

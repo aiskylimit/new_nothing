@@ -29,8 +29,8 @@ overwrite_output_dir: true
 report_to: none
 disable_tqdm: false
 
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 8
+per_device_train_batch_size: 11
+gradient_accumulation_steps: 1
 num_train_epochs: 3.0
 learning_rate: 5.0e-5
 lr_scheduler_type: cosine
@@ -43,3 +43,6 @@ weight_decay: 0.0
 bf16: true
 gradient_checkpointing: true
 ddp_timeout: 180000000
+
+seed: 42
+data_seed: 42

@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 train = ["deepspeed>=0.15"]
+eval = ["vllm", "jsonlines", "tqdm"]
 dev = [
   "pytest>=8.3",
   "ruff>=0.9",
