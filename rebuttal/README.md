@@ -6,6 +6,39 @@ training seed 42, default physical GPUs **3,4,5**. No 8B, extra training seeds o
 CoReD ablations are scheduled. `configs/*.json` are the 15 frozen configurations;
 they are validated against `common.matrix()` to prevent unnoticed drift.
 
+## Main three-B200 launcher
+
+```bash
+# Offline B200 server: environments and attested assets must already be provisioned.
+GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
+# Online machine with three B200s: also install dependencies and download assets.
+GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
+```
+
+Choose the command matching the machine; `endtoend` defaults to offline. The
+online mode runs `setup` (six requirements files, isolated Python 3.11 environments)
+and `download` (pinned model/data provisioner), then both modes run `prepare`,
+`preflight`, `all` and `report` in order. The first failed stage stops the launcher.
+Install `uv` before online setup if missing (`python3 -m pip install uv`). Runtime
+stages remain offline. Logs are appended to `rebuttal/launcher-logs/endtoend.log`
+or `REBUTTAL_LAUNCHER_LOGS`; native per-run status/logs retain their existing paths.
+Set `GPUS` to the three actual physical indices allocated to the experiment.
+
+`setup` and `download` can also be invoked separately, as in the H100/3090 scripts.
+Download uses `rebuttal.provision` with the same sources listed in
+`rebuttal/download.txt`, pinned revisions and `snapshot.json` hashes. For assets
+already fetched by a managed downloader, use `download --attest-managed` once to
+verify the local Hub commit metadata offline. Copy attested assets to the B200
+server and provision compatible library environments there before offline runs;
+the txt files alone are not offline installation bundles.
+
+Existing `all` still means native training plus evaluation over the 15 configs;
+it does not reinstall dependencies or alter the training/eval protocol. The
+end-to-end wrapper changes no Python trainers, batch/epoch settings or frozen
+configs. Use `REBUTTAL_ENV_ROOT` to relocate all six environments and the usual
+`REBUTTAL_ASSETS`, `REBUTTAL_DATA`, `REBUTTAL_RUNS`, `REBUTTAL_REPORTS` overrides
+for storage. Resume with the same command, code, configuration and storage roots.
+
 ## Formal Setting B on two H100s
 
 ```bash

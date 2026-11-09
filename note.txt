@@ -1,19 +1,20 @@
-# Chuẩn bị dữ liệu cho hai teacher và chuẩn hóa benchmark
-bash rebuttal/project_commands.sh prepare
+# Thực nghiệm chính 15 runs trên 3 B200 (sửa GPUS theo số GPU thực tế được cấp).
+# Máy B200 OFFLINE, thư viện/model/data đã được provision: một lệnh từ prepare tới report.
+GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
 
-# Kiểm tra dữ liệu, môi trường và ba B200
-bash rebuttal/project_commands.sh preflight
+# Nếu máy CÓ INTERNET và cần cả cài thư viện/tải assets: dùng lệnh thay thế này.
+# Cần uv trước (nếu thiếu: python3 -m pip install uv).
+# GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
+# --online = setup 6 file thư viện txt -> tải model/data đúng revision -> prepare -> preflight -> all -> report.
+# --offline KHÔNG cài/tải online; all giữ nghĩa cũ là train + eval, cần dữ liệu đã prepare.
+# Có thể chạy riêng: bash rebuttal/project_commands.sh setup
+#                   bash rebuttal/project_commands.sh download
+# Nếu đã tải bằng công cụ download.txt nhưng chưa có snapshot.json, xác thực offline:
+# bash rebuttal/project_commands.sh download --attest-managed
 
 # Chạy thử nhỏ, lưu riêng khỏi thí nghiệm chính
 REBUTTAL_RUNS="$PWD/rebuttal/smoke-runs" \
   bash rebuttal/project_commands.sh smoke
-
-# Với từng cấu hình: train xong rồi eval, sau đó chuyển cấu hình tiếp
-bash rebuttal/project_commands.sh all
-
-# Tổng hợp kết quả và chi phí
-bash rebuttal/project_commands.sh report
-
 
 # Smoke test in 2x3090
 # Chỉ cần khi chưa cài môi trường/tải assets; cần Internet
