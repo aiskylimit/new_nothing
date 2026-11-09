@@ -1,4 +1,7 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/_run-2026-11-08_18-31-03-cred.zip +a
+#d
+#models
+--hf llava-hf/llava-onevision-qwen2-0.5b-ov-hf /mnt/local/@PROJECT@/cred/models/llava-onevision-qwen2-0.5b-ov-hf
+
 #cred-log
 #v1
 
