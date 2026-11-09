@@ -3,7 +3,6 @@
 --hf Qwen/Qwen2.5-7B-Instruct /mnt/local/@PROJECT@/rebuttal/assets/models/Qwen2.5-7B-Instruct
 --hf deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B /mnt/local/@PROJECT@/rebuttal/assets/models/DeepSeek-R1-Distill-Qwen-1.5B
 --hf-dataset simplescaling/s1K-1.1 /mnt/local/@PROJECT@/rebuttal/assets/datasets/s1K-1.1
---hf-dataset simplescaling/s1K /mnt/local/@PROJECT@/rebuttal/assets/datasets/s1K
 --hf-dataset Maxwell-Jia/AIME_2024 /mnt/local/@PROJECT@/rebuttal/assets/benchmarks/AIME_2024
 --hf-dataset yentinglin/aime_2025 /mnt/local/@PROJECT@/rebuttal/assets/benchmarks/aime_2025
 --hf-dataset AI-MO/aimo-validation-amc /mnt/local/@PROJECT@/rebuttal/assets/benchmarks/aimo-validation-amc

@@ -1,26 +1,13 @@
 #d
 #datasets
 --hf-dataset simplescaling/s1K-1.1 /mnt/local/@PROJECT@/cored/datasets/s1K-1.1
-# Nguon AIME ma cored/eval/benchmarks.py hien dang dung.
---hf-dataset HuggingFaceH4/aime_2024 /mnt/local/@PROJECT@/cored/datasets/aime_2024
---hf-dataset opencompass/AIME2025 /mnt/local/@PROJECT@/cored/datasets/AIME2025
-# Benchmark chung voi cac baseline; ARC-Challenge test 1172, LogiQA2 English MRC test 1572.
 --hf-dataset Maxwell-Jia/AIME_2024 /mnt/local/@PROJECT@/palign/datasets/AIME_2024
 --hf-dataset yentinglin/aime_2025 /mnt/local/@PROJECT@/palign/datasets/aime_2025
 --hf-dataset AI-MO/aimo-validation-amc /mnt/local/@PROJECT@/palign/datasets/aimo-validation-amc
 --hf-dataset HuggingFaceH4/MATH-500 /mnt/local/@PROJECT@/palign/datasets/MATH-500
+#ood-test-only: ARC-Challenge test (1172); LogiQA 2.0 English MRC test (1572)
 --url https://huggingface.co/datasets/allenai/ai2_arc/resolve/210d026faf9955653af8916fad021475a3f00453/ARC-Challenge/test-00000-of-00001.parquet /mnt/local/@PROJECT@/palign/datasets/ARC-Challenge/
 --url https://raw.githubusercontent.com/csitfun/LogiQA2.0/31381f5634d201c4ed6f981b87de3c7d9f496002/logiqa/DATA/LOGIQA/test.txt /mnt/local/@PROJECT@/palign/datasets/LogiQA2.0/
-# Optional benchmarks/backbone used by existing ablation scripts.
---hf-dataset openai/gsm8k /mnt/local/@PROJECT@/cored/datasets/gsm8k
-# CurioSFT test files only; no need to download the 491 MB training file.
---url https://huggingface.co/datasets/Hao0oWang/CurioSFT_Data/resolve/142ba7f/test.math.parquet /mnt/local/@PROJECT@/cored/data/curiosft_raw/
---url https://huggingface.co/datasets/Hao0oWang/CurioSFT_Data/resolve/142ba7f/test.gpqa.parquet /mnt/local/@PROJECT@/cored/data/curiosft_raw/
---url https://huggingface.co/datasets/Hao0oWang/CurioSFT_Data/resolve/142ba7f/test.arc_c.parquet /mnt/local/@PROJECT@/cored/data/curiosft_raw/
---url https://huggingface.co/datasets/Hao0oWang/CurioSFT_Data/resolve/142ba7f/test.mmlu_pro.parquet /mnt/local/@PROJECT@/cored/data/curiosft_raw/
 #models
 --hf Qwen/Qwen2.5-7B-Instruct /mnt/local/@PROJECT@/cored/models/Qwen2.5-7B-Instruct
 --hf deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B /mnt/local/@PROJECT@/cored/models/DeepSeek-R1-Distill-Qwen-1.5B
-# Load models/<name> or an absolute local path; runtime never downloads from the Hub.
-# CORED_ASSET_ROOT defaults to the cored directory; shared eval data is under ../palign/datasets.
-# data/train_s1k*.jsonl and expert/student adapters are pipeline-generated artifacts.

@@ -1,7 +1,7 @@
 """Nạp benchmark eval và trích ground-truth (spec §3.1, §8).
 
 Hai họ benchmark:
-  - Snapshot local (setup gốc): gsm8k / math500 / aime24 / aime25.
+  - Main math benchmarks use the same shared local snapshots as the baselines.
   - **Kịch bản CurioSFT** (``cs_*``): đọc parquet local từ ``Hao0oWang/CurioSFT_Data``
     — đúng tập test bài dùng. ``test.math.parquet`` chứa 6 bench math (tách theo
     cột ``data_source``); OOD là 3 parquet riêng (trắc nghiệm, gold = chữ cái).
@@ -20,8 +20,8 @@ from core.local_assets import asset_path, load_local_rows
 BENCHMARKS: Dict[str, dict] = {
     "gsm8k": {"path": "datasets/gsm8k/main", "split": "test", "k": 1},
     "math500": {"path": "../palign/datasets/MATH-500", "split": "test", "k": 3},
-    "aime24": {"path": "datasets/aime_2024", "split": "train", "k": 3},
-    "aime25": {"path": "datasets/AIME2025", "k": 3},
+    "aime24": {"path": "../palign/datasets/AIME_2024/aime_2024_problems.parquet", "split": "train", "k": 3},
+    "aime25": {"path": "../palign/datasets/aime_2025", "split": "train", "k": 3},
     # Cùng snapshot AMC 83 bài với các baseline, thay đường dẫn repo cũ.
     "amc": {"path": "../palign/datasets/aimo-validation-amc", "split": "train", "k": 3},
 }
@@ -141,7 +141,8 @@ def _load_curiosft_benchmark(name, spec, data_dir, limit) -> List[EvalItem]:
     path = str(asset_path(data_dir) / spec["file"])
     if not os.path.exists(path):
         raise FileNotFoundError(
-            f"Local benchmark missing: {path}. Provision cored/download.txt before running offline."
+            f"Optional CurioSFT benchmark missing: {path}. Supply these legacy local files explicitly; "
+            "cored/download.txt provisions the shared baseline benchmarks."
         )
     table = pq.read_table(path)
     cols = table.column_names
@@ -168,18 +169,17 @@ def _load_curiosft_benchmark(name, spec, data_dir, limit) -> List[EvalItem]:
 
 
 def _load_aime25():
-    """Read both official OpenCompass JSONL parts, without online mirror fallback."""
+    """Read the same yentinglin/aime_2025 train snapshot used by the baselines."""
     root = asset_path(BENCHMARKS["aime25"]["path"])
-    rows = [row for part in ("I", "II")
-            for row in load_local_rows(root / f"aime2025-{part}.jsonl")]
+    rows = load_local_rows(root, split=BENCHMARKS["aime25"]["split"])
     questions = [_get_question(row) for row in rows]
     if len(rows) != 30 or len(set(questions)) != 30 or not all(questions):
-        raise ValueError(f"AIME2025 requires 30 unique questions from parts I and II: {root}")
+        raise ValueError(f"AIME2025 requires 30 unique questions from the shared baseline snapshot: {root}")
     return rows
 
 
 def _get_question(row) -> str:
-    for key in ("problem", "question", "Question", "query"):
+    for key in ("problem", "Problem", "question", "Question", "query"):
         if key in row and row[key]:
             return str(row[key])
     return ""

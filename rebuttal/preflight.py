@@ -5,13 +5,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from rebuttal.common import ROOT, matrix, rows, sha, write
+from rebuttal.common import DATA_REV, ROOT, TEACHER_FIELDS, matrix, rows, sha, write
 
 
 def validate(assets, data, runs, environments=False, gpus='3,4,5'):
     checks = {'configurations': 15, 'training_seed_count': 1, 'math_seeds': [1, 2, 3, 4, 5],
               'math_responses': 64, 'gpu_ids': gpus, 'checks': []}
     manifest = json.loads((data / 'manifest.json').read_text())
+    if (manifest.get('dataset') != {'repo': 'simplescaling/s1K-1.1', 'revision': DATA_REV, 'split': 'train'}
+            or manifest.get('revisions') != {'original': DATA_REV, 'gemini': DATA_REV}
+            or manifest.get('teacher_fields') != {k: list(v) for k, v in TEACHER_FIELDS.items()}):
+        raise ValueError('Stale prepared data: rerun prepare to build both teachers from the same s1K-1.1 snapshot')
     original = rows(data / 'original/canonical.jsonl')
     gemini = rows(data / 'gemini/canonical.jsonl')
     if len(original) != 1000 or [r['id'] for r in original] != [r['id'] for r in gemini]:

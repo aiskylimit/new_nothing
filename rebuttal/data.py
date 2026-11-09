@@ -5,11 +5,13 @@ from pathlib import Path
 
 import numpy as np
 
-from rebuttal.common import DATA_REV, GEMINI_REV, jsonl, rows, sha, signature, write
+from rebuttal.common import DATA_REV, TEACHER_FIELDS, jsonl, rows, sha, signature, write
 
 
 def question_key(text):
-    return ' '.join(unicodedata.normalize('NFC', text).split())
+    # The pinned source has two distinct rows whose questions differ only in
+    # interior whitespace. Preserve those rows and their separate trajectories.
+    return unicodedata.normalize('NFC', text).strip()
 
 
 def snapshot(path, split='train'):
@@ -17,40 +19,32 @@ def snapshot(path, split='train'):
     path = Path(path)
     if path.is_file():
         return pq.read_table(path).to_pylist() if path.suffix == '.parquet' else rows(path)
-    files = sorted(path.rglob(f'{split}*.parquet'))
+    search_root = path / 'data' if (path / 'data').is_dir() else path
+    files = sorted(search_root.rglob(f'{split}*.parquet'))
     if not files:
-        files = sorted(path.rglob(f'{split}*.jsonl'))
+        files = sorted(search_root.rglob(f'{split}*.jsonl'))
     if not files:
         raise FileNotFoundError(f'Missing local {split} snapshot: {path}')
     return [row for file in files for row in snapshot(file)]
 
 
-def normalize_teachers(original, gemini):
-    lookup = {}
-    for row in gemini:
-        key = question_key(row['question'])
-        if key in lookup:
-            raise ValueError('Duplicate Gemini question')
-        lookup[key] = row
+def normalize_teachers(source):
+    """Produce both teacher views from the same s1K-1.1 row, without fallbacks."""
     output = {'original': [], 'gemini': []}
     seen = set()
-    for row in original:
+    for row in source:
         key = question_key(row['question'])
-        if key in seen or key not in lookup:
-            raise ValueError('Original/Gemini questions are not a unique matched set')
+        if not key or key in seen:
+            raise ValueError('s1K-1.1 questions must be nonempty and unique')
         seen.add(key)
-        other = lookup[key]
-        for variant, source in [('original', row), ('gemini', other)]:
-            thinking = source.get('deepseek_thinking_trajectory') if variant == 'original' else source['thinking_trajectories'][0]
-            attempt = source.get('deepseek_attempt') if variant == 'original' else source.get('attempt')
+        for variant, (trace_field, answer_field, grade_field) in TEACHER_FIELDS.items():
+            thinking, attempt = row.get(trace_field), row.get(answer_field)
             if not isinstance(thinking, str) or not thinking.strip() or not isinstance(attempt, str) or not attempt.strip():
-                raise ValueError(f'Missing {variant} teacher trace/attempt')
+                raise ValueError(f'Missing {variant} teacher fields: {trace_field}, {answer_field}')
             output[variant].append({'id': signature(key)[:24], 'question': row['question'].strip(),
                 'thinking': thinking.strip(), 'answer_text': attempt.strip(), 'gold': str(row['solution']).strip(),
-                'source_type': source.get('source_type'), 'teacher_grade': source.get('deepseek_grade') if variant == 'original' else None,
+                'source_type': row.get('source_type'), 'teacher_grade': row.get(grade_field),
                 'teacher': variant})
-    if seen != set(lookup):
-        raise ValueError('Gemini has extra questions')
     return output
 
 
@@ -112,9 +106,19 @@ def prepare_benchmarks(store, destination):
                       'amc12': ('aimo-validation-amc', 'train', 83), 'math500': ('MATH-500', 'test', 500)}
     metadata = {}
     for name, (folder, split, count) in specifications.items():
-        raw = snapshot(store / folder, split)
-        records = [{'question_id': f'{name}:{i}', 'question': str(r.get('problem') or r.get('question')),
-                    'answer': str(r.get('answer', r.get('Answer'))).removesuffix('.0')} for i, r in enumerate(raw)]
+        source = store / folder
+        if name == 'aime24':
+            source /= 'aime_2024_problems.parquet'
+        raw = snapshot(source, split)
+        records = []
+        for i, row in enumerate(raw):
+            lower = {key.lower(): value for key, value in row.items()}
+            question = lower.get('problem') or lower.get('question')
+            answer = lower.get('answer')
+            if not isinstance(question, str) or not question.strip() or answer is None or str(answer) == '':
+                raise ValueError(f'{name}: missing problem/answer fields at row {i}')
+            records.append({'question_id': f'{name}:{i}', 'question': question,
+                            'answer': str(answer).removesuffix('.0')})
         if len(records) != count or len({r['question'] for r in records}) != count:
             raise ValueError(f'{name}: expected {count} unique questions')
         jsonl(destination / f'{name}.jsonl', records)
@@ -138,10 +142,10 @@ def main():
     p.add_argument('--out', required=True, type=Path)
     p.add_argument('--skip-statistics', action='store_true', help='Fixture/data-only checks; server preflight still requires statistics')
     args = p.parse_args()
-    paired = normalize_teachers(snapshot(args.assets / 'datasets/s1K-1.1'), snapshot(args.assets / 'datasets/s1K'))
     from rebuttal.provision import BENCHMARKS, URLS, verify_snapshot
-    for folder, revision in [('s1K-1.1', DATA_REV), ('s1K', GEMINI_REV)]:
-        verify_snapshot(args.assets / 'datasets' / folder, 'simplescaling/'+folder, revision)
+    source = args.assets / 'datasets/s1K-1.1'
+    verify_snapshot(source, 'simplescaling/s1K-1.1', DATA_REV)
+    paired = normalize_teachers(snapshot(source))
     for folder, (repo, revision) in BENCHMARKS.items():
         verify_snapshot(args.assets / 'benchmarks' / folder, repo, revision)
     for relative, (_, expected) in URLS.items():
@@ -151,7 +155,9 @@ def main():
         raise ValueError('Expected 1000 matched training questions')
     for variant, values in paired.items():
         adapt(values, args.out / variant)
-    write(args.out / 'manifest.json', {'revisions': {'original': DATA_REV, 'gemini': GEMINI_REV},
+    write(args.out / 'manifest.json', {'revisions': {'original': DATA_REV, 'gemini': DATA_REV},
+          'dataset': {'repo': 'simplescaling/s1K-1.1', 'revision': DATA_REV, 'split': 'train'},
+          'teacher_fields': TEACHER_FIELDS,
           'counts': {k: len(v) for k, v in paired.items()}, 'question_ids': [r['id'] for r in paired['original']],
           'files': {v: sha(args.out / v / 'canonical.jsonl') for v in paired}})
     prepare_benchmarks(args.assets / 'benchmarks', args.out / 'benchmarks')

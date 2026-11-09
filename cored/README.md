@@ -219,10 +219,12 @@ Phase 1 ablations: `configs/proposal_v2/phase1_svgd_func_keystep_k1_{allOff,noDr
 | Student, NLL only (lambda_KL=0) | 10.0/16.7 | 15.6/30.0 | 41.8/59.0 | 74.2/85.2 | 35.38/47.73 |
 | **Student, full (lambda_KL=1)** | 11.1/16.7 | 14.4/23.3 | 45.8/59.0 | 77.2/86.4 | 37.13/46.36 |
 
-AMC and MATH500 are read from the shared local snapshots in `palign/datasets/`;
-AIME24 is read from `cored/datasets/aime_2024`, and AIME25 combines the two local
-OpenCompass files `aime2025-I.jsonl` and `aime2025-II.jsonl` (30 unique problems).
-Optional GSM8K and CurioSFT test files are also listed in `download.txt`.
-ARC-Challenge and LogiQA2 downloads are provisioned for the planned OOD evaluation;
-the standalone ARC/LogiQA2 loader/grading integration is not part of this change.
+All four main math benchmarks use the same local snapshots as the baselines:
+`palign/datasets/{AIME_2024,aime_2025,aimo-validation-amc,MATH-500}`. AIME24 uses
+`Maxwell-Jia/AIME_2024`; AIME25 uses `yentinglin/aime_2025`, without a separate
+OpenCompass mirror. `download.txt` provisions the same s1K-1.1 training source
+and six eval sources as the SFT/SGL manifests. No extra GSM8K/CurioSFT data is
+downloaded for main experiments; their optional legacy loaders require separately
+supplied files. The finalized math/OOD protocol runs through the shared
+`rebuttal/project_commands.sh` entry point for all five methods.
 Raw per-problem scores from the original runs are in `results/*.json`.

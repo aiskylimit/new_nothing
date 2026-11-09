@@ -9,13 +9,13 @@
     "size": "7b"
   },
   "data": {
-    "repo": "simplescaling/s1K",
-    "revision": "278d72baaa2b887a7e76a70a0ae254a5a45536e4",
+    "repo": "simplescaling/s1K-1.1",
+    "revision": "96c411f1fe4c49d20f0e2a1565f61e1a28b0b84d",
     "split": "train",
     "expected_samples": 1000,
     "teacher": "Gemini Flash Thinking",
-    "trace_source": "thinking_trajectories[0]",
-    "answer_source": "attempt",
+    "trace_source": "gemini_thinking_trajectory",
+    "answer_source": "gemini_attempt",
     "variant": "gemini"
   },
   "train": {

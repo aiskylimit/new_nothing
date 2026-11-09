@@ -14,7 +14,10 @@ MODELS = {
     '1.5b': ('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B', 'ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562'),
 }
 DATA_REV = '96c411f1fe4c49d20f0e2a1565f61e1a28b0b84d'
-GEMINI_REV = '278d72baaa2b887a7e76a70a0ae254a5a45536e4'
+TEACHER_FIELDS = {
+    'original': ('deepseek_thinking_trajectory', 'deepseek_attempt', 'deepseek_grade'),
+    'gemini': ('gemini_thinking_trajectory', 'gemini_attempt', 'gemini_grade'),
+}
 
 
 def sha(path):
@@ -82,11 +85,11 @@ def matrix():
             result.append({
                 'run_id': f'{setting}_{method}_{size}_seed42', 'setting': setting, 'method': method,
                 'model': {'repo': model, 'revision': revision, 'tokenizer': model, 'size': size},
-                'data': {'repo': 'simplescaling/s1K-1.1' if teacher == 'original' else 'simplescaling/s1K',
-                         'revision': DATA_REV if teacher == 'original' else GEMINI_REV, 'split': 'train',
+                'data': {'repo': 'simplescaling/s1K-1.1',
+                         'revision': DATA_REV, 'split': 'train',
                          'expected_samples': 1000, 'teacher': 'DeepSeek-R1' if teacher == 'original' else 'Gemini Flash Thinking',
-                         'trace_source': 'deepseek_thinking_trajectory' if teacher == 'original' else 'thinking_trajectories[0]',
-                         'answer_source': 'deepseek_attempt' if teacher == 'original' else 'attempt', 'variant': teacher},
+                         'trace_source': TEACHER_FIELDS[teacher][0],
+                         'answer_source': TEACHER_FIELDS[teacher][1], 'variant': teacher},
                 'train': {'seed': 42, 'epochs': 3, 'global_batch': 33, 'micro_batch': 11,
                           'gradient_accumulation': 1 if method != 'cored' else 'adaptive token budget',
                           'optimizer': 'AdamW', 'lr': 5e-5, 'weight_decay': 0,

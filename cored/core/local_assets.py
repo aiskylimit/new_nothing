@@ -57,7 +57,10 @@ def load_local_rows(value: str | Path, *, split: str | None = None) -> list[dict
     if path.is_file():
         files = [path]
     else:
-        candidates = sorted(p for p in path.rglob("*")
+        # HF's default subset is often data/, beside alternative subsets such
+        # as AIME2025 part1/part2. Match the baseline loader's default-subset rule.
+        search_root = path / "data" if (path / "data").is_dir() else path
+        candidates = sorted(p for p in search_root.rglob("*")
                             if p.is_file() and not any(part.startswith(".") for part in p.relative_to(path).parts)
                             and p.suffix in {".parquet", ".jsonl", ".json"})
         if split is not None:

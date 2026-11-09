@@ -44,6 +44,18 @@ def test_every_folder_has_loader_manifests_with_shared_eval_destinations():
     assert (ROOT / "palign.txt").read_bytes() == (ROOT / "sft.txt").read_bytes()
 
 
+def test_cored_downloads_exactly_the_baseline_sources():
+    def commands(folder):
+        return [shlex.split(line) for line in (ROOT / folder / 'download.txt').read_text().splitlines()
+                if line and not line.startswith('#')]
+    expected = [[flag, source, dest.replace('/sft/', '/cored/')] for flag, source, dest in commands('sft')]
+    assert commands('cored') == expected
+    unified = commands('rebuttal')
+    train = [command for command in unified if '/assets/datasets/' in command[2]]
+    assert train == [['--hf-dataset', 'simplescaling/s1K-1.1',
+                      '/mnt/local/@PROJECT@/rebuttal/assets/datasets/s1K-1.1']]
+
+
 def test_sgl_reads_provisioned_snapshot_without_hub_or_cache(tmp_path, monkeypatch):
     import datasets
 

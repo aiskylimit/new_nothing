@@ -132,26 +132,27 @@ def test_benchmarks_use_expected_local_files_and_answer_formats(tmp_path):
     math.parent.mkdir(parents=True)
     math.write_text(json.dumps({"problem": "MATH", "answer": "7"}) + "\n")
     assert load_benchmark("math500")[0].question == "MATH"
-    write_parquet(tmp_path / "cored/datasets/aime_2024/data/train-00000.parquet",
-                  [{"problem": "AIME24", "answer": "0"}])
+    write_parquet(tmp_path / "palign/datasets/AIME_2024/aime_2024_problems.parquet",
+                  [{"Problem": "AIME24", "Answer": 0}])
     assert load_benchmark("aime24")[0].answer == "0"
     write_parquet(tmp_path / "cored/datasets/gsm8k/main/test-00000.parquet",
                   [{"question": "GSM", "answer": "reasoning\n#### 1,234"}])
     assert load_benchmark("gsm8k")[0].answer == "1234"
 
 
-def test_aime25_requires_both_parts_and_30_unique_questions(tmp_path):
-    root = tmp_path / "cored/datasets/AIME2025"
-    root.mkdir(parents=True)
-    for part in ("I", "II"):
-        (root / f"aime2025-{part}.jsonl").write_text("".join(
-            json.dumps({"question": f"{part}-{i}", "answer": i}) + "\n" for i in range(15)))
+def test_aime25_uses_shared_baseline_snapshot_and_30_unique_questions(tmp_path):
+    path = tmp_path / "palign/datasets/aime_2025/data/train-00000-of-00001.parquet"
+    examples = [{"problem": f"AIME25-{i}", "answer": i} for i in range(30)]
+    write_parquet(path, examples)
+    # Alternate subsets contain the same questions and must not be added again.
+    write_parquet(path.parents[1] / 'part1/train-00000.parquet', examples[:15])
+    write_parquet(path.parents[1] / 'part2/train-00000.parquet', examples[15:])
     assert len(load_benchmark("aime25")) == 30
     assert len(load_benchmark("aime25", limit=4)) == 4
-    (root / "aime2025-II.jsonl").write_bytes((root / "aime2025-I.jsonl").read_bytes())
+    write_parquet(path, examples[:15] * 2)
     with pytest.raises(ValueError, match="30 unique"):
         load_benchmark("aime25")
-    (root / "aime2025-II.jsonl").unlink()
+    path.unlink()
     with pytest.raises(FileNotFoundError):
         load_benchmark("aime25")
 

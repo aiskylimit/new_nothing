@@ -5,7 +5,7 @@ import os
 import urllib.request
 from pathlib import Path
 
-from rebuttal.common import DATA_REV, GEMINI_REV, MODELS, sha, write
+from rebuttal.common import DATA_REV, MODELS, sha, write
 
 BENCHMARKS = {
     'AIME_2024': ('Maxwell-Jia/AIME_2024', '8d88b2876a82a080e2f172cc9b25d0d9d2cb4792'),
@@ -48,8 +48,7 @@ def main():
     p.add_argument('--attest-managed', action='store_true', help='Offline: verify Hub local-dir commit metadata, then attest existing files')
     args = p.parse_args()
     specs = [(repo, revision, 'model', 'models/'+repo.split('/')[-1]) for repo, revision in MODELS.values()]
-    specs += [('simplescaling/s1K-1.1', DATA_REV, 'dataset', 'datasets/s1K-1.1'),
-              ('simplescaling/s1K', GEMINI_REV, 'dataset', 'datasets/s1K')]
+    specs += [('simplescaling/s1K-1.1', DATA_REV, 'dataset', 'datasets/s1K-1.1')]
     specs += [(repo, revision, 'dataset', 'benchmarks/'+name) for name, (repo, revision) in BENCHMARKS.items()]
     for repo, revision, kind, relative in specs:
         folder = args.assets / relative

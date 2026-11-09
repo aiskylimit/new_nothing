@@ -43,16 +43,24 @@ python -m rebuttal.preflight --assets rebuttal/assets --data rebuttal/prepared \
   --runs rebuttal/runs --environments --gpus 3,4,5
 ```
 
-Original is `simplescaling/s1K-1.1`: `deepseek_thinking_trajectory` plus
-`deepseek_attempt`. Gemini is public `simplescaling/s1K`:
-`thinking_trajectories[0]` plus `attempt`. The two sets must have exactly 1,000
-unique, matched questions. They are reordered to the same stable question IDs;
-missing traces and question-set mismatches raise errors. No generic label-SFT
+Both teachers use **one pinned `simplescaling/s1K-1.1` snapshot**. Original uses
+`deepseek_thinking_trajectory` and `deepseek_attempt`; Gemini uses
+`gemini_thinking_trajectory` and `gemini_attempt`. Teacher grades come from
+`deepseek_grade` / `gemini_grade`. The two views are built from the same 1,000
+rows with identical stable question IDs; missing teacher fields or exact duplicate
+questions raise errors. Interior whitespace is preserved: the pinned source has
+two distinct rows whose questions differ only in whitespace, with separate
+teacher trajectories. There is no separate `simplescaling/s1K` download or
+fallback to its legacy fields. No generic label-SFT
 path is used. Teacher lengths/correctness are saved per teacher/backbone under
 `prepared/statistics/`. Correctness uses math-verify, whose limitations on proof
 and free-text targets are recorded; it is not an independent teacher regrade by
 an LLM. `--skip-statistics` is for fixtures only; production preflight rejects
 missing/stale statistics.
+
+After updating from the earlier separate-Gemini-source setup, rerun `prepare`.
+Preflight rejects old prepared manifests rather than silently reusing Gemini
+traces with the wrong provenance. Existing checkpoints/results are not deleted.
 
 Adapters preserve each method's response format. SGL receives aliases pointing
 to the selected teacher, never silently to DeepSeek in B. SSFT keeps reasoning

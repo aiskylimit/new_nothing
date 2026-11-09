@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from rebuttal.common import BUDGETS, MATH, ROOT, SEEDS, jsonl, matrix, rows, write
-from rebuttal.data import adapt, mc_item, normalize_teachers
+from rebuttal.common import BUDGETS, DATA_REV, MATH, ROOT, SEEDS, jsonl, matrix, rows, write
+from rebuttal.data import adapt, mc_item, normalize_teachers, prepare_benchmarks
 from rebuttal.evaluate import grade_record, mc_answer, validate_records
 from rebuttal.statistics import bootstrap, paired, question_metrics, sample_order
 
@@ -21,22 +21,80 @@ def test_final_matrix_and_committed_configs():
     for config in configurations:
         assert json.loads((ROOT / 'rebuttal/configs' / (config['run_id']+'.json')).read_text()) == config
         assert '8B' not in config['model']['repo']
+        assert config['data']['repo'] == 'simplescaling/s1K-1.1'
+        assert config['data']['revision'] == DATA_REV
+        if config['setting'] == 'B':
+            assert config['data']['trace_source'] == 'gemini_thinking_trajectory'
+            assert config['data']['answer_source'] == 'gemini_attempt'
 
 
 def test_paired_teacher_mapping_no_gold_as_training_trace(tmp_path):
-    original = [{'question': ' Q  one ', 'deepseek_thinking_trajectory': 'D reasoning', 'deepseek_attempt': 'D answer', 'solution': '42'},
-                {'question': 'Q two', 'deepseek_thinking_trajectory': 'D2', 'deepseek_attempt': 'DA2', 'solution': '7'}]
-    gemini = [{'question': 'Q two', 'thinking_trajectories': ['G2'], 'attempt': 'GA2'},
-              {'question': 'Q one', 'thinking_trajectories': ['G reasoning'], 'attempt': 'G answer'}]
-    normalized = normalize_teachers(original, gemini)
+    source = [{'question': ' Q  one ', 'deepseek_thinking_trajectory': 'D reasoning', 'deepseek_attempt': 'D answer', 'solution': '42',
+               'gemini_thinking_trajectory': 'G reasoning', 'gemini_attempt': 'G answer', 'gemini_grade': 'Yes',
+               'thinking_trajectories': ['wrong legacy reasoning'], 'attempt': 'wrong legacy answer'},
+              {'question': 'Q two', 'deepseek_thinking_trajectory': 'D2', 'deepseek_attempt': 'DA2', 'solution': '7',
+               'gemini_thinking_trajectory': 'G2', 'gemini_attempt': 'GA2'}]
+    normalized = normalize_teachers(source)
     assert [r['id'] for r in normalized['original']] == [r['id'] for r in normalized['gemini']]
     assert normalized['gemini'][0]['thinking'] == 'G reasoning'
+    assert normalized['gemini'][0]['teacher_grade'] == 'Yes'
     adapt(normalized['gemini'], tmp_path)
     assert rows(tmp_path / 'sgl/train.jsonl')[0]['deepseek_attempt'] == 'G answer'
     assert rows(tmp_path / 'ssft.jsonl')[0]['solution'] == 'G reasoning'
     assert 'G reasoning' in json.loads((tmp_path / 'longcot.json').read_text())[0]['output']
-    with pytest.raises(ValueError):
-        normalize_teachers(original, gemini[:1])
+    broken = [dict(source[0], gemini_attempt=None)]
+    with pytest.raises(ValueError, match='gemini_attempt'):
+        normalize_teachers(broken)
+    with pytest.raises(ValueError, match='unique'):
+        normalize_teachers([source[0], source[0]])
+    # The real snapshot includes a pair differing only in interior whitespace.
+    same_words = normalize_teachers([source[0], dict(source[0], question='Q one')])
+    assert len({r['id'] for r in same_words['original']}) == 2
+    assert [r['id'] for r in same_words['original']] == [r['id'] for r in same_words['gemini']]
+
+
+def test_old_separate_gemini_cache_requires_preparation_again(tmp_path):
+    from rebuttal.preflight import validate
+    data = tmp_path / 'data'
+    write(data / 'manifest.json', {'revisions': {'original': DATA_REV, 'gemini': 'old-separate-revision'}})
+    with pytest.raises(ValueError, match='rerun prepare'):
+        validate(tmp_path / 'assets', data, tmp_path / 'runs')
+
+
+def test_shared_benchmark_preparation_handles_real_aime_layouts(tmp_path, monkeypatch):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    store = tmp_path / 'palign/datasets'
+    def parquet(path, values):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(pa.Table.from_pylist(values), path)
+    parquet(store / 'AIME_2024/aime_2024_problems.parquet',
+            [{'Problem': f'AIME24 {i}', 'Answer': i} for i in range(30)])
+    aime25 = [{'problem': f'AIME25 {i}', 'answer': str(i)} for i in range(30)]
+    parquet(store / 'aime_2025/data/train-00000.parquet', aime25)
+    parquet(store / 'aime_2025/part1/train-00000.parquet', aime25[:15])
+    parquet(store / 'aime_2025/part2/train-00000.parquet', aime25[15:])
+    parquet(store / 'aimo-validation-amc/data/train-00000.parquet',
+            [{'problem': f'AMC {i}', 'answer': float(i)} for i in range(83)])
+    jsonl(store / 'MATH-500/test.jsonl', [{'problem':f'MATH {i}', 'answer':str(i)} for i in range(500)])
+    parquet(store / 'ARC-Challenge/test-00000-of-00001.parquet',
+            [{'id':str(i), 'question':f'ARC {i}', 'choices':{'label':['1','2','3'], 'text':['a','b','c']}, 'answerKey':'2'} for i in range(1172)])
+    jsonl(store / 'LogiQA2.0/test.txt', [{'id': 'repeated', 'text':'P', 'question':f'L {i}',
+           'options':['a','b','c','d'], 'answer':0} for i in range(1572)])
+    destination = tmp_path / 'normalized'
+    prepare_benchmarks(store, destination)
+    assert len(rows(destination / 'aime25.jsonl')) == 30
+    assert rows(destination / 'aime24.jsonl')[0]['question'] == 'AIME24 0'
+    assert rows(destination / 'aime24.jsonl')[0]['answer'] == '0'
+    assert len({r['question_id'] for r in rows(destination / 'logiqa2.jsonl')}) == 1572
+    monkeypatch.syspath_prepend(str(ROOT / 'cored'))
+    monkeypatch.setenv('CORED_ASSET_ROOT', str(tmp_path / 'cored'))
+    from eval.benchmarks import load_benchmark
+    for benchmark in ('aime24', 'aime25', 'math500'):
+        expected = [(r['question'], r['answer']) for r in rows(destination / f'{benchmark}.jsonl')]
+        assert [(r.question, r.answer) for r in load_benchmark(benchmark)] == expected
+    assert [(r.question, r.answer) for r in load_benchmark('amc')] == [
+        (r['question'], r['answer']) for r in rows(destination / 'amc12.jsonl')]
 
 
 def test_arc_numeric_choice_labels_and_logiqa_passage():
