@@ -65,7 +65,11 @@ traces with the wrong provenance. Existing checkpoints/results are not deleted.
 Adapters preserve each method's response format. SGL receives aliases pointing
 to the selected teacher, never silently to DeepSeek in B. SSFT keeps reasoning
 as its solution and its native attribution target policy (last boxed answer,
-fallback gold, <=200 characters); rejected IDs/counts are saved. P-ALIGN reruns
+fallback gold, <=200 characters); rejected IDs/counts are saved. Attribution runs
+as three independent workers, one per GPU, with unchanged IG/segment selection.
+Each worker writes a separate shard; the coordinator validates IDs and restores
+source order before training. Empty shards are allowed for small smokes; zero
+retained samples overall is an error. P-ALIGN reruns
 sentence-level self-judged binary prefix search, student continuation, Eq.9
 answer filtering, and prefix+continuation supervision for every setting/backbone;
 it does not reuse the old fixed 966-row file. All accept/reject decisions are
@@ -98,8 +102,8 @@ CoReD smoke exercises both expert training and student distillation. A filter
 retaining zero samples is an explicit failure; it does not silently train an
 unfiltered substitute. Native checkpoint resume is enabled for all methods.
 Preprocessing stages persist artifacts separately from optimization. P-ALIGN
-persists completed examples; SSFT repeats an interrupted attribution stage, but
-does not repeat a completed one. CoReD uses its stage/sample resume path.
+persists completed examples; SSFT repeats all three shards of an interrupted
+attribution stage, but does not repeat a completed one. CoReD uses its stage/sample resume path.
 SGL retains its native mask-resume behavior. Resume can repeat work after the
 last checkpoint; failed attempts remain in cost logs.
 

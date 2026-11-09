@@ -60,13 +60,7 @@ def palign(model, source, output, shard, shards):
             f.flush()
 
 
-def ssft(model, source, output, settings=None):
-    import sys
-    root = ROOT / 'SegmentSelectiveSFT'
-    for folder in (root, root / 'Attribution', root / 'SelectiveSFT', root / 'Eval'):
-        sys.path.insert(0, str(folder))
-    import one_pass
-    records = rows(source)
+def ssft_targets(records):
     from SegmentSelectiveSFT.prepare_s1k import last_boxed
     retained, rejected = [], []
     for row in records:
@@ -75,11 +69,31 @@ def ssft(model, source, output, settings=None):
             rejected.append({'id': row['id'], 'reason': 'native SSFT attribution target missing or >200 chars'})
         else:
             retained.append(dict(row, answer=target))
+    return retained, rejected
+
+
+def ssft(model, source, output, settings=None, shard=0, shards=1):
+    if shards < 1 or not 0 <= shard < shards:
+        raise ValueError('Invalid SSFT shard')
+    records = rows(source)[shard::shards]
+    retained, rejected = ssft_targets(records)
     write(str(output)+'.adaptations.json', {'input_samples': len(records), 'retained_samples': len(retained), 'rejected': rejected,
           'target': 'last boxed answer in reasoning, fallback ground truth; native prepare_s1k policy'})
     records = retained
+    # Small smokes or target rejection can leave a worker empty. The merged
+    # result must be nonempty, but an individual worker need not have examples.
     if not records:
-        raise ValueError('SSFT target validation retained zero samples')
+        if shards == 1:
+            raise ValueError('SSFT target validation retained zero samples')
+        jsonl(output, [])
+        write(str(output)+'.cost.json', {'prep_wall_time_sec': 0.0, 'prep_peak_vram_gb': 0.0,
+              'prep_flops': 0.0, 'prep_n_params': 0, 'tokens_forwarded': 0, 'tokens_backwarded': 0})
+        return
+    import sys
+    root = ROOT / 'SegmentSelectiveSFT'
+    for folder in (root, root / 'Attribution', root / 'SelectiveSFT', root / 'Eval'):
+        sys.path.insert(0, str(folder))
+    import one_pass
     args = SimpleNamespace(model=model, segment_mode='paragraph', full_sft=False,
         no_ig_grad_checkpoint=False, ig_steps=50, ig_batch_size=1, ig_max_tokens=0,
         cumulative_ratio=.7, coherence_max=.8)
@@ -92,6 +106,39 @@ def ssft(model, source, output, settings=None):
     write(str(output)+'.cost.json', cost)
 
 
+def merge_ssft(source, parts, output):
+    """Validate complete shard coverage and restore original training order."""
+    if not parts:
+        raise ValueError('SSFT attribution requires at least one shard')
+    source_rows = rows(source)
+    expected, rejected = ssft_targets(source_rows)
+    ids = [row['id'] for row in source_rows]
+    if len(set(ids)) != len(ids):
+        raise ValueError('Duplicate SSFT source IDs')
+    merged = {}
+    for index, part in enumerate(parts):
+        if not Path(part).is_file():
+            raise FileNotFoundError(part)
+        shard_expected, _ = ssft_targets(source_rows[index::len(parts)])
+        values = rows(part)
+        if {row['id'] for row in values} != {row['id'] for row in shard_expected}:
+            raise ValueError('Incomplete/unexpected SSFT shard IDs')
+        for row in values:
+            if row['id'] in merged:
+                raise ValueError('Duplicate SSFT attribution ID')
+            merged[row['id']] = row
+    if not expected:
+        raise ValueError('SSFT target validation retained zero samples')
+    costs = [json.loads(Path(str(part)+'.cost.json').read_text()) for part in parts]
+    jsonl(output, [merged[row['id']] for row in expected])
+    write(str(output)+'.adaptations.json', {'input_samples': len(source_rows),
+          'retained_samples': len(expected), 'rejected': rejected,
+          'target': 'last boxed answer in reasoning, fallback ground truth; native prepare_s1k policy'})
+    # Timings and GPU-hours are measured by the runner around concurrent workers;
+    # retain each native cost record instead of summing their wall times.
+    write(str(output)+'.cost.json', {'workers': costs})
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--method', required=True, choices=['palign', 'ssft', 'teacher-stats'])
@@ -99,13 +146,14 @@ def main():
     p.add_argument('--source', required=True, type=Path)
     p.add_argument('--output', required=True, type=Path)
     p.add_argument('--shard', type=int, default=0)
-    p.add_argument('--shards', type=int, default=3)
+    p.add_argument('--shards', type=int, help='Defaults to 3 for P-ALIGN, 1 for standalone SSFT')
     p.add_argument('--config', type=Path)
     args = p.parse_args()
     if args.method == 'palign':
-        palign(args.model, args.source, args.output, args.shard, args.shards)
+        palign(args.model, args.source, args.output, args.shard, args.shards if args.shards is not None else 3)
     elif args.method == 'ssft':
-        ssft(args.model, args.source, args.output, json.loads(args.config.read_text())['method_specific'] if args.config else None)
+        ssft(args.model, args.source, args.output, json.loads(args.config.read_text())['method_specific'] if args.config else None,
+             args.shard, args.shards if args.shards is not None else 1)
     else:
         from transformers import AutoTokenizer
         from rebuttal.data import teacher_statistics

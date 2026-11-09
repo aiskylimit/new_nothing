@@ -266,9 +266,12 @@ class Job:
             final = run / 'checkpoint'
         else:
             selected = run / 'selected.jsonl'
+            parts = [run / f'selected-{i}.jsonl' for i in range(3)]
             self.execute('attribution', [(self.instrument(python, module='rebuttal.method_prep', unsloth=True, args=[
-                '--method', 'ssft', '--model', self.model, '--source', self.input / 'ssft.jsonl', '--output', selected,
-                '--config', run / 'run.json']), gpus[0])], 1)
+                '--method', 'ssft', '--model', self.model, '--source', self.input / 'ssft.jsonl', '--output', parts[i],
+                '--shard', i, '--shards', 3, '--config', run / 'run.json']), gpu) for i, gpu in enumerate(gpus)], 3)
+            from rebuttal.method_prep import merge_ssft
+            merge_ssft(self.input / 'ssft.jsonl', parts, selected)
             args = ['--model_name_or_path', self.model, '--data_names', selected, '--epochs', '3', '--seed', '42',
                 '--learning_rate', '5e-5', '--warmup_ratio', '.1', '--lr_scheduler_type', 'cosine',
                 '--optim', 'adamw_torch', '--weight_decay', '0', '--max_grad_norm', '1',
