@@ -3,7 +3,7 @@
 # + Step-level Gradient Dropout. Ortho vẫn được TÍNH (không điều kiện theo cờ nào)
 # nhưng lambda_rep=0 khiến nó không đóng góp gradient. Hoàn thiện bộ 3 ablation
 # đối xứng cùng model 7B: no-Dropout, no-SVGD, no-Ortho.
-model_name: Qwen/Qwen2.5-7B-Instruct
+model_name: models/Qwen2.5-7B-Instruct
 train_file: data/train_s1k_prefixed.jsonl
 out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1_noOrtho
 

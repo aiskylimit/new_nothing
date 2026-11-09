@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 
 export CUDA_VISIBLE_DEVICES=0
 PY=${PY:-python}
+MODEL=${MODEL:-models/Qwen2.5-7B-Instruct}
 TAG=svgd_func_keystep_k1
 MD=outputs/proposal_v2/merge_${TAG}_ties
 DD=outputs/proposal_v2/distill_${TAG}_ties_nokl
@@ -23,7 +24,7 @@ log "Weights Dir: $WDIR"
 log "Output Dir: $DD"
 
 $PY -u -m train.phase2_distill \
-  --model_name Qwen/Qwen2.5-7B-Instruct \
+  --model_name "$MODEL" \
   --train_file data/train_s1k_prefixed.jsonl \
   --weights_dir "$WDIR" \
   --teacher_adapter "$MD/merged" \
@@ -51,7 +52,7 @@ log "Huấn luyện Distill NO-KL thành công! Checkpoint tại $DD/student"
 log "=== BẮT ĐẦU ĐÁNH GIÁ: Fast vLLM Eval trên 4 benchmark ==="
 $PY -u -m eval.run_eval \
   --method proposal_v2_${TAG}_ties_distill_nokl \
-  --model_name Qwen/Qwen2.5-7B-Instruct \
+  --model_name "$MODEL" \
   --adapter "$DD/student" \
   --engine vllm \
   --gpu_memory_utilization 0.4 \

@@ -1,5 +1,13 @@
 # Rebuttal defaults
 
+The finalized **ICLR 2027 main experiment plan supersedes the legacy evaluation
+defaults below**. See [rebuttal/README.md](rebuttal/README.md) and
+[rebuttal/PLAN.md](rebuttal/PLAN.md). The unified entry point is
+`bash rebuttal/project_commands.sh`: 15 runs, GPUs 3/4/5, 64 math responses total
+over five evaluation seeds and deterministic OOD. The older method launchers
+remain available, with their earlier n=3 evaluation; do not use them for the
+finalized main evaluation matrix.
+
 ## Server provisioning files
 
 The server reads model/data commands from each folder's `download.txt`, and
@@ -11,6 +19,7 @@ Python dependencies from the matching file at the repository root:
 | `sft` | `sft/download.txt` | `sft.txt` | `/mnt/local/uvenvs/sft` |
 | `sgl` | `sgl/download.txt` | `sgl.txt` | `/mnt/local/uvenvs/sgl` |
 | `SegmentSelectiveSFT` | `SegmentSelectiveSFT/download.txt` | `SegmentSelectiveSFT.txt` | `/mnt/local/uvenvs/SegmentSelectiveSFT` |
+| `cored` | `cored/download.txt` | `cored.txt` | `/mnt/local/uvenvs/cored` or active Python |
 
 All manifests use Python 3.11 and `# manager: uv`. Each download manifest starts
 with `#d`; the downloader replaces `@PROJECT@` with the deployed project name.
@@ -20,7 +29,7 @@ planned OOD test files under `palign/datasets/`, using one shared benchmark stor
 
 The default scripts resolve assets from their own deployed folder. Existing
 external asset locations can be selected with `PALIGN_ASSET_ROOT`,
-`PALIGN_SFT_ASSET_ROOT`, `SGL_ASSET_ROOT`, or `SSFT_ASSET_ROOT`.
+`PALIGN_SFT_ASSET_ROOT`, `SGL_ASSET_ROOT`, `SSFT_ASSET_ROOT`, or `CORED_ASSET_ROOT`.
 Direct P-ALIGN/SFT YAML configurations use relative `models/...` paths.
 P-ALIGN copies its downloaded `datasets/P-ALIGN/P-ALIGN.json` into the expected
 training path only when the existing processed training JSON is absent.
@@ -36,16 +45,15 @@ Override `PALIGN_VENV`, `SFT_VENV`, `SGL_VENV`, or `VENV` if the server creates
 environments elsewhere. SSFT's launcher uses the provisioned environment and
 does not rebuild/reinstall it during a timed run.
 
-The old `p-align.txt`, `ssft_eval.txt`, and
-`SegmentSelectiveSFT/downloads.txt` are retained as compatible aliases.
-Use the four matching manifest pairs above for new jobs. Dependency resolution
+Use the five matching manifest pairs above for new jobs. Redundant aliases and
+unused older P-ALIGN/SFT/CORED requirement files have been removed. Dependency resolution
 was checked for Linux x86-64 (manylinux 2.35), Python 3.11; this does not replace
 a CUDA import/kernel check on the B200 server.
 
 ### Planned OOD test data
 
-All four `download.txt` files download only the requested OOD test files with
-version-pinned `--url` entries. `SegmentSelectiveSFT/downloads.txt` mirrors them.
+All five `download.txt` files download only the requested OOD test files with
+version-pinned `--url` entries.
 
 | Benchmark | Evaluation split | Verified rows | Downloaded path relative to `palign/` |
 |---|---|---|---|
@@ -66,7 +74,7 @@ math evaluation loop. MCQ normalization/scoring must preserve ARC's own
 and LogiQA's passage, question, four options, and zero-based answer index.
 LogiQA uses the English MRC file, not its Chinese or NLI variants.
 
-## Experiment defaults
+## Experiment defaults (four baselines)
 
 The default backbone for all four methods is `Qwen/Qwen2.5-7B-Instruct`.
 Training uses LoRA, 3 epochs, seed 42, 3 GPUs, microbatch 11 per GPU, and
@@ -95,7 +103,13 @@ three processes. Override `NPROC_PER_NODE` together with the microbatch if chang
 the number of GPUs. A smaller microbatch with accumulation can be used if the
 longest sequences exceed GPU memory; GPU memory fit has not been measured here.
 
-## Shared evaluation
+CORED's `project_commands.sh` launches a separate three-GPU data-parallel
+pipeline, also with global batch 33, three epochs per phase and seed 42.
+Microbatches are limited by token budget and can accumulate within each global
+batch. Its original modules/scripts retain the single-process execution path.
+See `cored/README.md` for its full pipeline, timings and validation limits.
+
+## Shared evaluation (four baselines)
 
 All default launchers call `palign/src/run_eval.py`:
 

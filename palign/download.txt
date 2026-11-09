@@ -10,3 +10,4 @@
 --url https://raw.githubusercontent.com/csitfun/LogiQA2.0/31381f5634d201c4ed6f981b87de3c7d9f496002/logiqa/DATA/LOGIQA/test.txt /mnt/local/@PROJECT@/palign/datasets/LogiQA2.0/
 #models
 --hf Qwen/Qwen2.5-7B-Instruct /mnt/local/@PROJECT@/palign/models/Qwen2.5-7B-Instruct
+--hf deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B /mnt/local/@PROJECT@/palign/models/DeepSeek-R1-Distill-Qwen-1.5B

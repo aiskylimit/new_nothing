@@ -1,0 +1,6 @@
+assets/
+prepared/
+runs/
+reports/
+smoke-runs/
+__pycache__/

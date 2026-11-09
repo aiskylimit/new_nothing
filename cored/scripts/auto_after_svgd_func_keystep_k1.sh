@@ -17,7 +17,7 @@ export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
 PY=${PY:-python}
-MODEL=Qwen/Qwen2.5-7B-Instruct
+MODEL=${MODEL:-models/Qwen2.5-7B-Instruct}
 TAG=svgd_func_keystep_k1
 ROOT=outputs/proposal_v2/phase1_${TAG}
 KEYDIR=outputs/proposal_v2/keystep_s1k_prefixed_10pct

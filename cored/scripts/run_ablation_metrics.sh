@@ -12,9 +12,9 @@ ts(){ date '+%F %T'; }; log(){ echo "[$(ts)] $*"; }
 SCENARIOS="${SCENARIOS:-full noDropout noSVGD noOrtho onlySVGD onlyOrtho onlyDropout}"
 
 case "${MODEL:?can MODEL=7b|8b}" in
-  7b) MN=Qwen/Qwen2.5-7B-Instruct; KS=outputs/proposal_v2/keystep_proxy500_10pct
+  7b) MN=models/Qwen2.5-7B-Instruct; KS=outputs/proposal_v2/keystep_proxy500_10pct
       dir_of(){ if [ "$1" = full ]; then echo outputs/proposal_v2/phase1_svgd_func_keystep_k1; else echo "outputs/proposal_v2/phase1_svgd_func_keystep_k1_$1"; fi; } ;;
-  8b) MN=Qwen/Qwen3-8B; KS=outputs/proposal_v3/keystep_proxy500_10pct_qwen3
+  8b) MN=models/Qwen3-8B; KS=outputs/proposal_v3/keystep_proxy500_10pct_qwen3
       dir_of(){ if [ "$1" = full ]; then echo outputs/proposal_v3/phase1_best_qwen3_8b; else echo "outputs/proposal_v3/phase1_qwen3_8b_$1_ablation"; fi; } ;;
   *) echo "MODEL phai la 7b hoac 8b"; exit 2 ;;
 esac

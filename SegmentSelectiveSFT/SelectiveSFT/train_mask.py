@@ -112,6 +112,8 @@ def parse_args(argv=None):
                              "special = chen va them token dac biet + resize embedding (ban goc, can full finetune)")
     parser.add_argument("--segment_mode", default=DEFAULT_MODE, choices=sorted(SEGMENT_PATTERNS))
     parser.add_argument("--mask", action="store_true")
+    parser.add_argument("--resume_from_checkpoint", default=None)
+    parser.add_argument("--max_steps", type=int, default=-1)
     parser.add_argument("--apply_all", action="store_true")
     parser.add_argument("--save_strategy", default="epoch", choices=["no", "epoch", "steps"])
     parser.add_argument("--save_total_limit", type=int, default=3)
@@ -421,7 +423,8 @@ def run(args):
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
     train_t0 = time.perf_counter()
-    trainer.train()
+    trainer.args.max_steps = args.max_steps
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     train_wall_time_sec = time.perf_counter() - train_t0

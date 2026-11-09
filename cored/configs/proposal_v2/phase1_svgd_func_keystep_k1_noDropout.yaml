@@ -2,7 +2,7 @@
 # NHƯNG p_drop=0.0 -> TẮT Step-level Gradient Dropout (Eq 9), chỉ còn Ortho
 # (Eq 10-11) + SVGD-func repulsion (key-step restricted). Dùng để đo riêng
 # đóng góp của Step-level Gradient Dropout trong kịch bản đỉnh cao.
-model_name: Qwen/Qwen2.5-7B-Instruct
+model_name: models/Qwen2.5-7B-Instruct
 train_file: data/train_s1k_prefixed.jsonl
 out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1_noDropout
 

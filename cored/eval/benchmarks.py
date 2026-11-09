@@ -1,7 +1,7 @@
 """Nạp benchmark eval và trích ground-truth (spec §3.1, §8).
 
 Hai họ benchmark:
-  - HF trực tiếp (setup gốc): gsm8k / math500 / aime24 / aime25.
+  - Snapshot local (setup gốc): gsm8k / math500 / aime24 / aime25.
   - **Kịch bản CurioSFT** (``cs_*``): đọc parquet local từ ``Hao0oWang/CurioSFT_Data``
     — đúng tập test bài dùng. ``test.math.parquet`` chứa 6 bench math (tách theo
     cột ``data_source``); OOD là 3 parquet riêng (trắc nghiệm, gold = chữ cái).
@@ -15,14 +15,15 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from core.local_assets import asset_path, load_local_rows
+
 BENCHMARKS: Dict[str, dict] = {
-    "gsm8k": {"path": "openai/gsm8k", "name": "main", "split": "test", "k": 1},
-    "math500": {"path": "HuggingFaceH4/MATH-500", "name": None, "split": "test", "k": 3},
-    "aime24": {"path": "HuggingFaceH4/aime_2024", "name": None, "split": "train", "k": 3},
-    "aime25": {"path": "opencompass/AIME2025", "name": "AIME2025-I", "split": "test", "k": 3},
-    # AMC12 (== "AMC" trong paper P-ALIGN, 83 bài). Không có trên HF theo đúng
-    # tập của paper -> đọc local từ bộ test kèm repo P-ALIGN.
-    "amc": {"local": "p_align_repo/data/result/amc12-output.jsonl", "k": 3},
+    "gsm8k": {"path": "datasets/gsm8k/main", "split": "test", "k": 1},
+    "math500": {"path": "../palign/datasets/MATH-500", "split": "test", "k": 3},
+    "aime24": {"path": "datasets/aime_2024", "split": "train", "k": 3},
+    "aime25": {"path": "datasets/AIME2025", "k": 3},
+    # Cùng snapshot AMC 83 bài với các baseline, thay đường dẫn repo cũ.
+    "amc": {"path": "../palign/datasets/aimo-validation-amc", "split": "train", "k": 3},
 }
 
 # Prefix mà P-ALIGN gắn vào mọi câu hỏi (src/test.py). Ta strip ra khỏi các file
@@ -60,8 +61,6 @@ class EvalItem:
 def load_benchmark(
     name: str, limit: Optional[int] = None, curiosft_data_dir: str = "data/curiosft_raw"
 ) -> List[EvalItem]:
-    from datasets import load_dataset
-
     if name not in BENCHMARKS:
         raise ValueError(f"benchmark chưa khai báo: {name}")
     spec = BENCHMARKS[name]
@@ -75,13 +74,14 @@ def load_benchmark(
     if name == "aime25":
         dataset = _load_aime25()
     else:
-        dataset = load_dataset(spec["path"], spec["name"], split=spec["split"]) \
-            if spec["name"] else load_dataset(spec["path"], split=spec["split"])
+        dataset = load_local_rows(spec["path"], split=spec["split"])
 
     items: List[EvalItem] = []
     for index, row in enumerate(dataset):
         question = _get_question(row)
         answer = _get_answer(name, row)
+        if name == "amc" and answer is not None and answer.endswith(".0"):
+            answer = answer[:-2]
         if not question or answer is None:
             continue
         items.append(EvalItem(index=index, question=question, answer=str(answer),
@@ -138,11 +138,10 @@ def _load_curiosft_benchmark(name, spec, data_dir, limit) -> List[EvalItem]:
     """
     import pyarrow.parquet as pq
 
-    path = os.path.join(data_dir, spec["file"])
+    path = str(asset_path(data_dir) / spec["file"])
     if not os.path.exists(path):
         raise FileNotFoundError(
-            f"{path} thiếu — tải: hf download Hao0oWang/CurioSFT_Data "
-            f"--repo-type dataset --local-dir {data_dir}"
+            f"Local benchmark missing: {path}. Provision cored/download.txt before running offline."
         )
     table = pq.read_table(path)
     cols = table.column_names
@@ -169,31 +168,14 @@ def _load_curiosft_benchmark(name, spec, data_dir, limit) -> List[EvalItem]:
 
 
 def _load_aime25():
-    """AIME-2025 = Part I + Part II = 30 bài unique (nguồn chuẩn opencompass).
-
-    Chỉ rơi sang mirror đơn lẻ khi opencompass hỏng hẳn — mirror đó cũng phải
-    tự đủ 30 bài, KHÔNG cộng thêm vào opencompass (tránh trùng lặp).
-    """
-    from datasets import concatenate_datasets, load_dataset
-
-    try:
-        part1 = load_dataset("opencompass/AIME2025", "AIME2025-I", split="test")
-        part2 = load_dataset("opencompass/AIME2025", "AIME2025-II", split="test")
-        return concatenate_datasets([part1, part2])
-    except Exception:
-        pass
-
-    for path, config, split in [
-        ("yentinglin/aime_2025", None, "train"),
-        ("math-ai/aime25", None, "test"),
-    ]:
-        try:
-            return load_dataset(path, config, split=split) if config \
-                else load_dataset(path, split=split)
-        except Exception:
-            continue
-
-    raise RuntimeError("Không load được AIME-2025 từ opencompass hay mirror nào.")
+    """Read both official OpenCompass JSONL parts, without online mirror fallback."""
+    root = asset_path(BENCHMARKS["aime25"]["path"])
+    rows = [row for part in ("I", "II")
+            for row in load_local_rows(root / f"aime2025-{part}.jsonl")]
+    questions = [_get_question(row) for row in rows]
+    if len(rows) != 30 or len(set(questions)) != 30 or not all(questions):
+        raise ValueError(f"AIME2025 requires 30 unique questions from parts I and II: {root}")
+    return rows
 
 
 def _get_question(row) -> str:

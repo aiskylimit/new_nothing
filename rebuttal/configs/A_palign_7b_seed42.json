@@ -1,0 +1,84 @@
+{
+  "run_id": "A_palign_7b_seed42",
+  "setting": "A",
+  "method": "palign",
+  "model": {
+    "repo": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "tokenizer": "Qwen/Qwen2.5-7B-Instruct",
+    "size": "7b"
+  },
+  "data": {
+    "repo": "simplescaling/s1K-1.1",
+    "revision": "96c411f1fe4c49d20f0e2a1565f61e1a28b0b84d",
+    "split": "train",
+    "expected_samples": 1000,
+    "teacher": "DeepSeek-R1",
+    "trace_source": "deepseek_thinking_trajectory",
+    "answer_source": "deepseek_attempt",
+    "variant": "original"
+  },
+  "train": {
+    "seed": 42,
+    "epochs": 3,
+    "global_batch": 33,
+    "micro_batch": 11,
+    "gradient_accumulation": 1,
+    "optimizer": "AdamW",
+    "lr": 5e-05,
+    "weight_decay": 0,
+    "scheduler": "cosine",
+    "warmup_ratio": 0.1,
+    "precision": "bf16",
+    "cutoff": 32768,
+    "truncation": "method_native_recorded_in_adaptations",
+    "lora_rank": 16,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05
+  },
+  "method_specific": {
+    "prefix": "existing_sentence_binary_self_judgment",
+    "continuation_max_tokens": 32768,
+    "filter": "verified_continuation",
+    "filter_is_method_specific": true
+  },
+  "evaluation": {
+    "math": [
+      "aime24",
+      "aime25",
+      "amc12",
+      "math500"
+    ],
+    "ood": [
+      "arc_challenge",
+      "logiqa2"
+    ],
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "budgets": [
+      13,
+      13,
+      13,
+      13,
+      12
+    ],
+    "math_max_tokens": 4096,
+    "temperature": 0.6,
+    "top_p": 0.9,
+    "repetition_penalty": 1.05,
+    "ood_temperature": 0,
+    "arc_max_tokens": 1024,
+    "logiqa_max_tokens": 4096
+  },
+  "hardware": {
+    "gpus": "3,4,5",
+    "type": "NVIDIA B200 180GB",
+    "training_gpu_count": 3
+  },
+  "protocol_basis": "current rebuttal implementations; differences retained, not a paper-equivalence certification"
+}

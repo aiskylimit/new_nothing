@@ -1,5 +1,5 @@
 # Baseline "tắt hết" (7B): 3 LoRA độc lập, chỉ NLL trên key step — p_drop=0, lambda_rep=0, diversity=none.
-model_name: Qwen/Qwen2.5-7B-Instruct
+model_name: models/Qwen2.5-7B-Instruct
 train_file: data/train_s1k_prefixed.jsonl
 out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1_allOff
 

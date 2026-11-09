@@ -10,7 +10,7 @@ import pyarrow as pa
 from pyarrow import parquet
 
 ROOT = Path(__file__).resolve().parents[1]
-FOLDERS = ("palign", "sft", "sgl", "SegmentSelectiveSFT")
+FOLDERS = ("palign", "sft", "sgl", "SegmentSelectiveSFT", "cored")
 
 
 def test_every_folder_has_loader_manifests_with_shared_eval_destinations():
@@ -26,6 +26,8 @@ def test_every_folder_has_loader_manifests_with_shared_eval_destinations():
         assert any(command == ["--hf", "Qwen/Qwen2.5-7B-Instruct",
                                f"/mnt/local/@PROJECT@/{folder}/models/Qwen2.5-7B-Instruct"]
                    for command in commands)
+        assert ["--hf", "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+                f"/mnt/local/@PROJECT@/{folder}/models/DeepSeek-R1-Distill-Qwen-1.5B"] in commands
         benchmarks = [command for command in commands if "/palign/datasets/" in command[2]
                       and not command[2].endswith("/P-ALIGN")]
         assert len(benchmarks) == 6

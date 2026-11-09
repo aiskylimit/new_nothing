@@ -1,7 +1,7 @@
 # Giống hệt phase1_svgd_func_keystep_k1.yaml, nhưng dùng data/train_s1k_palign.jsonl
 # (bản cắt CoT CHÍNH THỨC theo P-ALIGN, prefix_frac~30.7%) thay vì train_s1k_prefixed.jsonl
 # (bản cắt tự tính của mình, prefix_frac~15.8% — bị nghi ngờ cắt quá tay, mất reasoning).
-model_name: Qwen/Qwen2.5-7B-Instruct
+model_name: models/Qwen2.5-7B-Instruct
 train_file: data/train_s1k_palign.jsonl
 out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1_palign
 

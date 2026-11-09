@@ -10,7 +10,7 @@ Chỉ tính trên các step thinking (không tính segment đáp án sau </think
 Số liệu: (i) token-mean (tổng JS / số token, có trọng số theo độ dài step), (ii) step-mean (trung bình JS mỗi step),
 kèm khoảng tin cậy bootstrap theo mẫu.
 
-    python -m proposal_v2.ablation_metrics --model_name Qwen/Qwen2.5-7B-Instruct \
+    python -m proposal_v2.ablation_metrics --model_name models/Qwen2.5-7B-Instruct \
         --phase1_dir outputs/proposal_v2/phase1_svgd_func_keystep_k1_noDropout \
         --keystep_dir outputs/proposal_v2/keystep_proxy500_10pct --out results/ablation_metrics/7b_noDropout.json
 """

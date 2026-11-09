@@ -14,7 +14,7 @@ export PROC_PREFIX=hieunq10
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
 PY=${PY:-python}
 TAG=svgd_func_keystep_k1
-MODEL=Qwen/Qwen2.5-7B-Instruct
+MODEL=${MODEL:-models/Qwen2.5-7B-Instruct}
 TEACHER=outputs/proposal_v2/merge_${TAG}_ties/merged
 WBASE=outputs/proposal_v2/weights_${TAG}
 LOG=logs/proposal_v2/ablation_w; mkdir -p "$LOG"

@@ -70,6 +70,13 @@ def exact_spectral_selection(
     if matrix.device.type == "cuda" and svd_driver is not None:
         svd_kwargs["driver"] = svd_driver
     u, singular_values, _ = torch.linalg.svd(matrix, **svd_kwargs)
+    import os
+    if os.environ.get('REBUTTAL_STAGE_DIR'):
+        from rebuttal.telemetry import STATE, install
+        install()
+        m, n = max(matrix.shape), min(matrix.shape)
+        STATE['estimated_flops'] += 4.0 * m * n * n + (8.0 / 3) * n ** 3
+        STATE['svd_flops_model'] = 'reduced dense SVD estimate 4*m*n^2 + 8*n^3/3; not measured'
 
     squared = singular_values.square()
     total_energy = squared.sum()
@@ -189,6 +196,18 @@ def capture_reasoning_gradient_matrix(
     input_ids = torch.tensor(prepared.input_ids, dtype=torch.long, device=device).unsqueeze(0)
     attention_mask = torch.ones_like(input_ids)
     hidden = capture_pre_lm_head_hidden(model, input_ids, attention_mask)
+    import os
+    if os.environ.get('REBUTTAL_STAGE_DIR'):
+        from rebuttal.telemetry import STATE, install
+        install()
+        head = model.get_output_embeddings().weight
+        parameters = sum(p.numel() for p in model.parameters()) - head.numel()
+        tokens = input_ids.shape[1]
+        STATE['forward_tokens'] += tokens
+        STATE['autograd_tokens'] += len(label_positions)
+        STATE['sample_presentations'] += 1
+        STATE['estimated_flops'] += 2.0 * parameters * tokens + 4.0 * head.numel() * len(label_positions)
+        STATE['estimated_flops'] += 4.0 * model.config.num_hidden_layers * model.config.hidden_size * tokens ** 2
 
     label_positions_tensor = torch.tensor(label_positions, dtype=torch.long, device=device)
     predictor_positions = label_positions_tensor - 1

@@ -2,7 +2,7 @@
 # NHƯNG p_drop=0.0 VÀ diversity=none -> TẮT ĐỒNG THỜI Step-level Gradient
 # Dropout VÀ SVGD-func repulsion, chỉ còn lại Ortho loss (Eq 10-11).
 # "No-Dropout + No-SVGD" = chỉ còn Ortho.
-model_name: Qwen/Qwen2.5-7B-Instruct
+model_name: models/Qwen2.5-7B-Instruct
 train_file: data/train_s1k_prefixed.jsonl
 out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1_onlyOrtho
 

@@ -250,12 +250,17 @@ def main() -> None:
     ).to(device)
 
     from peft import PeftModel
+    from core.local_assets import local_adapter_path
+
+    args.teacher_adapter = local_adapter_path(args.teacher_adapter)
 
     # teacher (đóng băng) + student (trainable), CẢ HAI khởi tạo từ phi_merge.
     model = PeftModel.from_pretrained(
-        base, args.teacher_adapter, adapter_name="teacher", is_trainable=False
+        base, args.teacher_adapter, adapter_name="teacher", is_trainable=False,
+        local_files_only=True,
     )
-    model.load_adapter(args.teacher_adapter, adapter_name="student", is_trainable=True)
+    model.load_adapter(args.teacher_adapter, adapter_name="student", is_trainable=True,
+                       local_files_only=True)
     set_lora_trainable(model, ["teacher"], False)
     n_train = set_lora_trainable(model, ["student"], True)
     model.set_adapter("student")

@@ -196,7 +196,8 @@ class ConfigurationMatrixTests(unittest.TestCase):
         self.assertEqual(manifest.splitlines()[0], "#d")
         self.assertIn("simplescaling/s1K-1.1", manifest)
         self.assertIn("Qwen/Qwen2.5-7B-Instruct", manifest)
-        self.assertIn("Qwen/Qwen3-8B", manifest)
+        self.assertIn("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", manifest)
+        self.assertNotIn("--hf Qwen/Qwen3-8B", manifest)
         self.assertEqual(manifest.count("--hf-dataset "), 5)
         self.assertEqual(manifest.count("--hf "), 2)
 

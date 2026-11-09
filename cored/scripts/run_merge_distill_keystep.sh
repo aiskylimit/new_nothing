@@ -5,6 +5,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 export CUDA_VISIBLE_DEVICES=1
 PY=${PY:-python}
+MODEL=${MODEL:-models/Qwen2.5-7B-Instruct}
 TAG=svgd_func_keystep_k1
 ROOT=outputs/proposal_v2/phase1_${TAG}
 MD=outputs/proposal_v2/merge_${TAG}_ties
@@ -22,13 +23,14 @@ log "merge xong"
 
 log "=== 2. Eval merge (chưa distill) ==="
 $PY -u -m eval.run_eval --method proposal_v2_${TAG}_ties \
+  --model_name "$MODEL" \
   --adapter "$MD/merged" --engine vllm --gpu_memory_utilization 0.4 \
   > "$LOG/eval_${TAG}_ties.log" 2>&1
 if [ $? -ne 0 ]; then log "EVAL MERGE FAIL"; exit 1; fi
 log "eval merge xong"
 
 log "=== 3. Phase 2 distill ==="
-$PY -u -m train.phase2_distill --model_name Qwen/Qwen2.5-7B-Instruct \
+$PY -u -m train.phase2_distill --model_name "$MODEL" \
   --train_file data/train_s1k_prefixed.jsonl \
   --weights_dir "$WDIR" \
   --teacher_adapter "$MD/merged" \
@@ -40,6 +42,7 @@ log "distill xong"
 
 log "=== 4. Eval student cuối cùng ==="
 $PY -u -m eval.run_eval --method proposal_v2_${TAG}_ties_distill \
+  --model_name "$MODEL" \
   --adapter "$DD/student" --engine vllm --gpu_memory_utilization 0.4 \
   > "$LOG/eval_${TAG}_ties_distill.log" 2>&1
 if [ $? -ne 0 ]; then log "EVAL STUDENT FAIL"; exit 1; fi

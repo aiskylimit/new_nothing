@@ -13,6 +13,8 @@ from typing import Iterable, List, Optional, Sequence
 
 import torch
 
+from core.local_assets import local_adapter_path, local_model_path
+
 DEFAULT_TARGET_MODULES = [
     "q_proj",
     "k_proj",
@@ -34,15 +36,16 @@ def expert_names(n_experts: int) -> List[str]:
 def _require_model(model_name):
     if not model_name:
         raise ValueError("model_name là bắt buộc (không còn model mặc định): truyền --model_name hoặc đặt trong YAML.")
-    return model_name
+    return local_model_path(model_name)
 
 
 def load_tokenizer(model_name: str):
     from transformers import AutoTokenizer
 
-    _require_model(model_name)
+    model_name = _require_model(model_name)
 
-    tok = AutoTokenizer.from_pretrained(model_name, use_fast=True, trust_remote_code=True)
+    tok = AutoTokenizer.from_pretrained(model_name, use_fast=True, trust_remote_code=True,
+                                        local_files_only=True)
     if tok.pad_token_id is None:
         tok.pad_token = tok.eos_token
     if not tok.is_fast:
@@ -64,13 +67,17 @@ def load_base_model(
     from transformers import AutoModelForCausalLM
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
+        _require_model(model_name),
         torch_dtype=dtype,
         device_map=device_map,
         attn_implementation=attn_implementation,
         trust_remote_code=True,
+        local_files_only=True,
     )
     model.config.use_cache = False
+    if os.environ.get("REBUTTAL_STAGE_DIR"):
+        from rebuttal.telemetry import activate
+        activate(model)
     for param in model.parameters():
         param.requires_grad_(False)
     if gradient_checkpointing:
@@ -127,9 +134,11 @@ def load_experts(base_model, expert_dirs: Sequence[str], names: Optional[Sequenc
     names = list(names or expert_names(len(expert_dirs)))
     if len(names) != len(expert_dirs):
         raise ValueError("số thư mục expert != số tên adapter")
-    model = PeftModel.from_pretrained(base_model, expert_dirs[0], adapter_name=names[0])
+    expert_dirs = [local_adapter_path(path) for path in expert_dirs]
+    model = PeftModel.from_pretrained(base_model, expert_dirs[0], adapter_name=names[0],
+                                      local_files_only=True)
     for path, name in zip(expert_dirs[1:], names[1:]):
-        model.load_adapter(path, adapter_name=name)
+        model.load_adapter(path, adapter_name=name, local_files_only=True)
     return model, names
 
 

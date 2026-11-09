@@ -17,7 +17,7 @@ TAG=svgd_func_keystep_k1
 ROOT=outputs/proposal_v2/phase1_${TAG}
 WDIR=outputs/proposal_v2/weights_${TAG}
 LOG=logs/proposal_v2/keystep_merge_sweep; mkdir -p "$LOG"
-MODEL=Qwen/Qwen2.5-7B-Instruct
+MODEL=${MODEL:-models/Qwen2.5-7B-Instruct}
 STRATS=(ta iso_c tsv ctm)
 ts(){ date '+%F %T'; }; log(){ echo "[$(ts)] $*"; }
 

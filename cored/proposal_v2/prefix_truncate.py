@@ -34,7 +34,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--in", dest="inp", default="data/train_s1k.jsonl")
     ap.add_argument("--out", default="data/train_s1k_prefixed.jsonl")
-    ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
+    ap.add_argument("--model", default="models/Qwen2.5-7B-Instruct")
     ap.add_argument("--gpu", default="0")
     ap.add_argument("--gpu_mem", type=float, default=0.33)
     ap.add_argument("--n", type=int, default=4, help="sample/(mẫu,frac)")
@@ -42,21 +42,31 @@ def main() -> None:
     ap.add_argument("--max_model_len", type=int, default=32768)
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--shard_id", type=int, default=0)
+    ap.add_argument("--num_shards", type=int, default=1)
     args = ap.parse_args()
+    if args.num_shards < 1 or not 0 <= args.shard_id < args.num_shards:
+        ap.error("Invalid shard_id/num_shards")
 
     os.environ.setdefault("CUDA_VISIBLE_DEVICES", args.gpu)
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from transformers import AutoTokenizer
+    from core.local_assets import local_model_path
+    from core.model_utils import load_tokenizer
     from vllm import LLM, SamplingParams
     from eval.grade import grade_one
 
     rows = [json.loads(l) for l in open(args.inp)]
     if args.limit:
         rows = rows[: args.limit]
-    tok = AutoTokenizer.from_pretrained(args.model)
+    rows = rows[args.shard_id::args.num_shards]
+    if not rows:
+        open(args.out, "w").close()
+        return
+    args.model = local_model_path(args.model)
+    tok = load_tokenizer(args.model)
 
     # (row_idx, frac_idx, k)
     prompt_cap = args.max_model_len - args.max_tokens - 64
@@ -87,6 +97,9 @@ def main() -> None:
     sp = SamplingParams(n=args.n, temperature=args.temperature, top_p=0.95,
                         max_tokens=args.max_tokens, stop=["<|im_end|>", "<|endoftext|>"])
     outs = llm.generate(prompts, sp)
+    if os.environ.get("REBUTTAL_STAGE_DIR"):
+        from rebuttal.telemetry import inference
+        inference(outs, llm.llm_engine.model_config.hf_config)
 
     # gom kết quả theo row
     per_row = {ri: {} for ri in range(len(rows))}

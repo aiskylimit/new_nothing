@@ -37,7 +37,7 @@ from train.sft_engine import build_segments
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="So sánh U/V hội đồng trên key step vs step thường")
-    p.add_argument("--model_name", default="Qwen/Qwen2.5-7B-Instruct")
+    p.add_argument("--model_name", default="models/Qwen2.5-7B-Instruct")
     p.add_argument("--phase1_dir", required=True, help="Thư mục chứa expert_0..M-1 đã train")
     p.add_argument("--M", type=int, default=3)
     p.add_argument("--keystep_dir", required=True, help="Cache key_mask (proposal_v2.keystep_select)")

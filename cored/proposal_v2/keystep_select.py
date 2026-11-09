@@ -47,12 +47,16 @@ def parse_args() -> argparse.Namespace:
                    help="Số key step tối thiểu mỗi mẫu (mẫu ngắn vẫn có ít nhất 1)")
     p.add_argument("--chunk_size", type=int, default=128)
     p.add_argument("--overwrite", action="store_true")
+    p.add_argument("--shard_id", type=int, default=0)
+    p.add_argument("--num_shards", type=int, default=1)
     p.set_defaults(out_dir="outputs/proposal_v2/keystep")
     return track_cli_provided(p)
 
 
 def main() -> None:
     args = parse_args()
+    if args.num_shards < 1 or not 0 <= args.shard_id < args.num_shards:
+        raise ValueError("Invalid shard_id/num_shards")
     from core.proctitle import set_proc_title
     set_proc_title("keystep_select")
     set_seed(args.seed)
@@ -70,7 +74,7 @@ def main() -> None:
 
     n_written = 0
     all_frac_real = []
-    for index in range(len(dataset)):
+    for index in range(args.shard_id, len(dataset), args.num_shards):
         example = dataset[index]
         spans = build_segments(example)
         if not spans:

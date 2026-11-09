@@ -5,7 +5,7 @@
 # thuần trên các step "nền" (số học/tính toán chắc chắn), để không lãng phí và không
 # làm hỏng phần mọi expert lẽ ra nên đồng thuận.
 # Giữ nguyên mọi siêu tham số khác so với phase1_svgd_func_k1.yaml, chỉ thêm keystep_dir.
-model_name: Qwen/Qwen2.5-7B-Instruct
+model_name: models/Qwen2.5-7B-Instruct
 train_file: data/train_s1k_prefixed.jsonl
 out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1
 

@@ -2,26 +2,35 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
-from datasets import load_dataset
-from transformers import AutoTokenizer
 
+# Support both `python data/prepare_s1k.py` and `python -m data.prepare_s1k`.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.local_assets import load_local_rows
+from core.model_utils import load_tokenizer
 from core.segmentation import split_thinking_into_steps
 
 
 def main():
-    model_name = "Qwen/Qwen2.5-7B-Instruct"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model_name", default="models/Qwen2.5-7B-Instruct")
+    parser.add_argument("--dataset", default="datasets/s1K-1.1")
+    parser.add_argument("--out", default="data/train_s1k.jsonl")
+    args = parser.parse_args()
+    model_name = args.model_name
     print(f"Loading tokenizer: {model_name}...")
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = load_tokenizer(model_name)
 
-    print("Loading simplescaling/s1K-1.1...")
-    ds = load_dataset("simplescaling/s1K-1.1", split="train")
+    print(f"Loading local s1K: {args.dataset}...")
+    ds = load_local_rows(args.dataset, split="train")
     print(f"Total samples: {len(ds)}")
 
-    out_path = "data/train_s1k.jsonl"
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    out_path = args.out
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
     instruction_prefix = "Please reason step by step, and put your final answer within \\boxed{}."
 
@@ -40,7 +49,7 @@ def main():
         n_tokens = len(tokenizer(full_cot + question, add_special_tokens=False)["input_ids"])
 
         row = {
-            "id": f"s1k_{idx}",
+            "id": str(item.get("id", f"s1k_{idx}")),
             "question": question,
             "raw_question": raw_q,
             "thinking": thinking,

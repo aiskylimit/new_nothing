@@ -199,7 +199,7 @@ silently misalign every downstream span, and a zero-length segment divides by ze
   the repo; `Eval/data_loader.py` has no HF fallback for those tasks, so `eval.sh` fails on a missing
   `test.jsonl`. Restore them from `upstream/main` (`git checkout upstream/main -- data/<task>`) or
   point `--data_dir` at a copy.
-- **`downloads.txt` lists what an offline server must fetch beforehand** (one `--hf-dataset` /
+- **`download.txt` lists what an offline server must fetch beforehand** (one `--hf-dataset` /
   `--hf <repo> <dest>` line each, `@PROJECT@` substituted by the download tool): the s1K CoT dataset
   (`baesad/s1K-1.1-deepseek-cot`) and `Qwen/Qwen2.5-7B-Instruct`. Pair with `run_pipeline.sh --offline`.
 

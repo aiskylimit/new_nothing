@@ -27,6 +27,7 @@ import numpy as np
 from core.data_utils import track_cli_provided, write_json
 from core.proctitle import set_proc_title
 from core.model_utils import load_tokenizer
+from core.local_assets import local_adapter_path, local_model_path
 from core.segmentation import render_prompt
 from eval.benchmarks import BENCHMARKS, EvalItem, load_benchmark
 from eval.grade import pass_at_1, pass_at_k
@@ -130,6 +131,7 @@ def _describe_tokens(lengths: List[int]) -> dict:
 
 def main() -> None:
     args = parse_args()
+    args.model_name = local_model_path(args.model_name)
     set_proc_title("eval-" + args.method)
     tokenizer = load_tokenizer(args.model_name)
 
@@ -259,9 +261,9 @@ class _VLLMRunner:
         from vllm import LLM
 
         self.args = args
-        self.adapter_path = adapter_path
+        self.adapter_path = local_adapter_path(adapter_path) if adapter_path else None
         self.llm = LLM(
-            model=args.model_name,
+            model=local_model_path(args.model_name),
             dtype="bfloat16",
             enable_lora=adapter_path is not None,
             max_lora_rank=args.max_lora_rank,

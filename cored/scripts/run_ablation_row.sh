@@ -25,7 +25,7 @@ KEY_FRAC="${KEY_FRAC:-0.10}"
 export PROC_PREFIX=hieunq10
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
 PY=${PY:-python}
-MODEL=Qwen/Qwen2.5-7B-Instruct
+MODEL=${MODEL:-models/Qwen2.5-7B-Instruct}
 BASE=outputs/proposal_v2/abl_${TAG}
 LOG=logs/proposal_v2/abl_${TAG}; mkdir -p "$LOG" "$BASE"
 TEMPLATE=configs/proposal_v2/phase1_svgd_func_keystep_k1.yaml
@@ -62,7 +62,7 @@ else
         -e "s|^keystep_dir:.*|keystep_dir: ${KD}|" "$TEMPLATE" > "$CFG"
     log "chờ GPU trống 50GB cho Phase 1"; wait_free 50000
     log "Phase 1 (config $CFG)"
-    run "p1_${TAG}" proposal_v2.phase1 --config "$CFG" --device cuda > "$LOG/phase1.log" 2>&1 \
+    run "p1_${TAG}" proposal_v2.phase1 --config "$CFG" --model_name "$MODEL" --device cuda > "$LOG/phase1.log" 2>&1 \
       || { log "PHASE1 FAIL"; exit 1; }
   fi
 fi

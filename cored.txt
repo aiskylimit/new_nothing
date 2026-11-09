@@ -1,0 +1,17 @@
+# manager: uv
+# python: 3.11
+# Canonical CORED dependencies for train/merge/distill/eval.
+torch==2.13.0
+transformers==5.16.1
+peft==0.20.0
+vllm==0.28.0
+datasets==5.0.1
+accelerate==1.13.0
+math-verify==0.9.0
+safetensors
+setproctitle
+pyyaml==6.0.3
+numpy==2.2.6
+pyarrow
+sentencepiece
+tqdm

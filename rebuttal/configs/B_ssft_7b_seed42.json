@@ -1,0 +1,80 @@
+{
+  "run_id": "B_ssft_7b_seed42",
+  "setting": "B",
+  "method": "ssft",
+  "model": {
+    "repo": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "tokenizer": "Qwen/Qwen2.5-7B-Instruct",
+    "size": "7b"
+  },
+  "data": {
+    "repo": "simplescaling/s1K",
+    "revision": "278d72baaa2b887a7e76a70a0ae254a5a45536e4",
+    "split": "train",
+    "expected_samples": 1000,
+    "teacher": "Gemini Flash Thinking",
+    "trace_source": "thinking_trajectories[0]",
+    "answer_source": "attempt",
+    "variant": "gemini"
+  },
+  "train": {
+    "seed": 42,
+    "epochs": 3,
+    "global_batch": 33,
+    "micro_batch": 11,
+    "gradient_accumulation": 1,
+    "optimizer": "AdamW",
+    "lr": 5e-05,
+    "weight_decay": 0,
+    "scheduler": "cosine",
+    "warmup_ratio": 0.1,
+    "precision": "bf16",
+    "cutoff": 32768,
+    "truncation": "method_native_recorded_in_adaptations",
+    "lora_rank": 16,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05
+  },
+  "method_specific": {
+    "ig_steps": 50,
+    "mass": 0.7,
+    "coherence": 0.8
+  },
+  "evaluation": {
+    "math": [
+      "aime24",
+      "aime25",
+      "amc12",
+      "math500"
+    ],
+    "ood": [],
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "budgets": [
+      13,
+      13,
+      13,
+      13,
+      12
+    ],
+    "math_max_tokens": 4096,
+    "temperature": 0.6,
+    "top_p": 0.9,
+    "repetition_penalty": 1.05,
+    "ood_temperature": 0,
+    "arc_max_tokens": 1024,
+    "logiqa_max_tokens": 4096
+  },
+  "hardware": {
+    "gpus": "3,4,5",
+    "type": "NVIDIA B200 180GB",
+    "training_gpu_count": 3
+  },
+  "protocol_basis": "current rebuttal implementations; differences retained, not a paper-equivalence certification"
+}

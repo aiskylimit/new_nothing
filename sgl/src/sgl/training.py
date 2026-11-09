@@ -228,6 +228,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--trust-remote-code", action="store_true")
     parser.add_argument("--resume-from-checkpoint")
+    parser.add_argument("--max-steps", type=int, default=-1)
     return parser.parse_args()
 
 
@@ -418,6 +419,7 @@ def run(args: argparse.Namespace) -> None:
         bf16=bf16,
         fp16=fp16,
     )
+    training_args.max_steps = args.max_steps
     trainer_kwargs: dict[str, Any] = {
         "model": model,
         "args": training_args,

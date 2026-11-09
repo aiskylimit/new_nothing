@@ -327,6 +327,18 @@ def main() -> None:
         ctm_base=args.ctm_base, seed=args.seed, device=args.device, weights=weights,
     )
     path = save_merged_adapter(merged_sd, rank, expert_dirs[0], args.out_dir)
+    if os.environ.get("REBUTTAL_STAGE_DIR"):
+        from rebuttal.telemetry import STATE, flush, install
+        install()
+        estimate = 0.0
+        for name, factor in merged_sd.items():
+            if 'lora_A' in name:
+                other = merged_sd[name.replace('lora_A', 'lora_B')]
+                din, dout = factor.shape[1], other.shape[0]
+                estimate += din * dout * (args.M * (2 * rank + 10) + 4 * (rank + 8) * 5)
+        STATE['estimated_flops'] += estimate
+        STATE['merge_flops_model'] = 'TIES elementwise + low-rank SVD dense approximation, niter=4'
+        flush()
     info = {"strategy": args.strategy, "out_rank": rank, "density": args.density,
             "per_task_rank": args.per_task_rank, "ctm_beta": args.ctm_beta,
             "ctm_base": args.ctm_base, "source": args.phase1_dir, "weights": weights}

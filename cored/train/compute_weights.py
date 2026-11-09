@@ -50,6 +50,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no_cache_expert_losses", dest="cache_expert_losses",
                         action="store_false")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--shard_id", type=int, default=0)
+    parser.add_argument("--num_shards", type=int, default=1)
     parser.add_argument("--v_zero_threshold", type=float, default=1e-3,
                         help="V_i dưới ngưỡng này coi như ~0")
     parser.add_argument("--v_zero_max_frac", type=float, default=0.9,
@@ -64,6 +66,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.num_shards < 1 or not 0 <= args.shard_id < args.num_shards:
+        raise ValueError("Invalid shard_id/num_shards")
+    if args.num_shards > 1 and args.zscore_scope != "example":
+        raise ValueError("Sharded weights require per-example normalization; corpus stats need a global pass")
     from core.proctitle import set_proc_title
     set_proc_title("compute_weights")
     set_seed(args.seed)
@@ -95,7 +101,7 @@ def main() -> None:
     written_paths: List[str] = []
     n_written = 0
 
-    for index in range(len(dataset)):
+    for index in range(args.shard_id, len(dataset), args.num_shards):
         example = dataset[index]
         spans = example.step_spans
         if not spans:
@@ -155,7 +161,8 @@ def main() -> None:
     summary = _summarize(args, all_U, all_V, all_w)
     summary["zscore_scope"] = args.zscore_scope
     summary["corpus_stats"] = corpus_stats
-    write_json(os.path.join(args.weights_dir, "summary.json"), summary)
+    summary_name = "summary.json" if args.num_shards == 1 else f"summary-shard-{args.shard_id:03d}.json"
+    write_json(os.path.join(args.weights_dir, summary_name), summary)
     _print_gate(summary)
 
     if args.fail_on_low_v and not summary["gate"]["pass"]:

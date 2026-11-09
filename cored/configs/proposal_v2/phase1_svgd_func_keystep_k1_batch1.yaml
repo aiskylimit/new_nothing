@@ -5,7 +5,7 @@
 # hơn). P-ALIGN checkpoint thật dùng train_batch_size=1, max_steps=2050 (~32x nhiều
 # bước gradient hơn mình). Code xử lý per-example (backward mỗi micro-step, chỉ
 # optimizer.step() mỗi global_batch) nên đổi global_batch KHÔNG tốn thêm compute/mem.
-model_name: Qwen/Qwen2.5-7B-Instruct
+model_name: models/Qwen2.5-7B-Instruct
 train_file: data/train_s1k_prefixed.jsonl
 out_dir: outputs/proposal_v2/phase1_svgd_func_keystep_k1_batch1
 
