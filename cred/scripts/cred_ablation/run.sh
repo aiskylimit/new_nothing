@@ -10,3 +10,7 @@ bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh 1 1 1 1 1.0 0.5
 
 
 CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_single_old_ret_VisDial_CIRR.sh # train on subset of retrieval task 
+
+CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_cls.sh # train on subset of retrieval task
+CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh # train on subset of retrieval task
+CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_FastVLM-1.5B_cls.sh # train on subset of retrieval task
