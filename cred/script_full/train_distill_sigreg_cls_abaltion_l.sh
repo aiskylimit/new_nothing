@@ -76,7 +76,7 @@ D_SIGREG=$(bool_to_int "$USE_SIGREG_LOSS")
 # Tên experiment
 # ============================================================
 
-EXP_NAME="talas_jepa_abl_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
+EXP_NAME="talas_jepa_abl_20%_d${D_DISTILL}_cse${D_CSE}_vis${D_VISION}_sig${D_SIGREG}_kd${KD_WEIGHT}_sw${SIGREG_WEIGHT}_l${NUM_LAYER}_dt${D_TAU}"
 
 OUTPUT_DIR="training/FastVLM-0.5B_cls_${EXP_NAME}"
 CACHE_DIR="caching/B3_Qwen2_2B_cls"
@@ -150,7 +150,7 @@ torchrun --standalone \
     --sigreg_weight "$SIGREG_WEIGHT" \
     --num_layers "$NUM_LAYER" \
     --d_cse_temperature "$D_TAU" \
-    --student_layer_mapping 0 18 21 24 \
+    --student_layer_mapping 0 4 5 24 \
 
 
 # ============================================================
