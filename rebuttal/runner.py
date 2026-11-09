@@ -48,7 +48,11 @@ class Job:
     def __init__(self, config, assets, data, runs, gpus):
         if config.get('development_smoke') and not config.get('smoke'):
             raise ValueError('Development limits require an isolated smoke run')
-        expected = 2 if config.get('development_smoke') else 3
+        formal = config.get('formal_profile')
+        if formal and (formal != 'setting_b_2h100' or config['setting'] != 'B'
+                       or config.get('smoke') or config.get('development_smoke')):
+            raise ValueError('Formal H100 profile requires a full Setting B run')
+        expected = 2 if config.get('development_smoke') or formal else 3
         devices = gpus.split(',')
         if len(devices) != expected or len(set(devices)) != expected:
             raise ValueError(f'Expected {expected} distinct GPUs')
@@ -205,6 +209,8 @@ class Job:
                 '--seed', train['seed'], '--global_batch', train['global_batch'], '--cutoff_len', train['cutoff'],
                 '--lr_phase1', train['lr'], '--lr_distill', config['method_specific']['student_lr'],
                 '--lora_r', train['lora_rank'], '--lora_alpha', train['lora_alpha'], '--lora_dropout', train['lora_dropout']]
+            if config.get('formal_profile') == 'setting_b_2h100':
+                command += ['--formal_2h100', '--micro_batch_size', train['micro_batch']]
             if config.get('smoke'):
                 if config.get('development_smoke'):
                     command += ['--development_smoke', '--micro_batch_size', '1', '--max_batch_tokens', train['cutoff'],
@@ -212,7 +218,7 @@ class Job:
                 self.execute('cored_smoke_phase1', [(command + ['--dry_run', smoke_steps, '--stages', 'prepare', 'prefix', 'key', 'phase1'], self.gpus)], world)
                 self.execute('cored_smoke_student', [(command + ['--dry_run', smoke_steps, '--stages', 'weights', 'merge', 'distill'], self.gpus)], world)
             else:
-                self.execute('cored_pipeline', [(command, self.gpus)], 3)
+                self.execute('cored_pipeline', [(command, self.gpus)], world)
             final = run / 'artifacts/cored/distill/student'
         elif method in {'longcot', 'palign'}:
             import yaml

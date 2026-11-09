@@ -57,6 +57,7 @@ def parse_args():
     p.add_argument("--eval_n", type=int, default=3)
     p.add_argument("--dry_run", type=int, default=0, help="Stop after N updates; rerun without this flag to resume")
     p.add_argument("--development_smoke", action="store_true", help="Isolated short test on two GPUs; requires --dry_run")
+    p.add_argument("--formal_2h100", action="store_true", help="Full training on two H100s; no smoke limits")
     args = p.parse_args()
     if args.epochs < 1 or args.global_batch < 1 or not 0 < args.key_frac <= 1:
         p.error("Invalid epochs/batch/key_frac")
@@ -100,9 +101,11 @@ def main():
                       TOKENIZERS_PARALLELISM="false")
     model = local_model_path(args.model)
     gpus = [value.strip() for value in args.gpus.split(",") if value.strip()]
+    if args.formal_2h100 and (args.development_smoke or args.dry_run or args.eval or len(gpus) != 2):
+        raise ValueError("Formal H100 profile requires two GPUs and no development/dry-run/legacy-eval flags")
     if args.development_smoke and (len(gpus) != 2 or args.dry_run <= 0 or args.eval):
         raise ValueError("Development smoke requires two GPUs, positive --dry_run, and no legacy --eval")
-    world = 2 if args.development_smoke else 3
+    world = 2 if args.development_smoke or args.formal_2h100 else 3
     if len(gpus) != world or len(set(gpus)) != world:
         raise ValueError("Specify exactly three distinct GPU IDs with --gpus (default 0,1,2)")
     if args.run_id and (args.run_id in {".", ".."} or Path(args.run_id).name != args.run_id):
@@ -264,7 +267,10 @@ def main():
             raise FileNotFoundError(path)
 
     if args.eval or any(name != "prepare" for name in args.stages):
-        one("train.hardware_probe", ["--out", run / "hardware.json", "--expected_devices", world], "hardware", ",".join(gpus))
+        hardware_args = ["--out", run / "hardware.json", "--expected_devices", world]
+        if args.formal_2h100:
+            hardware_args += ["--required_gpu_name", "H100"]
+        one("train.hardware_probe", hardware_args, "hardware", ",".join(gpus))
 
     stage("prepare", lambda: execute([([python, "data/prepare_s1k.py", "--model_name", model,
                                         "--dataset", str(dataset), "--out", str(train)], gpus[0])], "prepare"),

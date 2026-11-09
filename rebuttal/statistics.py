@@ -71,9 +71,9 @@ def describe(records):
                                    for seed in sorted({r['eval_seed'] for r in records})}}
 
 
-def report(root, destination, repetitions=5000, allow_partial=False):
+def report(root, destination, repetitions=5000, allow_partial=False, configurations=None):
     root, destination = Path(root), Path(destination)
-    configs = matrix()
+    configs = matrix() if configurations is None else configurations
     summaries, per_question, missing = {}, {}, []
     for config in configs:
         run = config['run_id']
@@ -112,13 +112,16 @@ def report(root, destination, repetitions=5000, allow_partial=False):
         raise FileNotFoundError(f'Missing complete evaluations: {missing}; --allow-partial is for inspection only')
     comparisons = {}
     pairs = []
-    for setting in ('A', 'B', 'C'):
+    for setting in sorted({c['setting'] for c in configs}):
         target = next(c for c in configs if c['setting'] == setting and c['method'] == 'cored')
         pairs += [('cored_minus_baseline', target['run_id'], c['run_id']) for c in configs
                   if c['setting'] == setting and c['method'] != 'cored']
     for method in ('longcot', 'sgl', 'ssft', 'palign', 'cored'):
         ids = {c['setting']: c['run_id'] for c in configs if c['method'] == method}
-        pairs += [('gemini_minus_original', ids['B'], ids['A']), ('small_minus_large', ids['C'], ids['A'])]
+        if {'A', 'B'} <= ids.keys():
+            pairs.append(('gemini_minus_original', ids['B'], ids['A']))
+        if {'A', 'C'} <= ids.keys():
+            pairs.append(('small_minus_large', ids['C'], ids['A']))
     for kind, left, right in pairs:
         if left not in per_question or right not in per_question:
             continue
@@ -137,6 +140,7 @@ def report(root, destination, repetitions=5000, allow_partial=False):
                                           'ci95': np.quantile(distribution, [.025, .975]).tolist()}
         comparisons[f'{kind}:{left}:{right}'] = result
     write(destination / 'metrics.json', {'runs': summaries, 'paired_comparisons': comparisons, 'missing': missing,
+          'expected_run_ids': [c['run_id'] for c in configs],
           'analysis_source_sha256': sha(__file__), 'bootstrap_seed': 2027,
           'complete': not missing, 'seed_variability_note': 'Five 12-13-sample seed estimates are not independent Avg@64 runs or training-seed stability.',
           'metrics_note': 'Pass@1 = mean sampled accuracy = Avg@64. Pass@3 is the unbiased 64-response estimator. Values are fractions.'})

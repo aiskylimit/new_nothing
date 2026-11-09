@@ -24,8 +24,8 @@ def aggregate(run_dir):
             for row in native:
                 if row['status'] == 'complete':
                     expanded.append(dict(stage, stage=row['stage'], seconds=row['seconds'],
-                        gpu_count=0 if row['stage'] == 'prepare' else 1 if row['stage'] == 'merge' else 3,
-                        gpu_hours=row.get('gpu_hours', row['seconds']*(0 if row['stage']=='prepare' else 1 if row['stage']=='merge' else 3)/3600),
+                        gpu_count=0 if row['stage'] == 'prepare' else 1 if row['stage'] == 'merge' else stage['gpu_count'],
+                        gpu_hours=row.get('gpu_hours', row['seconds']*(0 if row['stage']=='prepare' else 1 if row['stage']=='merge' else stage['gpu_count'])/3600),
                         telemetry_subdir=row['stage'], telemetry_dir=row.get('telemetry_dir')))
         else:
             expanded.append(stage)
@@ -91,21 +91,22 @@ def aggregate(run_dir):
     return result
 
 
-def tables(root, destination):
+def tables(root, destination, configurations=None):
     from rebuttal.common import matrix
     root, destination = Path(root), Path(destination)
+    configs = matrix() if configurations is None else configurations
     output = {}
-    for config in matrix():
+    for config in configs:
         directory = root / config['run_id']
         if (directory / 'final_checkpoint.json').exists():
             output[config['run_id']] = aggregate(directory)
     write(destination / 'costs.json', output)
-    for setting in ('A', 'B', 'C'):
+    for setting in sorted({c['setting'] for c in configs}):
         table = ['|Method|Allocated GPU-hours|Active stage GPU-hours|Estimated FLOPs|Peak allocated bytes|Autograd token exposures|Overhead vs Long-CoT|',
                  '|---|---:|---:|---:|---:|---:|---:|']
-        baseline = next(c['run_id'] for c in matrix() if c['setting'] == setting and c['method'] == 'longcot')
+        baseline = next(c['run_id'] for c in configs if c['setting'] == setting and c['method'] == 'longcot')
         denominator = output.get(baseline, {}).get('allocated_gpu_hours')
-        for config in matrix():
+        for config in configs:
             if config['setting'] != setting:
                 continue
             value = output.get(config['run_id'])
@@ -117,7 +118,7 @@ def tables(root, destination):
             table.append(f"|{config['method']}|{value['allocated_gpu_hours']:.5f}|{value['completed_stage_gpu_hours']:.5f}|{flop}|{value['peak_allocated_bytes']}|{value['training_tokens']}|{ratio}|")
         destination.mkdir(parents=True, exist_ok=True)
         (destination / f'cost_setting_{setting}.md').write_text('\n'.join(table)+'\n')
-        core = next(c['run_id'] for c in matrix() if c['setting'] == setting and c['method'] == 'cored')
+        core = next(c['run_id'] for c in configs if c['setting'] == setting and c['method'] == 'cored')
         if core in output:
             breakdown = ['|Stage|Wall seconds|Active GPU-hours|Estimated FLOPs|Peak allocated bytes|Tokens/sec|', '|---|---:|---:|---:|---:|---:|']
             for row in output[core]['stages']:

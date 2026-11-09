@@ -6,6 +6,44 @@ training seed 42, default physical GPUs **3,4,5**. No 8B, extra training seeds o
 CoReD ablations are scheduled. `configs/*.json` are the 15 frozen configurations;
 they are validated against `common.matrix()` to prevent unnoticed drift.
 
+## Formal Setting B on two H100s
+
+```bash
+# Online only; skip if the six environments and attested assets already exist.
+bash rebuttal/formal_B_2h100.sh setup
+bash rebuttal/formal_B_2h100.sh download
+# End to end: real-data preparation, H100 preflight, five full train/eval runs, reports.
+GPUS=0,1 bash rebuttal/formal_B_2h100.sh all
+```
+
+This separate formal profile uses the real pinned s1K-1.1 Gemini fields, all 1,000
+canonical input rows, Qwen2.5-7B-Instruct, seed 42 and three epochs. Native
+method filters remain active and their retained/rejected rows are recorded.
+The user-approved topology adaptation is **batch 32**, microbatch 1 per GPU and
+gradient accumulation 16 for the four baselines; CoReD uses exact global batch
+32 with its adaptive microbatches and retains three experts. Training cutoffs
+remain 32k for the baselines and 16k for CoReD. IG50, P-ALIGN generation/filtering,
+LoRA/LR settings and the council/TIES/distillation recipe retain their main values.
+There are no synthetic fixtures, smoke flags, update limits or shortened evals.
+Memory fit and runtime still require verification on the actual H100 machine.
+
+All four math benchmarks are evaluated with the normal 64 total responses per
+question across seeds 1–5, 4,096 new tokens and math-verify. Setting B has no OOD.
+The final report requires all five B evaluations and includes the four paired
+CoReD-versus-baseline comparisons, bootstrap intervals and H100 cost tables.
+It does not require A/C or produce missing-teacher/backbone comparisons.
+
+Outputs default to `rebuttal/runs-B-2h100/` and `rebuttal/reports-B-2h100/`, with
+separate profile/config snapshots and `launcher_status.json`. Override using
+`REBUTTAL_H100_RUNS` / `REBUTTAL_H100_REPORTS`, not the B200 output variables.
+Rerun the same `all` command to resume; changed code/config/data requires a fresh
+output directory. Other actions: `prepare`, `preflight`, `train`, `eval`, `report`.
+`all --run-id B_cored_7b_seed42` runs/resumes only that method and omits the final
+five-method report. Run `report` after all five methods finish.
+`project_commands.sh`, the frozen 15 main configs and their default three-B200
+profile remain separate; do not combine H100/batch-32 timing with B200/batch-33
+as if they used the same hardware/training batch.
+
 ## Environments and immutable assets
 
 Keep the five training environments from `palign.txt`, `sft.txt`, `sgl.txt`,

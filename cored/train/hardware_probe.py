@@ -10,6 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
     parser.add_argument("--expected_devices", type=int, default=3)
+    parser.add_argument("--required_gpu_name")
     args = parser.parse_args()
     if args.expected_devices < 1 or not torch.cuda.is_available() or torch.cuda.device_count() != args.expected_devices:
         raise RuntimeError(f"Expected exactly {args.expected_devices} visible CUDA devices")
@@ -21,6 +22,8 @@ def main():
         if not torch.cuda.is_bf16_supported():
             raise RuntimeError(f"CUDA device {rank} does not support bf16")
         properties = torch.cuda.get_device_properties(rank)
+        if args.required_gpu_name and args.required_gpu_name not in properties.name:
+            raise RuntimeError(f"Expected {args.required_gpu_name}, found {properties.name}")
         devices.append({"index": rank, "name": properties.name,
                         "total_memory_bytes": properties.total_memory,
                         "capability": list(torch.cuda.get_device_capability(rank))})

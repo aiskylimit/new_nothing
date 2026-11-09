@@ -8,8 +8,12 @@ from pathlib import Path
 from rebuttal.common import DATA_REV, ROOT, TEACHER_FIELDS, matrix, rows, sha, write
 
 
-def validate(assets, data, runs, environments=False, gpus='3,4,5'):
-    checks = {'configurations': 15, 'training_seed_count': 1, 'math_seeds': [1, 2, 3, 4, 5],
+def validate(assets, data, runs, environments=False, gpus='3,4,5', formal_2h100=False):
+    expected_devices = 2 if formal_2h100 else 3
+    gpu_type = 'H100' if formal_2h100 else 'B200'
+    if len(gpus.split(',')) != expected_devices or len(set(gpus.split(','))) != expected_devices:
+        raise ValueError(f'Reserve {expected_devices} distinct GPUs')
+    checks = {'configurations': 5 if formal_2h100 else 15, 'training_seed_count': 1, 'math_seeds': [1, 2, 3, 4, 5],
               'math_responses': 64, 'gpu_ids': gpus, 'checks': []}
     manifest = json.loads((data / 'manifest.json').read_text())
     if (manifest.get('dataset') != {'repo': 'simplescaling/s1K-1.1', 'revision': DATA_REV, 'split': 'train'}
@@ -47,12 +51,13 @@ def validate(assets, data, runs, environments=False, gpus='3,4,5'):
             imports = ('import unsloth; ' if method == 'ssft' else '') + 'import torch,transformers,peft; print(torch.__version__,transformers.__version__)'
             subprocess.run([py, '-c', imports], check=True)
         import os
-        subprocess.run([python_for('cored'), '-m', 'train.hardware_probe', '--out', str(runs / 'hardware.json')],
+        subprocess.run([python_for('cored'), '-m', 'train.hardware_probe', '--out', str(runs / 'hardware.json'),
+                        '--expected_devices', str(expected_devices), '--required_gpu_name', gpu_type],
             cwd=ROOT / 'cored', env={**os.environ, 'CUDA_VISIBLE_DEVICES': gpus}, check=True)
         hardware = json.loads((runs / 'hardware.json').read_text())
-        if any('B200' not in device['name'] for device in hardware['devices']):
-            raise ValueError('Finalized main experiments require three B200 GPUs; hardware mismatch recorded')
-        checks['checks'].append('five provisioned environments and three CUDA/NCCL/bf16 GPUs')
+        if len(hardware['devices']) != expected_devices or any(gpu_type not in device['name'] for device in hardware['devices']):
+            raise ValueError(f'Expected {expected_devices} {gpu_type} GPUs; hardware mismatch recorded')
+        checks['checks'].append(f'five provisioned environments and {expected_devices} {gpu_type} CUDA/NCCL/bf16 GPUs')
     checks['persistent_storage'] = {'runs': str(runs.resolve()), 'free_bytes': shutil.disk_usage(runs).free,
                                   'note': 'Required space depends on generated trace lengths; free space is reported, not assumed sufficient.'}
     checks['gpu_training_smoke'] = 'not executed by static preflight; use runner smoke in a separate runs root'
