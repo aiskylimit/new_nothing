@@ -1,4 +1,8 @@
-#1 +10
+#d
+#models
+--hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/cred/models/B3_Qwen2_2B
+--hf apple/FastVLM-1.5B /mnt/local/@PROJECT@/cred/models/FastVLM-1.5B
+
 #log
 #v2
 
