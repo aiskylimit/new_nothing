@@ -46,9 +46,11 @@ source /mnt/local/uvenvs/cred/bin/activate
 # tar -xzf ./datasets/B3_Qwen2_7B_cls.tar.gz -C .
 
 
-CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.05 256 0.02 "" 5 none pr &
-CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh 1 1 1 1 1.0 0.05 256 0.02 "" 0 12 pr &
-CUDA_VISIBLE_DEVICES=2 bash ./script_full/train_distill_sigreg_cls_pr.sh &
+CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.5 256 0.05 "" 5 none pr &
+CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh 1 1 1 1 1.0 0.5 256 0.05 "" 0 12 pr &
+CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.5 256 0.1 "" 5 none pr &
+CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh 1 1 1 1 1.0 0.5 256 0.1 "" 0 12 pr &
+# CUDA_VISIBLE_DEVICES=2 bash ./script_full/train_distill_sigreg_cls_pr.sh &
 CUDA_VISIBLE_DEVICES=2 bash ./script_full/train_distill_sigreg_llava_ov_cls_bz16_2.sh 1 1 1 0 1.0 2.0 256 0.02 &
 
 
@@ -71,5 +73,7 @@ wait
 # =========================
 
 JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v5}"
-
 python json_filter.py ./MMEB-eval_outputs_v5 "${JSON_FILTER_DESTINATION}" --overwrite
+
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
+python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite

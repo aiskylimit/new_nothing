@@ -1,8 +1,5 @@
-#d
-#models
---hf llava-hf/llava-onevision-qwen2-0.5b-ov-hf /mnt/local/@PROJECT@/cred/models/llava-onevision-qwen2-0.5b-ov-hf
-
-#cred-log
+#1 +120
+#cred
 #v1
 
 
@@ -29,9 +26,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 
-python -m zipfile -c _run-2026-11-08_18-31-03-cred.zip _run_log_/_run-2026-11-08_18-31-03-cred.log
-# cd ./cred
-# bash ./project_commands.sh
+cd ./cred
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
