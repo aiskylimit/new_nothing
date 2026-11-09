@@ -83,7 +83,7 @@ else:
             pass
 
 
-def _make_llm(model, max_model_len, tensor_parallel_size, gpu_memory_utilization, seed=42, adapter_config=None):
+def _make_llm(model, max_model_len, tensor_parallel_size, gpu_memory_utilization, seed=42, adapter_config=None, **runtime_options):
     kwargs = {
         "model": model,
         "gpu_memory_utilization": gpu_memory_utilization,
@@ -97,6 +97,7 @@ def _make_llm(model, max_model_len, tensor_parallel_size, gpu_memory_utilization
         kwargs["max_lora_rank"] = max(16, int(adapter_config["r"]))
     if sys.version_info < (3, 12):
         kwargs["enforce_eager"] = True
+    kwargs.update(runtime_options)
     try:
         return LLM(**kwargs, attention_backend="FLASH_ATTN")
     except TypeError as error:

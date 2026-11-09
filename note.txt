@@ -13,3 +13,280 @@ bash rebuttal/project_commands.sh all
 
 # Tổng hợp kết quả và chi phí
 bash rebuttal/project_commands.sh report
+
+
+# ============================================================================
+# HUONG DAN DAY DU: CAI DAT -> TEST TREN 3 B200 -> FULL 15 RUNS
+# ============================================================================
+# Giu nguyen cac lenh tom tat o tren. Copy/chay TUNG muc ben duoi theo thu tu.
+# KHONG chay "bash note.txt": file nay co ca lenh thay the va lenh cho may online.
+# Moi terminal moi can chay lai muc 1. Moi lenh deu chay tu ROOT repo.
+# Code hien tai yeu cau 3 B200; 1 A100/4090 khong chay duoc nguyen luong smoke.
+# Smoke thanh cong chua dam bao full fit VRAM: chi dung 2 mau, toi da 2 updates.
+# Nen kiem tra them mau dai va theo doi VRAM truoc khi chay toan bo.
+
+# 1. CAU HINH DUONG DAN VA GPU (chay lai khi mo terminal moi)
+# cd /duong/dan/toi/new_nothing
+test -f rebuttal/project_commands.sh || { echo 'Hay cd vao root repo truoc'; exit 1; }
+
+# Dung bo 3 GPU thuc te duoc cap. Neu may chi co 3 GPU danh so 0,1,2 thi sua dong nay.
+export GPUS="3,4,5"
+export REBUTTAL_ENV_ROOT="/mnt/local/uvenvs"
+export REBUTTAL_VENV="$REBUTTAL_ENV_ROOT/rebuttal"
+export PY="$REBUTTAL_VENV/bin/python"
+export REBUTTAL_PYTHON_LONGCOT="$REBUTTAL_ENV_ROOT/sft/bin/python"
+export REBUTTAL_PYTHON_PALIGN="$REBUTTAL_ENV_ROOT/palign/bin/python"
+export REBUTTAL_PYTHON_SGL="$REBUTTAL_ENV_ROOT/sgl/bin/python"
+export REBUTTAL_PYTHON_SSFT="$REBUTTAL_ENV_ROOT/SegmentSelectiveSFT/bin/python"
+export REBUTTAL_PYTHON_CORED="$REBUTTAL_ENV_ROOT/cored/bin/python"
+
+# Co the doi sang o dia persistent khac; dung DUONG DAN TUYET DOI.
+export REBUTTAL_ASSETS="$PWD/rebuttal/assets"
+export REBUTTAL_DATA="$PWD/rebuttal/prepared"
+export REBUTTAL_RUNS="$PWD/rebuttal/runs"
+export REBUTTAL_REPORTS="$PWD/rebuttal/reports"
+export REBUTTAL_SMOKE_RUNS="$PWD/rebuttal/smoke-runs"
+export RUNBOOK_LOGS="$PWD/rebuttal/launcher-logs"
+mkdir -p "$RUNBOOK_LOGS" "$REBUTTAL_RUNS"
+# Dung khi lenh loi; khong de "tee" che mat ma thoat.
+set -euo pipefail
+
+# 2. CAI THU VIEN: CHI CHAY TREN LINUX CO INTERNET
+# Bo qua muc nay neu he thong server da provision du 6 moi truong tu cac file txt.
+# Khong gom 6 file vao cung 1 env. Khong can download.txt rieng cua tung phuong phap.
+# B200 offline: chi chep file txt KHONG du; can env/container duoc provision hoac
+# bo wheel offline phu hop Linux/Python/CUDA. Khong mac dinh copy venv tu Vast la chay duoc.
+(
+  set -euo pipefail
+  if ! command -v uv >/dev/null 2>&1; then
+    python3 -m pip install uv
+  fi
+  mkdir -p "$REBUTTAL_ENV_ROOT"
+  for name in rebuttal palign sft sgl SegmentSelectiveSFT cored; do
+    if [ ! -x "$REBUTTAL_ENV_ROOT/$name/bin/python" ]; then
+      uv venv --python 3.11 "$REBUTTAL_ENV_ROOT/$name"
+    fi
+    uv pip install --python "$REBUTTAL_ENV_ROOT/$name/bin/python" -r "$name.txt"
+    uv pip check --python "$REBUTTAL_ENV_ROOT/$name/bin/python"
+  done
+) 2>&1 | tee "$RUNBOOK_LOGS/install.log"
+# Chi tiep tuc khi muc nay thanh cong. Solver pass chua xac nhan CUDA runtime pass.
+
+# 3. TAI MODEL/DATA: CHON MOT TRONG HAI CACH, KHONG CHAY CA HAI
+# Cach A (nen dung): tren may co Internet, tai dung revision va tao snapshot.json.
+# Day la nguon model/data tuong ung rebuttal/download.txt, khong phai tai lai rieng 5 folder.
+HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
+  "$PY" -m rebuttal.provision --assets "$REBUTTAL_ASSETS" \
+  2>&1 | tee "$RUNBOOK_LOGS/download.log"
+
+# Cach B: neu cong cu download cua server DA tai rebuttal/download.txt, chi xac thuc:
+# "$PY" -m rebuttal.provision --assets "$REBUTTAL_ASSETS" --attest-managed
+# Cach B can metadata .cache/huggingface/download va revision dung voi config.
+# Neu sai/thieu metadata, khong tu tao snapshot.json de bo qua; tai bang Cach A
+# vao mot thu muc assets moi, roi tro REBUTTAL_ASSETS toi thu muc do.
+# Neu tai tren may khac, copy nguyen assets (kem snapshot.json) sang B200.
+# Vi du copy thu muc ve DUNG REBUTTAL_ASSETS tren may dich qua rsync/scp cua nhom.
+# Tu muc 4 tro di khong can Internet; khong chay lai muc 2/3 tren B200 offline.
+
+# 4. PREPARE VA PREFLIGHT TREN SERVER
+# Prepare dung CPU: du 1000 dong/teacher, adapters cho 5 phuong phap, 6 benchmarks,
+# thong ke token/teacher correctness. Chua chay IG/masks/prefix model inference.
+bash rebuttal/project_commands.sh prepare \
+  2>&1 | tee "$RUNBOOK_LOGS/prepare.log"
+
+# Preflight kiem tra snapshots, prepared/statistics, 5 training env, CUDA/bf16/NCCL
+# co san va dung 3 B200. Chua phai test giao tiep distributed hay train that.
+bash rebuttal/project_commands.sh preflight \
+  2>&1 | tee "$RUNBOOK_LOGS/preflight.log"
+# Dung lai va sua neu preflight loi; khong bypass check B200 de chay main experiments.
+
+# 5. SMOKE PREPROCESS + TRAIN: CA 15 CAU HINH, DUNG 3 B200
+# Moi run lay 2 mau va toi da 2 optimizer updates; CORED thu ca phase1 va student.
+# P-ALIGN/SSFT filter giu 0 mau thi bao loi, khong tu thay du lieu de pass smoke.
+# Chi khi muc nay thanh cong moi chay muc 6. Co the chay trong tmux/screen da cai.
+REBUTTAL_RUNS="$REBUTTAL_SMOKE_RUNS" \
+  bash rebuttal/project_commands.sh smoke \
+  2>&1 | tee "$RUNBOOK_LOGS/smoke.log"
+
+# Neu chi muon debug 1 phuong phap, dung lenh thay the (khong can chay lai ca 15):
+# REBUTTAL_RUNS="$REBUTTAL_SMOKE_RUNS" bash rebuttal/project_commands.sh smoke \
+#   --run-id A_ssft_7b_seed42
+# REBUTTAL_RUNS="$REBUTTAL_SMOKE_RUNS" bash rebuttal/project_commands.sh smoke \
+#   --run-id A_palign_7b_seed42
+# Run IDs: A/B + {longcot,sgl,ssft,palign,cored}_7b_seed42;
+#          C + {longcot,sgl,ssft,palign,cored}_1.5b_seed42. Vi du C_cored_1.5b_seed42.
+
+# 6. INFERENCE PILOT: THU LOAD CHECKPOINT, SINH VA CHAM TREN 3 GPU
+# Smoke o muc 5 KHONG tu eval. Pilot ben duoi dung checkpoint smoke cua moi run.
+# Moi run chi lay 3 cau MATH500; A/C them 3 ARC + 3 LogiQA. Moi GPU nhan 1 cau/bench.
+# Van giu protocol sinh: math 64 responses/cau qua 5 seeds, OOD 1 response/cau.
+# Vi vay pilot nay nho hon full eval, nhung van co the ton thoi gian voi long CoT.
+# Ket qua pilot o smoke-runs/smoke_<run_id>/inference-pilot/, KHONG dung de bao cao paper.
+# Mac dinh thu ca 15 smoke checkpoints. Co the gioi han bang PILOT_RUN_IDS, vi du:
+# export PILOT_RUN_IDS="A_longcot_7b_seed42 C_longcot_1.5b_seed42 A_cored_7b_seed42"
+# unset PILOT_RUN_IDS  # de quay lai thu ca 15
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 WANDB_MODE=disabled \
+  "$PY" - <<'PILOT_PY' 2>&1 | tee "$RUNBOOK_LOGS/inference-pilot.log"
+import json
+import os
+import subprocess
+from pathlib import Path
+
+from rebuttal.common import jsonl, matrix, rows, sha, write
+
+repo = Path.cwd()
+smokes = Path(os.environ['REBUTTAL_SMOKE_RUNS'])
+benchmarks = Path(os.environ['REBUTTAL_DATA']) / 'benchmarks'
+gpu_ids = os.environ['GPUS'].split(',')
+if len(gpu_ids) != 3 or len(set(gpu_ids)) != 3:
+    raise ValueError('Pilot requires three distinct GPUs')
+evaluator = os.environ['REBUTTAL_PYTHON_PALIGN']
+known = {c['run_id'] for c in matrix()}
+selected = os.environ.get('PILOT_RUN_IDS', '').split() or [c['run_id'] for c in matrix()]
+if set(selected) - known:
+    raise ValueError('Unknown PILOT_RUN_IDS')
+for run_id in selected:
+    run = smokes / ('smoke_' + run_id)
+    config = json.loads((run / 'run.json').read_text())
+    checkpoint = Path(json.loads((run / 'final_checkpoint.json').read_text())['path'])
+    pilot = run / 'inference-pilot'
+    local_benchmarks = pilot / 'benchmarks'
+    output = pilot / 'evaluation'
+    output.mkdir(parents=True, exist_ok=True)
+    config['run_id'] += '_inference_pilot'
+    config['evaluation']['math'] = ['math500']
+    config['evaluation']['ood'] = ['arc_challenge', 'logiqa2'] if config['setting'] != 'B' else []
+    original_manifest = json.loads((benchmarks / 'manifest.json').read_text())
+    manifest = {}
+    for name in config['evaluation']['math'] + config['evaluation']['ood']:
+        values = rows(benchmarks / (name + '.jsonl'))[:3]
+        if len(values) != 3:
+            raise ValueError(f'Need three pilot questions: {name}')
+        destination = local_benchmarks / (name + '.jsonl')
+        jsonl(destination, values)
+        manifest[name] = dict(original_manifest[name], count=3, sha256=sha(destination), pilot=True)
+    write(local_benchmarks / 'manifest.json', manifest)
+    config_file = pilot / 'config.json'
+    write(config_file, config)
+    common = [evaluator, '-m', 'rebuttal.evaluate', '--config', str(config_file),
+              '--benchmarks', str(local_benchmarks), '--output', str(output)]
+    processes, logs = [], []
+    print(f'[pilot] {run_id}: starting three GPU workers; logs in {pilot}', flush=True)
+    try:
+        for rank, gpu in enumerate(gpu_ids):
+            log = (pilot / f'generate-rank{rank}.log').open('a')
+            logs.append(log)
+            command = common + ['--checkpoint', str(checkpoint), '--shard', str(rank),
+                                '--shards', '3', '--batch-size', '1']
+            processes.append(subprocess.Popen(command, cwd=repo,
+                env={**os.environ, 'CUDA_VISIBLE_DEVICES': gpu}, stdout=log, stderr=subprocess.STDOUT))
+        for rank, process in enumerate(processes):
+            if process.wait() != 0:
+                raise RuntimeError(f'Pilot worker {rank} failed; see {pilot}/generate-rank{rank}.log')
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+        for log in logs:
+            log.close()
+    subprocess.run(common + ['--score-only'], cwd=repo,
+                   env={**os.environ, 'CUDA_VISIBLE_DEVICES': ''}, check=True)
+    print(f'[pilot] PASS {run_id}: generated and scored complete pilot records', flush=True)
+print('ALL SELECTED INFERENCE PILOTS PASSED; this is not full benchmark accuracy.', flush=True)
+PILOT_PY
+
+# 7. FULL 15 RUNS: CHI CHAY SAU KHI TEST THANH CONG
+# REBUTTAL_RUNS van la rebuttal/runs, khong phai smoke-runs (khong dung checkpoint smoke).
+# all = train + eval tung run, roi chuyen run tiep theo; thu tu A -> B -> C,
+# moi setting: longcot -> sgl -> ssft -> palign -> cored. Tat ca deu training seed 42.
+# Eval: 4 math benchmarks, tong 64 responses/cau; A/C co them 2 OOD, B khong OOD.
+bash rebuttal/project_commands.sh all \
+  2>&1 | tee -a "$RUNBOOK_LOGS/full.log"
+
+# Chi tong hop bao cao cuoi khi ca 15 runs va eval deu hoan tat.
+bash rebuttal/project_commands.sh report \
+  2>&1 | tee "$RUNBOOK_LOGS/report.log"
+
+# 8. LENH THAY THE / RESUME (CHI CHAY KHI CAN)
+# Khong chay dong thoi hai launcher tren cung GPU, ke ca khac thu muc runs.
+# Bi ngat: chay lai dung lenh "all" o muc 7. Stage/checkpoint hoan tat duoc reuse.
+# P-ALIGN reuse tung mau da luu; SSFT neu attribution bi ngat thi lam lai 3 shards.
+# Code/config/data thay doi thi runner tu choi reuse: chon RUNS/SMOKE_RUNS moi,
+# khong xoa run.json hay sua fingerprint de ep resume. Neu chi sua phan report thi
+# khong can train lai. Giu model/data o dia persistent cung checkpoints.
+
+# Train het truoc, eval sau (THAY CHO lenh all, khong can chay ca hai cach):
+# bash rebuttal/project_commands.sh train 2>&1 | tee -a "$RUNBOOK_LOGS/train.log"
+# bash rebuttal/project_commands.sh eval 2>&1 | tee -a "$RUNBOOK_LOGS/eval.log"
+# bash rebuttal/project_commands.sh report
+
+# Chay/resume 1 main run:
+# bash rebuttal/project_commands.sh all --run-id A_cored_7b_seed42
+# Chi eval lai 1 main run da train xong:
+# bash rebuttal/project_commands.sh eval --run-id A_cored_7b_seed42
+# Bao cao tam khi chua du 15 runs (khong phai final report):
+# bash rebuttal/project_commands.sh report --allow-partial
+
+# 9. NOI XEM LOG / OUTPUT
+# rebuttal/launcher-logs/: output cac lenh tong (hoac RUNBOOK_LOGS da doi).
+# $REBUTTAL_RUNS/<run_id>/status.json: stage va loi neu co.
+# $REBUTTAL_RUNS/<run_id>/logs/: log tung worker, can doc khi launcher bao loi.
+# $REBUTTAL_RUNS/<run_id>/final_checkpoint.json: duong dan checkpoint cuoi.
+# $REBUTTAL_RUNS/<run_id>/evaluation/: raw *.rank*.jsonl va *.scored.jsonl.
+# $REBUTTAL_RUNS/<run_id>/training_cost.json: thoi gian, GPU-hours, token, VRAM, FLOPs uoc tinh.
+# $REBUTTAL_REPORTS/: bang metrics, paired comparisons/bootstrap va cost tables.
+# Smoke/pilot chi xac nhan luong chay voi tap nho; khong chung minh full fit VRAM,
+# model hoc tot, hay implementation tuong duong hoan toan voi paper goc.
+
+
+# ============================================================================
+# TEST RIENG TREN 2 RTX 3090 (KHONG DUNG CAC LENH SMOKE B200 O TREN)
+# ============================================================================
+# Mo terminal moi, cd vao root repo. Script rieng nay KHONG can chay prepare/preflight B200.
+# Mac dinh 15 cau hinh, dung dung 2 backbone that, nhung du lieu toan ngan GIA LAP.
+# Luong: NCCL 2 GPU + bf16 -> preprocess tung phuong phap -> train 4 updates ->
+# checkpoint -> load LoRA bang vLLM -> sinh 1 response/cau -> math-verify/MC grading.
+# Batch 2 (1/GPU), train cutoff 512, context inference 2048, max new tokens 256, IG4.
+# CORED van 3 expert tren 2 GPU; co ca SVGD/council/TIES/student. Day KHONG la main metrics.
+# P-ALIGN van loc dung/sai that; neu 0 mau qua loc thi dung, khong ep pass.
+# SSFT neu IG OOM thi dung thay vi dung zero attribution de pass test.
+
+# A. CAI DAT/TAl ASSETS: chi tren Linux co Internet, bo qua neu da provision.
+# Can uv (neu chua co: python3 -m pip install uv).
+# Khong can chay lai muc 1 de test 3090; neu dung lai terminal cu thi PY/env overrides
+# phai tro dung cac env da cai. Default la /mnt/local/uvenvs/<folder>/bin/python.
+export REBUTTAL_ENV_ROOT="/mnt/local/uvenvs"
+export REBUTTAL_ASSETS="$PWD/rebuttal/assets"
+bash rebuttal/smoke_2x3090.sh setup
+bash rebuttal/smoke_2x3090.sh download
+
+# B. CHAY TEST DU 15 CAU HINH TREN DUNG 2 GPU 0,1:
+# Neu da tai assets bang cong cu download.txt, xac thuc truoc (thay cho lenh download):
+# bash rebuttal/smoke_2x3090.sh download --attest-managed
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh all
+
+# Cach test nhanh hon: chi 5 phuong phap tren backbone 1.5B (THAY CHO lenh 15 cau hinh):
+# GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --settings C
+# Chi CORED / P-ALIGN / SSFT, dung main ID (script tu them prefix dev2_):
+# GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --run-id C_cored_1.5b_seed42
+# GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --run-id A_palign_7b_seed42
+# GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --run-id A_ssft_7b_seed42
+
+# C. LOG / RESUME:
+# rebuttal/smoke-2x3090.launcher.log: log tong.
+# rebuttal/smoke-2x3090/summary.json: passed/failed, run loi, danh sach da hoan tat.
+# rebuttal/smoke-2x3090/probe-*.log: ten GPU, Torch/CUDA, NCCL va bf16 test tung env.
+# rebuttal/smoke-2x3090/dev2_<run_id>/status.json va logs/: stage/worker loi.
+# rebuttal/smoke-2x3090/dev2_<run_id>/evaluation/: raw va scored JSONL.
+# Bi ngat thi chay lai dung lenh all; stage da xong duoc reuse, khong ghi de main runs.
+# Neu code/config thay doi, dung thu muc moi, vi du:
+# REBUTTAL_2GPU_RUNS="$PWD/rebuttal/smoke-2x3090-v2" GPUS=0,1 \
+#   bash rebuttal/smoke_2x3090.sh all
+# Neu NCCL probe loi, doc probe-*.log; chi khi log cho thay P2P khong ho tro moi thu
+# NCCL_P2P_DISABLE=1 GPUS=0,1 bash rebuttal/smoke_2x3090.sh all
+# Test nay qua van can smoke lai tren 3 B200 va thu mau dai truoc khi chay full.

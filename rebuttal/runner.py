@@ -46,6 +46,12 @@ def checkpoint_manifest(path, config, base):
 
 class Job:
     def __init__(self, config, assets, data, runs, gpus):
+        if config.get('development_smoke') and not config.get('smoke'):
+            raise ValueError('Development limits require an isolated smoke run')
+        expected = 2 if config.get('development_smoke') else 3
+        devices = gpus.split(',')
+        if len(devices) != expected or len(set(devices)) != expected:
+            raise ValueError(f'Expected {expected} distinct GPUs')
         self.config, self.assets, self.data, self.gpus = config, assets, data, gpus
         self.root = runs / config['run_id']
         self.root.mkdir(parents=True, exist_ok=True)
@@ -54,7 +60,7 @@ class Job:
         if config.get('smoke'):
             from rebuttal.data import adapt
             small = self.root / 'smoke_data'
-            adapt(rows(self.input / 'canonical.jsonl')[:2], small)
+            adapt(rows(self.input / 'canonical.jsonl')[:config.get('smoke_samples', 2)], small)
             self.input = small
         self.fingerprint = signature({'config': config, 'input': sha(self.input / 'canonical.jsonl'),
                                      'data_manifest': sha(data / 'manifest.json'),
@@ -77,6 +83,7 @@ class Job:
                           environment=previous.get('environment', {'status': 'collected before training'})))
 
     def execute(self, name, commands, gpu_count, instrument=True):
+        commands = [(list(map(str, command)), gpu) for command, gpu in commands]
         marker = self.root / f'{name}.complete.json'
         if marker.exists():
             print(f'[{self.config["run_id"]}] reuse {name}', flush=True)
@@ -166,7 +173,7 @@ class Job:
     def instrument(self, python, module=None, script=None, args=(), multi=False, unsloth=False):
         command = [python]
         if multi:
-            command += ['-m', 'torch.distributed.run', '--standalone', '--nproc_per_node=3']
+            command += ['-m', 'torch.distributed.run', '--standalone', f'--nproc_per_node={len(self.gpus.split(","))}']
         command += ['-m', 'rebuttal.instrumented', '--module' if module else '--script', module or str(script)]
         if unsloth:
             command += ['--unsloth-first']
@@ -186,6 +193,8 @@ class Job:
         actual_config['environment'] = environment
         write(run / 'run.json', actual_config)
         gpus = self.gpus.split(',')
+        world = len(gpus)
+        smoke_steps = config.get('smoke_steps', 2)
         if not (self.model / 'config.json').is_file():
             raise FileNotFoundError(self.model)
         # Native cost budgets remain explicit rather than forcing one trainer stack.
@@ -197,8 +206,11 @@ class Job:
                 '--lr_phase1', train['lr'], '--lr_distill', config['method_specific']['student_lr'],
                 '--lora_r', train['lora_rank'], '--lora_alpha', train['lora_alpha'], '--lora_dropout', train['lora_dropout']]
             if config.get('smoke'):
-                self.execute('cored_smoke_phase1', [(command + ['--dry_run', '2', '--stages', 'prepare', 'prefix', 'key', 'phase1'], self.gpus)], 3)
-                self.execute('cored_smoke_student', [(command + ['--dry_run', '2', '--stages', 'weights', 'merge', 'distill'], self.gpus)], 3)
+                if config.get('development_smoke'):
+                    command += ['--development_smoke', '--micro_batch_size', '1', '--max_batch_tokens', train['cutoff'],
+                                '--entropy_chunk', '64', '--loss_chunk', '64']
+                self.execute('cored_smoke_phase1', [(command + ['--dry_run', smoke_steps, '--stages', 'prepare', 'prefix', 'key', 'phase1'], self.gpus)], world)
+                self.execute('cored_smoke_student', [(command + ['--dry_run', smoke_steps, '--stages', 'weights', 'merge', 'distill'], self.gpus)], world)
             else:
                 self.execute('cored_pipeline', [(command, self.gpus)], 3)
             final = run / 'artifacts/cored/distill/student'
@@ -208,11 +220,11 @@ class Job:
             folder.mkdir(exist_ok=True)
             source = self.input / 'longcot.json'
             if method == 'palign':
-                parts = [run / f'palign-{i}.jsonl' for i in range(3)]
+                parts = [run / f'palign-{i}.jsonl' for i in range(world)]
                 commands = [(self.instrument(python, module='rebuttal.method_prep', args=[
                     '--method', 'palign', '--model', self.model, '--source', self.input / 'canonical.jsonl',
-                    '--output', parts[i], '--shard', i, '--shards', 3]), gpu) for i, gpu in enumerate(gpus)]
-                self.execute('prefix_alignment', commands, 3)
+                    '--output', parts[i], '--shard', i, '--shards', world, '--config', run / 'run.json']), gpu) for i, gpu in enumerate(gpus)]
+                self.execute('prefix_alignment', commands, world)
                 all_rows = [r for part in parts for r in rows(part)]
                 expected = {r['id'] for r in rows(self.input / 'canonical.jsonl')}
                 if {r['id'] for r in all_rows} != expected or len(all_rows) != len(expected):
@@ -237,13 +249,13 @@ class Job:
                 warmup_ratio=train['warmup_ratio'], lr_scheduler_type=train['scheduler'],
                 lora_rank=train['lora_rank'], lora_alpha=train['lora_alpha'], lora_dropout=train['lora_dropout'])
             if config.get('smoke'):
-                settings['max_steps'] = 2
+                settings['max_steps'] = smoke_steps
             checkpoints = sorted((run / 'checkpoint').glob('checkpoint-*'), key=lambda p: int(p.name.split('-')[-1]))
             if checkpoints:
                 settings['resume_from_checkpoint'] = str(checkpoints[-1])
             path = run / 'native_train.yaml'
             path.write_text(yaml.safe_dump(settings, sort_keys=False))
-            self.execute('optimization', [(self.instrument(python, script=ROOT / 'palign/src/train.py', args=[path], multi=True), self.gpus)], 3)
+            self.execute('optimization', [(self.instrument(python, script=ROOT / 'palign/src/train.py', args=[path], multi=True), self.gpus)], world)
             final = run / 'checkpoint'
         elif method == 'sgl':
             masks = run / 'masks'
@@ -251,40 +263,40 @@ class Job:
                 '--model-name-or-path', self.model, '--model-revision', config['model']['revision'],
                 '--dataset-revision', config['data']['revision'],
                 '--dataset-name', self.input / 'sgl/train.jsonl', '--output-dir', masks,
-                '--max-samples', str(config['data']['expected_samples']), '--max-length', '32768', '--rank-threshold', '.95',
-                '--selection-threshold', '.8', '--svd-device', 'cuda', '--svd-driver', 'gesvd', '--dtype', 'bfloat16']), self.gpus)], 3)
+                '--max-samples', str(config['data']['expected_samples']), '--max-length', train['cutoff'], '--rank-threshold', '.95',
+                '--selection-threshold', '.8', '--svd-device', 'cuda', '--svd-driver', 'gesvd', '--dtype', 'bfloat16']), self.gpus)], world)
             args = ['--mask-dir', masks, '--output-dir', run / 'checkpoint', '--model-name-or-path', self.model,
-                '--per-device-train-batch-size', '11', '--global-batch-size', '33', '--num-train-epochs', '3',
+                '--per-device-train-batch-size', train['micro_batch'], '--global-batch-size', train['global_batch'], '--num-train-epochs', train['epochs'],
                 '--learning-rate', '5e-5', '--warmup-ratio', '.1', '--gradient-checkpointing', '--seed', '42',
                 '--lora-rank', '16', '--lora-alpha', '16', '--lora-dropout', '.05']
             checkpoints = sorted((run / 'checkpoint').glob('checkpoint-*'), key=lambda p: int(p.name.split('-')[-1]))
             if checkpoints:
                 args += ['--resume-from-checkpoint', checkpoints[-1]]
             if config.get('smoke'):
-                args += ['--max-steps', '2']
-            self.execute('optimization', [(self.instrument(python, module='sgl.training', args=args, multi=True), self.gpus)], 3)
+                args += ['--max-steps', smoke_steps]
+            self.execute('optimization', [(self.instrument(python, module='sgl.training', args=args, multi=True), self.gpus)], world)
             final = run / 'checkpoint'
         else:
             selected = run / 'selected.jsonl'
-            parts = [run / f'selected-{i}.jsonl' for i in range(3)]
+            parts = [run / f'selected-{i}.jsonl' for i in range(world)]
             self.execute('attribution', [(self.instrument(python, module='rebuttal.method_prep', unsloth=True, args=[
                 '--method', 'ssft', '--model', self.model, '--source', self.input / 'ssft.jsonl', '--output', parts[i],
-                '--shard', i, '--shards', 3, '--config', run / 'run.json']), gpu) for i, gpu in enumerate(gpus)], 3)
+                '--shard', i, '--shards', world, '--config', run / 'run.json']), gpu) for i, gpu in enumerate(gpus)], world)
             from rebuttal.method_prep import merge_ssft
             merge_ssft(self.input / 'ssft.jsonl', parts, selected)
             args = ['--model_name_or_path', self.model, '--data_names', selected, '--epochs', '3', '--seed', '42',
                 '--learning_rate', '5e-5', '--warmup_ratio', '.1', '--lr_scheduler_type', 'cosine',
                 '--optim', 'adamw_torch', '--weight_decay', '0', '--max_grad_norm', '1',
-                '--per_device_train_batch_size', '11', '--gradient_accumulation_steps', '1',
-                '--max_seq_length', '32768', '--save_strategy', 'epoch', '--save_total_limit', '2',
+                '--per_device_train_batch_size', train['micro_batch'], '--gradient_accumulation_steps', train['gradient_accumulation'],
+                '--max_seq_length', train['cutoff'], '--save_strategy', 'epoch', '--save_total_limit', '2',
                 '--output_dir', run / 'checkpoint', '--segment_mode', 'paragraph', '--think_prefix', 'none', '--mask']
             checkpoints = sorted((run / 'checkpoint').glob('checkpoint-[0-9]*'), key=lambda p: int(p.name.split('-')[-1]))
             if checkpoints:
                 args += ['--resume_from_checkpoint', checkpoints[-1]]
             if config.get('smoke'):
-                args += ['--max_steps', '2']
+                args += ['--max_steps', smoke_steps]
             self.execute('optimization', [(self.instrument(python, script=ROOT / 'SegmentSelectiveSFT/SelectiveSFT/train_mask.py',
-                args=args, multi=True, unsloth=True), self.gpus)], 3)
+                args=args, multi=True, unsloth=True), self.gpus)], world)
             final = run / 'checkpoint/checkpoint-final'
         checkpoint_manifest(final, config, self.model)
         write(run / 'training_budget.json', {'canonical_input_samples': config['data']['expected_samples'],
@@ -300,10 +312,11 @@ class Job:
         python = python_for('palign')
         output = self.root / 'evaluation'
         commands = [([python, '-m', 'rebuttal.evaluate', '--config', self.root / 'run.json', '--checkpoint', checkpoint,
-                     '--benchmarks', self.data / 'benchmarks', '--output', output, '--shard', str(i), '--shards', '3'], gpu)
+                     '--benchmarks', self.data / 'benchmarks', '--output', output, '--shard', str(i), '--shards', str(len(self.gpus.split(','))),
+                     '--batch-size', '1' if self.config.get('development_smoke') else '16'], gpu)
                     for i, gpu in enumerate(self.gpus.split(','))]
         # Evaluation has separate events; it is never counted as training cost.
-        self.execute('evaluation_generate', commands, 3, instrument=False)
+        self.execute('evaluation_generate', commands, len(commands), instrument=False)
         self.execute('evaluation_score', [([python, '-m', 'rebuttal.evaluate', '--config', self.root / 'run.json',
             '--benchmarks', self.data / 'benchmarks', '--output', output, '--score-only'], '')], 0, instrument=False)
         write(self.root / 'status.json', {'status': 'evaluated', 'checkpoint': checkpoint})

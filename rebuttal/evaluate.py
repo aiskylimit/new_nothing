@@ -41,8 +41,19 @@ def key(record):
     return record['question_id'], record['eval_seed'], record['sample_id']
 
 
-def validate_records(records, questions, benchmark, scored=False):
-    schedule = list(zip(SEEDS, BUDGETS)) if benchmark in MATH else [(0, 1)]
+def development_limits(config):
+    value = (config or {}).get('development_smoke')
+    if value and not config.get('smoke'):
+        raise ValueError('Development evaluation limits require a smoke run')
+    return value
+
+
+def math_schedule(config=None):
+    return [(42, 1)] if development_limits(config) else list(zip(SEEDS, BUDGETS))
+
+
+def validate_records(records, questions, benchmark, scored=False, config=None):
+    schedule = math_schedule(config) if benchmark in MATH else [(0, 1)]
     expected = {(row['question_id'], seed, sample) for row in questions for seed, count in schedule for sample in range(count)}
     actual = [key(row) for row in records]
     if len(set(actual)) != len(actual) or set(actual) != expected:
@@ -54,6 +65,8 @@ def validate_records(records, questions, benchmark, scored=False):
 def generate(config, checkpoint, benchmarks, destination, shard, shards, batch_size):
     # Each worker sees one physical GPU; TP=1. Seed/sample IDs do not depend on shard.
     from transformers import AutoTokenizer
+    development = development_limits(config)
+    context = development['context'] if development else 32768
     spec = importlib.util.spec_from_file_location('palign_eval_backend', ROOT / 'palign/src/test.py')
     backend = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(backend)
@@ -90,7 +103,9 @@ def generate(config, checkpoint, benchmarks, destination, shard, shards, batch_s
             raise ValueError('Benchmark/checkpoint changed since saved raw generations')
         math = benchmark in MATH
         caps = 4096 if math or benchmark == 'logiqa2' else 1024
-        schedule = list(zip(SEEDS, BUDGETS)) if math else [(0, 1)]
+        if development:
+            caps = min(caps, development['new_tokens'])
+        schedule = math_schedule(config) if math else [(0, 1)]
         for seed, count in schedule:
             pending = [row for row in question_rows if any((row['question_id'], seed, s) not in existing for s in range(count))]
             for start in range(0, len(pending), batch_size):
@@ -102,13 +117,14 @@ def generate(config, checkpoint, benchmarks, destination, shard, shards, batch_s
                         'where X is the letter of the correct choice.\n\n' + row['question'])
                     prompts.append(backend.apply_chat(tokenizer, [{'role': 'user', 'content': instruction}]))
                 if model is None:
-                    model = backend._make_llm(str(base), 32768, 1, .9, seed=42, adapter_config=adapter_config)
+                    options = {'enforce_eager': True, 'max_num_seqs': 1} if development else {}
+                    model = backend._make_llm(str(base), context, 1, .9, seed=42, adapter_config=adapter_config, **options)
                     if adapter_config:
                         from vllm.lora.request import LoRARequest
                         request = LoRARequest('trained', 1, str(checkpoint))
                 generation = {'n': count, 'seed': seed, 'temperature': .6 if math else 0.0,
                               'top_p': .9 if math else 1.0, 'repetition_penalty': 1.05,
-                              'max_tokens': caps, 'max_model_len': 32768, 'tensor_parallel_size': 1,
+                              'max_tokens': caps, 'max_model_len': context, 'tensor_parallel_size': 1,
                               'backend': 'vllm', 'do_sample': math}
                 params = SamplingParams(**{k: generation[k] for k in ('n', 'seed', 'temperature', 'top_p', 'repetition_penalty', 'max_tokens')})
                 outputs = model.generate(prompts, params, **({'lora_request': request} if request else {}))
@@ -134,7 +150,7 @@ def generate(config, checkpoint, benchmarks, destination, shard, shards, batch_s
                             existing.add(record_key)
                     handle.flush()
                     os.fsync(handle.fileno())
-        validate_records(rows(output), question_rows, benchmark)
+        validate_records(rows(output), question_rows, benchmark, config=config)
 
 
 def score(config, benchmark_dir, destination, workers):
@@ -143,7 +159,7 @@ def score(config, benchmark_dir, destination, workers):
     with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context('spawn')) as pool:
         for benchmark in config['evaluation']['math'] + config['evaluation']['ood']:
             raw = [record for path in sorted(destination.glob(f'{benchmark}.rank*.jsonl')) for record in rows(path)]
-            validate_records(raw, rows(benchmark_dir / f'{benchmark}.jsonl'), benchmark)
+            validate_records(raw, rows(benchmark_dir / f'{benchmark}.jsonl'), benchmark, config=config)
             # Scoring is separate from generation; CPU parsing never stalls the GPU workers.
             jsonl(destination / f'{benchmark}.scored.jsonl', pool.map(grade_record, raw, chunksize=8))
     import importlib.metadata

@@ -56,6 +56,7 @@ def parse_args():
     p.add_argument("--eval", action="store_true", help="Evaluate final student after training")
     p.add_argument("--eval_n", type=int, default=3)
     p.add_argument("--dry_run", type=int, default=0, help="Stop after N updates; rerun without this flag to resume")
+    p.add_argument("--development_smoke", action="store_true", help="Isolated short test on two GPUs; requires --dry_run")
     args = p.parse_args()
     if args.epochs < 1 or args.global_batch < 1 or not 0 < args.key_frac <= 1:
         p.error("Invalid epochs/batch/key_frac")
@@ -99,7 +100,10 @@ def main():
                       TOKENIZERS_PARALLELISM="false")
     model = local_model_path(args.model)
     gpus = [value.strip() for value in args.gpus.split(",") if value.strip()]
-    if len(gpus) != 3 or len(set(gpus)) != 3:
+    if args.development_smoke and (len(gpus) != 2 or args.dry_run <= 0 or args.eval):
+        raise ValueError("Development smoke requires two GPUs, positive --dry_run, and no legacy --eval")
+    world = 2 if args.development_smoke else 3
+    if len(gpus) != world or len(set(gpus)) != world:
         raise ValueError("Specify exactly three distinct GPU IDs with --gpus (default 0,1,2)")
     if args.run_id and (args.run_id in {".", ".."} or Path(args.run_id).name != args.run_id):
         raise ValueError("run_id must be a single folder name")
@@ -207,11 +211,11 @@ def main():
         execute([([python, "-m", module, *map(str, arguments)], devices or gpus[0])], stage)
 
     def sharded(module, arguments, stage):
-        execute([([python, "-m", module, *map(str, arguments), "--shard_id", str(i), "--num_shards", "3"], gpu)
+        execute([([python, "-m", module, *map(str, arguments), "--shard_id", str(i), "--num_shards", str(world)], gpu)
                  for i, gpu in enumerate(gpus)], stage)
 
     def training(stage, destination, extra):
-        command = [python, "-m", "torch.distributed.run", "--standalone", "--nnodes=1", "--nproc_per_node=3",
+        command = [python, "-m", "torch.distributed.run", "--standalone", "--nnodes=1", f"--nproc_per_node={world}",
                    "-m", "train.b200", "--stage", stage, "--model_name", model,
                    "--train_file", str(prefixed), "--out_dir", str(destination), "--epochs", str(args.epochs),
                    "--seed", str(args.seed), "--global_batch", str(args.global_batch),
@@ -260,16 +264,17 @@ def main():
             raise FileNotFoundError(path)
 
     if args.eval or any(name != "prepare" for name in args.stages):
-        one("train.hardware_probe", ["--out", run / "hardware.json"], "hardware", ",".join(gpus))
+        one("train.hardware_probe", ["--out", run / "hardware.json", "--expected_devices", world], "hardware", ",".join(gpus))
 
     stage("prepare", lambda: execute([([python, "data/prepare_s1k.py", "--model_name", model,
                                         "--dataset", str(dataset), "--out", str(train)], gpus[0])], "prepare"),
           lambda: require(train))
-    parts = [run / f"prefix-{i}.jsonl" for i in range(3)]
+    parts = [run / f"prefix-{i}.jsonl" for i in range(world)]
 
     def prefix():
+        options = ["--max_model_len", "2048", "--max_tokens", "256", "--n", "1", "--development_smoke"] if args.development_smoke else []
         execute([([python, "-m", "proposal_v2.prefix_truncate", "--model", model, "--in", str(train),
-                   "--out", str(parts[i]), "--gpu_mem", "0.9", "--shard_id", str(i), "--num_shards", "3"], gpu)
+                   "--out", str(parts[i]), "--gpu_mem", "0.9", "--shard_id", str(i), "--num_shards", str(world), *options], gpu)
                  for i, gpu in enumerate(gpus)], "prefix")
         merge_prefix_shards(train, parts, prefixed)
 

@@ -9,13 +9,14 @@ import torch
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--expected_devices", type=int, default=3)
     args = parser.parse_args()
-    if not torch.cuda.is_available() or torch.cuda.device_count() != 3:
-        raise RuntimeError("CORED B200 pipeline requires exactly three visible CUDA devices")
+    if args.expected_devices < 1 or not torch.cuda.is_available() or torch.cuda.device_count() != args.expected_devices:
+        raise RuntimeError(f"Expected exactly {args.expected_devices} visible CUDA devices")
     if not torch.distributed.is_nccl_available():
         raise RuntimeError("This PyTorch build has no NCCL backend")
     devices = []
-    for rank in range(3):
+    for rank in range(args.expected_devices):
         torch.cuda.set_device(rank)
         if not torch.cuda.is_bf16_supported():
             raise RuntimeError(f"CUDA device {rank} does not support bf16")

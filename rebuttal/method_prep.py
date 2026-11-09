@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from rebuttal.common import ROOT, jsonl, rows, write
 
 
-def palign(model, source, output, shard, shards):
+def palign(model, source, output, shard, shards, development=None):
     from transformers import AutoTokenizer
     from vllm import LLM, SamplingParams
     from rebuttal.evaluate import grade_math
@@ -18,7 +18,11 @@ def palign(model, source, output, shard, shards):
     spec.loader.exec_module(binary)
     tokenizer = AutoTokenizer.from_pretrained(model, local_files_only=True, trust_remote_code=True)
     context = min(65536, json.loads((Path(model) / 'config.json').read_text()).get('max_position_embeddings', 32768))
-    llm = LLM(model=model, tensor_parallel_size=1, max_model_len=context, gpu_memory_utilization=.9, seed=42)
+    options = {}
+    if development:
+        context = min(context, development['context'])
+        options.update(enforce_eager=True, max_num_seqs=1)
+    llm = LLM(model=model, tensor_parallel_size=1, max_model_len=context, gpu_memory_utilization=.9, seed=42, **options)
     binary.model = object()
     binary.tokenizer = tokenizer
     def complete(prompt, tokens, temperature):
@@ -50,7 +54,7 @@ def palign(model, source, output, shard, shards):
                   'and put your final answer within \\boxed{}. '
                   'I will provide you with some prior knowledge as a draft to assist you in solving the question.'
                   f"*Question*:{row['question']}\n*Prefix*:{prefix}")
-        continuation = complete(prompt, 32768, .6)
+        continuation = complete(prompt, development['new_tokens'] if development else 32768, .6)
         correct, predicted = grade_math(continuation, row['gold'])
         record = dict(row, prefix=prefix, prefix_sentences=length, sufficient=sufficient,
                       judgment=judgment, continuation=continuation, accepted=correct, predicted_answer=predicted)
@@ -101,6 +105,7 @@ def ssft(model, source, output, settings=None, shard=0, shards=1):
         args.ig_steps = settings['ig_steps']
         args.cumulative_ratio = settings['mass']
         args.coherence_max = settings['coherence']
+        args.require_valid_attribution = settings.get('require_valid_attribution', False)
     cost = one_pass.stage_prep(args, records)
     jsonl(output, records)
     write(str(output)+'.cost.json', cost)
@@ -150,7 +155,11 @@ def main():
     p.add_argument('--config', type=Path)
     args = p.parse_args()
     if args.method == 'palign':
-        palign(args.model, args.source, args.output, args.shard, args.shards if args.shards is not None else 3)
+        config = json.loads(args.config.read_text()) if args.config else {}
+        if config.get('development_smoke') and not config.get('smoke'):
+            raise ValueError('Development limits require a smoke run')
+        palign(args.model, args.source, args.output, args.shard, args.shards if args.shards is not None else 3,
+               config.get('development_smoke'))
     elif args.method == 'ssft':
         ssft(args.model, args.source, args.output, json.loads(args.config.read_text())['method_specific'] if args.config else None,
              args.shard, args.shards if args.shards is not None else 1)

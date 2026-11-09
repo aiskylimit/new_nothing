@@ -44,6 +44,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--shard_id", type=int, default=0)
     ap.add_argument("--num_shards", type=int, default=1)
+    ap.add_argument("--development_smoke", action="store_true")
     args = ap.parse_args()
     if args.num_shards < 1 or not 0 <= args.shard_id < args.num_shards:
         ap.error("Invalid shard_id/num_shards")
@@ -92,8 +93,9 @@ def main() -> None:
     print(f"[prefix] {len(rows)} mẫu -> {len(prompts)} prompt (grid {FRACS}), "
           f"bỏ {n_skip_long} prompt quá dài (>{prompt_cap} tok)", flush=True)
 
+    options = {'enforce_eager': True, 'max_num_seqs': 1} if args.development_smoke else {}
     llm = LLM(model=args.model, dtype="bfloat16", gpu_memory_utilization=args.gpu_mem,
-              max_model_len=args.max_model_len, enable_prefix_caching=True, seed=0)
+              max_model_len=args.max_model_len, enable_prefix_caching=True, seed=0, **options)
     sp = SamplingParams(n=args.n, temperature=args.temperature, top_p=0.95,
                         max_tokens=args.max_tokens, stop=["<|im_end|>", "<|endoftext|>"])
     outs = llm.generate(prompts, sp)

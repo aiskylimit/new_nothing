@@ -156,3 +156,24 @@ def test_pipeline_preparation_reuses_data_but_rejects_changed_recipe(tmp_path):
                              capture_output=True, text=True, timeout=30)
     assert changed.returncode != 0
     assert "Run configuration differs" in changed.stderr
+
+
+def test_two_rank_three_experts_and_student_match_single_rank(tmp_path):
+    """Real two-process CPU/Gloo coverage for the development topology."""
+    from proposal.merge import merge_experts, save_merged_adapter
+    model, source, keys, weights = tiny_assets(tmp_path)
+    one, two = tmp_path / 'one', tmp_path / 'two'
+    extra = ['--keystep_dir', keys, '--lr', '0.003']
+    launch(tmp_path, 1, 'phase1', one, model, source, extra)
+    launch(tmp_path, 2, 'phase1', two, model, source, extra)
+    compare_adapters(one, two, [f'expert_{i}' for i in range(3)])
+    assert len(list(two.glob('timing-rank-*.json'))) == 2
+    state, rank = merge_experts([str(two / f'expert_{i}') for i in range(3)], 'ties',
+                                out_rank=2, density=0.2, device='cpu')
+    teacher = save_merged_adapter(state, rank, str(two / 'expert_0'), str(tmp_path/'merged'))
+    options = ['--teacher_adapter', teacher, '--weights_dir', weights, '--lr', '0.003']
+    dist_one, dist_two = tmp_path/'dist-one', tmp_path/'dist-two'
+    launch(tmp_path, 1, 'distill', dist_one, model, source, options)
+    launch(tmp_path, 2, 'distill', dist_two, model, source, options)
+    compare_adapters(dist_one, dist_two, ['student'])
+    assert (dist_two/'student/adapter_model.safetensors').is_file()

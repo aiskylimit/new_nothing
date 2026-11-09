@@ -86,6 +86,41 @@ DeepSeek 1.5B uses LLaMA-Factory's `deepseekr1` template, not the Qwen template.
 
 ## Smoke tests and 15 training runs
 
+For a separate development test on **two RTX 3090s**, use:
+
+```bash
+# Linux with Internet; install uv first if unavailable. Skip setup/download if provisioned.
+bash rebuttal/smoke_2x3090.sh setup
+bash rebuttal/smoke_2x3090.sh download
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh all
+# Faster first check: the five native methods on the real 1.5B backbone only.
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --settings C
+# Or one method, e.g. C_cored_1.5b_seed42.
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --run-id C_cored_1.5b_seed42
+```
+
+This dedicated entry point tests a real two-rank NCCL all-reduce and bf16 backward
+in each needed environment, native method preprocessing, four optimizer updates,
+checkpoint save/load, two vLLM workers, and math/MC scoring. It defaults to all
+15 configurations using their real backbones, but **synthetic short arithmetic**
+instead of s1K/benchmark data. It uses batch 2 (1/GPU), train cutoff 512, vLLM
+context 2048/eager mode, up to 256 generated tokens, IG4, and one eval response.
+CoReD retains three experts and runs prefix/key/Phase 1/council/TIES/distillation;
+four Phase 1 updates on four examples reach the SVGD-active epoch.
+P-ALIGN correctness filtering remains active; zero accepted examples or SSFT
+attribution OOM is an error, not a successful smoke. GPU memory fit/runtime has
+not been established until this runs on the target machine.
+Short context, low concurrency and eager execution follow the
+[vLLM memory guidance](https://docs.vllm.ai/en/v0.9.0/configuration/conserving_memory.html).
+
+Outputs live in `rebuttal/smoke-2x3090/dev2_<run_id>/`, with aggregate
+`summary.json` and `<runs>.launcher.log`. Rerun the same command to reuse completed
+training/eval stages; changed code/config/data requires a fresh
+`REBUTTAL_2GPU_RUNS`. Existing main/prepared data and the frozen main configs are
+not used as writable test outputs. These results are not paper metrics or a
+guarantee of B200/long-context/full-batch compatibility. The main entry point
+below still requires three B200s and the original experimental protocol.
+
 ```bash
 # Two input examples and two optimizer updates; isolated from main run IDs.
 python -m rebuttal.runner smoke --runs rebuttal/smoke-runs

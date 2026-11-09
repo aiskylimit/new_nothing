@@ -119,6 +119,8 @@ def stage_prep(args, records):
                 max_input_tokens=args.ig_max_tokens,
                 sample_index=i,
             )
+            if getattr(args, 'require_valid_attribution', False) and _status != 'ok':
+                raise RuntimeError(f'Attribution failed for sample {rec.get("id", i)}: {_status}; smoke cannot pass with zero fallback scores')
             ig_rows.append(compact_ig(scores))
             del scores
         select_important_segments(
