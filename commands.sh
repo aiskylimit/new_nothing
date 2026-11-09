@@ -1,5 +1,5 @@
-#2 -1 +a
-#cred
+#1 +10
+#cred-log
 #v1
 
 
@@ -26,10 +26,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 
-cd ./cred
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
-
-python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+zip _run-2026-11-08_18-31-03-cred.zip _run_log_/_run-2026-11-08_18-31-03-cred.log
+# cd ./cred
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
