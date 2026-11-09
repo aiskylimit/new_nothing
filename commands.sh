@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json/ +a
+#2 -1 +a
 #cred
 #v1
 
