@@ -1,0 +1,11 @@
+### Merge Qwen3-8B SFT (Long-CoT) LoRA
+model_name_or_path: /mnt/local/aiskylimit_new_nothing/palign_sft/models/Qwen3-8B
+adapter_name_or_path: output/qwen3-8b-longcot/lora
+template: qwen3
+finetuning_type: lora
+trust_remote_code: true
+
+export_dir: output/qwen3-8b-longcot/merged
+export_size: 5
+export_device: cpu
+export_legacy_format: false

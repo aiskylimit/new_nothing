@@ -1,0 +1,10 @@
+#d
+#datasets
+--hf-dataset simplescaling/s1K-1.1 /mnt/local/aiskylimit_new_nothing/palign_sft/datasets/s1K-1.1
+--hf-dataset Maxwell-Jia/AIME_2024 /mnt/local/aiskylimit_new_nothing/palign_sft/datasets/AIME_2024
+--hf-dataset yentinglin/aime_2025 /mnt/local/aiskylimit_new_nothing/palign_sft/datasets/aime_2025
+--hf-dataset AI-MO/aimo-validation-amc /mnt/local/aiskylimit_new_nothing/palign_sft/datasets/aimo-validation-amc
+--hf-dataset HuggingFaceH4/MATH-500 /mnt/local/aiskylimit_new_nothing/palign_sft/datasets/MATH-500
+#models
+--hf Qwen/Qwen2.5-7B-Instruct /mnt/local/aiskylimit_new_nothing/palign_sft/models/Qwen2.5-7B-Instruct
+--hf Qwen/Qwen3-8B /mnt/local/aiskylimit_new_nothing/palign_sft/models/Qwen3-8B

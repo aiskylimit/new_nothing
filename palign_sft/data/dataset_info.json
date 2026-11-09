@@ -1,0 +1,9 @@
+{
+  "s1k_label": {
+    "file_name": "s1k_label.jsonl"
+  },
+  "s1k_longcot": {
+    "file_name": "s1k_longcot.jsonl"
+  }
+}
+
