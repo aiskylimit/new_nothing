@@ -10,7 +10,7 @@ from datasets import load_dataset, load_from_disk
 ROOT = Path(__file__).resolve().parents[1]
 ASSET_ROOT = Path(
     os.environ.get(
-        "PALIGN_SFT_ASSET_ROOT", "/mnt/local/aiskylimit_new_nothing/palign_sft"
+        "PALIGN_SFT_ASSET_ROOT", str(ROOT)
     )
 )
 RAW = Path(os.environ.get("PALIGN_SFT_DATA_DIR", str(ROOT / "data"))) / "raw"

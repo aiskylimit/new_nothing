@@ -1,20 +1,17 @@
 # manager: uv
-# python: 3.12
-# From spectral-guided-learning pyproject [project].dependencies (requires-python >=3.12,<3.13; [tool.uv]).
-torch==2.13.0
-torchvision==0.28.0
-torchaudio==2.11.0
-vllm==0.27.1
-transformers==5.5.3
-peft>=0.13
-deepspeed>=0.15
-datasets>=2.20
-accelerate>=1.0
-numpy>=2.0,<2.5
-pandas>=2.2
+# python: 3.11
+# SGL train + spectral masks. Shared vLLM eval uses palign.txt in another env.
+accelerate==1.13.0
+datasets==4.8.4
+math-verify==0.9.0
+numpy==2.4.6
+peft==0.18.1
 pyarrow
-pyyaml
+pyyaml==6.0.3
+sentencepiece
+setuptools>=69
+wheel
+torch==2.13.0
+transformers==5.4.0
 tqdm
-math-verify
-json-repair
 pytest

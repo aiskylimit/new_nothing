@@ -10,7 +10,7 @@
 #   bash project_commands.sh eval       # needs merged weights (or MODEL=...)
 #
 # Eval base checkpoint only (skip train/merge):
-#   MODEL=/mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen2.5-7B-Instruct bash project_commands.sh eval
+#   MODEL=models/Qwen2.5-7B-Instruct bash project_commands.sh eval
 #
 # Tiny 0.5B flow check (does not replace this script):
 #   bash project_commands_smoke.sh
@@ -19,20 +19,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-ASSET_ROOT="${ASSET_ROOT:-/mnt/local/aiskylimit_new_nothing/P-ALIGN}"
+ASSET_ROOT="${PALIGN_ASSET_ROOT:-$ROOT}"
 MODEL_PATH="${MODEL_PATH:-$ASSET_ROOT/models/Qwen2.5-7B-Instruct}"
 DATA_DIR="${DATA_DIR:-$ROOT/data}"
 EVAL_DATA_DIR="${EVAL_DATA_DIR:-$DATA_DIR/raw}"
 export PALIGN_ASSET_ROOT="$ASSET_ROOT"
 export PALIGN_DATA_DIR="$DATA_DIR"
-if [ -f "${PALIGN_VENV:-/mnt/local/uvenvs/p-align}/bin/activate" ]; then
+PALIGN_VENV="${PALIGN_VENV:-/mnt/local/uvenvs/palign}"
+if [ ! -f "$PALIGN_VENV/bin/activate" ] && [ -f /mnt/local/uvenvs/p-align/bin/activate ]; then
+  PALIGN_VENV=/mnt/local/uvenvs/p-align
+fi
+if [ -f "$PALIGN_VENV/bin/activate" ]; then
   # shellcheck disable=SC1091
-  source "${PALIGN_VENV:-/mnt/local/uvenvs/p-align}/bin/activate"
+  source "$PALIGN_VENV/bin/activate"
 elif [ -f /venv/main/bin/activate ]; then
   # shellcheck disable=SC1091
   source /venv/main/bin/activate
 else
-  echo "no python env (PALIGN_VENV or /mnt/local/uvenvs/p-align or /venv/main)" >&2
+  echo "no python env (provision palign.txt or set PALIGN_VENV)" >&2
   exit 1
 fi
 
@@ -70,6 +74,9 @@ cmd_env() {
 
 cmd_data() {
   mkdir -p "$DATA_DIR/raw" output/log output/result
+  if [ ! -f "$DATA_DIR/palign_sft_qwen2.5-7b.json" ] && [ -f "$ASSET_ROOT/datasets/P-ALIGN/P-ALIGN.json" ]; then
+    cp "$ASSET_ROOT/datasets/P-ALIGN/P-ALIGN.json" "$DATA_DIR/palign_sft_qwen2.5-7b.json"
+  fi
   if [ ! -f "$DATA_DIR/palign_sft_qwen2.5-7b.json" ]; then
     echo "missing local train file $DATA_DIR/palign_sft_qwen2.5-7b.json" >&2
     exit 1

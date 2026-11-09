@@ -12,7 +12,6 @@ from typing import Any
 
 import torch
 from accelerate import Accelerator
-from datasets import load_dataset
 from huggingface_hub import dataset_info, model_info
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
@@ -46,6 +45,7 @@ from sgl.data import (
     SampleFormatError,
     prepare_sample,
 )
+from sgl.local_data import load_source_dataset
 from sgl.spectral import capture_reasoning_gradient_matrix, exact_spectral_selection
 
 LOGGER = logging.getLogger("sgl.build_masks")
@@ -353,7 +353,7 @@ def run(args: argparse.Namespace) -> None:
     )
     output_dir, run_config = _initialize_output(accelerator, args, run_config)
 
-    dataset = load_dataset(
+    dataset = load_source_dataset(
         args.dataset_name,
         split=args.split,
         revision=run_config.get("resolved_dataset_revision") or args.dataset_revision,

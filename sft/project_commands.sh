@@ -15,21 +15,22 @@ STAGE="${1:-all}"
 TARGET="${2:-qwen25_longcot}"
 ALL_TARGETS="qwen25_label qwen25_longcot qwen3_label qwen3_longcot"
 
-ASSET_ROOT="${ASSET_ROOT:-/mnt/local/aiskylimit_new_nothing/palign_sft}"
+ASSET_ROOT="${PALIGN_SFT_ASSET_ROOT:-$ROOT}"
 DATA_DIR="${DATA_DIR:-$ROOT/data}"
-TRAIN_SOURCE="${TRAIN_SOURCE:-$ASSET_ROOT/datasets/s1K-1.1}"
+TRAIN_SOURCE="${PALIGN_SFT_TRAIN_SOURCE:-${TRAIN_SOURCE:-$ASSET_ROOT/datasets/s1K-1.1}}"
 EXPECTED_TRAIN_ROWS="${EXPECTED_TRAIN_ROWS:-1000}"
 export PALIGN_SFT_ASSET_ROOT="$ASSET_ROOT"
 export PALIGN_SFT_DATA_DIR="$DATA_DIR"
 
-if [ -f "${PALIGN_VENV:-/mnt/local/uvenvs/p-align}/bin/activate" ]; then
+SFT_VENV="${SFT_VENV:-${PALIGN_VENV:-/mnt/local/uvenvs/sft}}"
+if [ -f "$SFT_VENV/bin/activate" ]; then
   # shellcheck disable=SC1091
-  source "${PALIGN_VENV:-/mnt/local/uvenvs/p-align}/bin/activate"
+  source "$SFT_VENV/bin/activate"
 elif [ -f /venv/main/bin/activate ]; then
   # shellcheck disable=SC1091
   source /venv/main/bin/activate
 else
-  echo "no python env (PALIGN_VENV or /mnt/local/uvenvs/p-align or /venv/main)" >&2
+  echo "no python env (provision sft.txt or set SFT_VENV)" >&2
   exit 1
 fi
 
@@ -139,7 +140,8 @@ cmd_data() {
     --output-dir "$DATA_DIR" \
     --expected-rows "$EXPECTED_TRAIN_ROWS"
 
-  "$PYTHON" src/fetch_eval.py
+  PALIGN_ASSET_ROOT="$ROOT/../palign" PALIGN_DATA_DIR="$ROOT/../palign/data" \
+    "$PYTHON" "$ROOT/../palign/src/fetch_eval.py"
 }
 
 cmd_train_one() {

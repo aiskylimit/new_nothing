@@ -1,5 +1,5 @@
 ### Qwen2.5-7B-Instruct SFT (Label)
-model_name_or_path: /mnt/local/aiskylimit_new_nothing/palign_sft/models/Qwen2.5-7B-Instruct
+model_name_or_path: models/Qwen2.5-7B-Instruct
 trust_remote_code: true
 flash_attn: auto
 

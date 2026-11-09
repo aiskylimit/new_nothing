@@ -10,7 +10,6 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 from accelerate.utils import DistributedType
-from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from torch.utils.data import Dataset
 from transformers import (
@@ -43,6 +42,7 @@ from sgl.data import (
     native_assistant_end_token_id,
     prepare_sample,
 )
+from sgl.local_data import load_source_dataset
 
 LORA_TARGET_MODULES = (
     "q_proj",
@@ -364,7 +364,7 @@ def run(args: argparse.Namespace) -> None:
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    source_dataset = load_dataset(
+    source_dataset = load_source_dataset(
         manifest["dataset_name"],
         split=manifest["split"],
         revision=(

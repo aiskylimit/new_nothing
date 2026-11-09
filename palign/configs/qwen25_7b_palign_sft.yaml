@@ -1,7 +1,7 @@
 ### Qwen2.5-7B-Instruct P-ALIGN SFT (LLaMA-Factory)
 ### See HYPERPARAMETERS.md for paper vs assumed values.
 
-model_name_or_path: /mnt/local/aiskylimit_new_nothing/P-ALIGN/models/Qwen2.5-7B-Instruct
+model_name_or_path: models/Qwen2.5-7B-Instruct
 trust_remote_code: true
 flash_attn: auto
 

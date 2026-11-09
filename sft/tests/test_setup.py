@@ -173,7 +173,7 @@ class ConfigurationMatrixTests(unittest.TestCase):
                 for key, value in self.COMMON.items():
                     self.assertEqual(train[key], value, key)
                 self.assertTrue(
-                    train["model_name_or_path"].endswith("/models/" + model)
+                    train["model_name_or_path"] == "models/" + model
                 )
                 self.assertEqual(train["template"], template)
                 self.assertEqual(train["dataset"], dataset)
@@ -412,7 +412,7 @@ class ProjectCommandsTests(unittest.TestCase):
             environment = os.environ.copy()
             environment.update(
                 {
-                    "ASSET_ROOT": str(assets),
+                    "PALIGN_SFT_ASSET_ROOT": str(assets),
                     "COMMAND_LOG": str(log),
                     "DATA_DIR": str(prepared),
                     "EXPECTED_TRAIN_ROWS": "2",
@@ -421,6 +421,7 @@ class ProjectCommandsTests(unittest.TestCase):
                     "PYTHON": sys.executable,
                 }
             )
+            environment["PALIGN_ASSET_ROOT"] = str(assets)
             result = subprocess.run(
                 ["bash", str(ROOT / "project_commands.sh"), "train", "all"],
                 cwd=ROOT,

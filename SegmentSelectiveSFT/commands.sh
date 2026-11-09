@@ -5,9 +5,9 @@
 #   bash commands.sh
 #
 # Can san tren may (khong tai HuggingFace luc chay):
-#   model  /mnt/local/_models/aiskylimit_new_nothingnew_2/Qwen2.5-7B-Instruct
-#   train  /mnt/local/_data/aiskylimit_new_nothingnew_2/s1k/train.jsonl
-#   bench  /mnt/local/_data/aiskylimit_new_nothingnew_2/<aime24|aime25|amc12|math500|gpqa>/test.jsonl
+#   model  models/Qwen2.5-7B-Instruct
+#   train  datasets/s1k/train.jsonl
+#   bench  ../palign/data/raw/<aime24|aime25|amc12|math500>.jsonl
 #
 # Ghi de duong dan: MODEL_DIR=... TRAIN_JSONL=... BENCH_DIR=... bash commands.sh
 # -----------------------------------------------------------------------------
@@ -17,15 +17,16 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-VENV="${VENV:-/mnt/local/uvenvs/ssft_onepass}"
-MODEL_DIR="${MODEL_DIR:-/mnt/local/_models/aiskylimit_new_nothingnew_2/Qwen2.5-7B-Instruct}"
-TRAIN_JSONL="${TRAIN_JSONL:-/mnt/local/_data/aiskylimit_new_nothingnew_2/s1k/train.jsonl}"
+ASSET_ROOT="${SSFT_ASSET_ROOT:-$ROOT}"
+VENV="${VENV:-/mnt/local/uvenvs/SegmentSelectiveSFT}"
+MODEL_DIR="${MODEL_DIR:-$ASSET_ROOT/models/Qwen2.5-7B-Instruct}"
+TRAIN_JSONL="${TRAIN_JSONL:-$ASSET_ROOT/datasets/s1k/train.jsonl}"
 BENCH_DIR="${BENCH_DIR:-$ROOT/../palign/data/raw}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT/outputs/rebuttal}"
-EVAL_PYTHON="${EVAL_PYTHON:-/mnt/local/uvenvs/p-align/bin/python}"
+EVAL_PYTHON="${EVAL_PYTHON:-/mnt/local/uvenvs/palign/bin/python}"
 RUN_ID="${RUN_ID:-ssft_qwen25_7b_seed42}"
 GPU="${GPU:-0,1,2}"
-STAMP="${VENV}/.setup_done_onepass_v1"
+
 
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 log() { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
@@ -38,25 +39,12 @@ log() { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 # 1. Moi truong. one_pass train bang unsloth roi cham diem trong cung process,
 #    nen dung env train. Eval bang vLLM trong subprocess EVAL_PYTHON rieng.
 # -----------------------------------------------------------------------------
-if [[ ! -x "${VENV}/bin/python" ]]; then
-  log "Tao venv: ${VENV}"
-  mkdir -p "$(dirname "$VENV")"
-  python3 -m venv "$VENV"
-fi
+[[ -x "${VENV}/bin/python" ]] || die "Can tao env bang SegmentSelectiveSFT.txt truoc: $VENV"
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"
-
-if [[ ! -f "$STAMP" ]]; then
-  log "Cai dependency train + cham diem"
-  python -m pip install --upgrade pip
-  python -m pip install -r "${ROOT}/requirements-sft.txt"
-  python -m pip install "sympy==1.14.0" "regex==2024.11.6" "word2number==1.1"
-  python -m pip install -e "${ROOT}/Eval/latex2sympy"
-  python -c "import unsloth, torch, sympy, regex, word2number"
-  touch "$STAMP"
-else
-  log "Moi truong da san: ${VENV}"
-fi
+python -c "import unsloth, torch, datasets, pyarrow; print('SSFT train env ok')"
+PALIGN_ASSET_ROOT="$ROOT/../palign" PALIGN_DATA_DIR="$ROOT/../palign/data" \
+  "$EVAL_PYTHON" "$ROOT/../palign/src/fetch_eval.py"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

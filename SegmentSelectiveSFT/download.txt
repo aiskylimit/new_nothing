@@ -1,0 +1,12 @@
+#d
+#datasets
+--hf-dataset baesad/s1K-1.1-deepseek-cot /mnt/local/@PROJECT@/SegmentSelectiveSFT/datasets/s1k
+--hf-dataset Maxwell-Jia/AIME_2024 /mnt/local/@PROJECT@/palign/datasets/AIME_2024
+--hf-dataset yentinglin/aime_2025 /mnt/local/@PROJECT@/palign/datasets/aime_2025
+--hf-dataset AI-MO/aimo-validation-amc /mnt/local/@PROJECT@/palign/datasets/aimo-validation-amc
+--hf-dataset HuggingFaceH4/MATH-500 /mnt/local/@PROJECT@/palign/datasets/MATH-500
+#ood-test-only: ARC-Challenge test (1172); LogiQA 2.0 English MRC test (1572)
+--url https://huggingface.co/datasets/allenai/ai2_arc/resolve/210d026faf9955653af8916fad021475a3f00453/ARC-Challenge/test-00000-of-00001.parquet /mnt/local/@PROJECT@/palign/datasets/ARC-Challenge/
+--url https://raw.githubusercontent.com/csitfun/LogiQA2.0/31381f5634d201c4ed6f981b87de3c7d9f496002/logiqa/DATA/LOGIQA/test.txt /mnt/local/@PROJECT@/palign/datasets/LogiQA2.0/
+#models
+--hf Qwen/Qwen2.5-7B-Instruct /mnt/local/@PROJECT@/SegmentSelectiveSFT/models/Qwen2.5-7B-Instruct

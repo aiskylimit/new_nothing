@@ -1,5 +1,73 @@
 # Rebuttal defaults
 
+## Server provisioning files
+
+The server reads model/data commands from each folder's `download.txt`, and
+Python dependencies from the matching file at the repository root:
+
+| Folder | Model/data manifest | Dependency manifest | Default environment |
+|---|---|---|---|
+| `palign` | `palign/download.txt` | `palign.txt` | `/mnt/local/uvenvs/palign` |
+| `sft` | `sft/download.txt` | `sft.txt` | `/mnt/local/uvenvs/sft` |
+| `sgl` | `sgl/download.txt` | `sgl.txt` | `/mnt/local/uvenvs/sgl` |
+| `SegmentSelectiveSFT` | `SegmentSelectiveSFT/download.txt` | `SegmentSelectiveSFT.txt` | `/mnt/local/uvenvs/SegmentSelectiveSFT` |
+
+All manifests use Python 3.11 and `# manager: uv`. Each download manifest starts
+with `#d`; the downloader replaces `@PROJECT@` with the deployed project name.
+Models and training datasets go under `/mnt/local/@PROJECT@/<folder>/`.
+Every manifest also provisions the same four ID benchmark sources and two
+planned OOD test files under `palign/datasets/`, using one shared benchmark store.
+
+The default scripts resolve assets from their own deployed folder. Existing
+external asset locations can be selected with `PALIGN_ASSET_ROOT`,
+`PALIGN_SFT_ASSET_ROOT`, `SGL_ASSET_ROOT`, or `SSFT_ASSET_ROOT`.
+Direct P-ALIGN/SFT YAML configurations use relative `models/...` paths.
+P-ALIGN copies its downloaded `datasets/P-ALIGN/P-ALIGN.json` into the expected
+training path only when the existing processed training JSON is absent.
+SSFT reads the same preformatted `baesad/s1K-1.1-deepseek-cot/train.jsonl`
+source as before, now under `SegmentSelectiveSFT/datasets/s1k/`.
+SGL reads its downloaded s1K Parquet files directly, without a Hub request.
+
+`palign.txt` and `sft.txt` share the LLaMA-Factory/vLLM environment recipe.
+SGL and SSFT retain separate training environments and use
+`EVAL_PYTHON=/mnt/local/uvenvs/palign/bin/python` for the shared vLLM evaluator.
+Provision **palign.txt as well** when running either SGL or SSFT.
+Override `PALIGN_VENV`, `SFT_VENV`, `SGL_VENV`, or `VENV` if the server creates
+environments elsewhere. SSFT's launcher uses the provisioned environment and
+does not rebuild/reinstall it during a timed run.
+
+The old `p-align.txt`, `ssft_eval.txt`, and
+`SegmentSelectiveSFT/downloads.txt` are retained as compatible aliases.
+Use the four matching manifest pairs above for new jobs. Dependency resolution
+was checked for Linux x86-64 (manylinux 2.35), Python 3.11; this does not replace
+a CUDA import/kernel check on the B200 server.
+
+### Planned OOD test data
+
+All four `download.txt` files download only the requested OOD test files with
+version-pinned `--url` entries. `SegmentSelectiveSFT/downloads.txt` mirrors them.
+
+| Benchmark | Evaluation split | Verified rows | Downloaded path relative to `palign/` |
+|---|---|---|---|
+| [ARC-Challenge](https://huggingface.co/datasets/allenai/ai2_arc) | `ARC-Challenge/test` | 1,172 | `datasets/ARC-Challenge/test-00000-of-00001.parquet` |
+| [LogiQA 2.0](https://github.com/csitfun/LogiQA2.0) | English MRC `test.txt` | 1,572 | `datasets/LogiQA2.0/test.txt` |
+
+The ARC snapshot is `210d026faf9955653af8916fad021475a3f00453`; the LogiQA
+file revision is `31381f5634d201c4ed6f981b87de3c7d9f496002`.
+Both counts and answer/choice schemas were checked directly from those files.
+SHA-256 values:
+
+- ARC test: `62f03257e737aed263f55c6abf87c7bb0028a44a6bdd2a26eb1279eb42c1d1e9`
+- LogiQA test: `71940b37ae0184b677c253a148d57ad4e75d6113447b1563c2ca82483e4e4f8d`
+
+These entries provision raw data; they do not add the datasets to the default
+math evaluation loop. MCQ normalization/scoring must preserve ARC's own
+`choices.label` mapping (labels can be letters or numbers, with 3–5 options),
+and LogiQA's passage, question, four options, and zero-based answer index.
+LogiQA uses the English MRC file, not its Chinese or NLI variants.
+
+## Experiment defaults
+
 The default backbone for all four methods is `Qwen/Qwen2.5-7B-Instruct`.
 Training uses LoRA, 3 epochs, seed 42, 3 GPUs, microbatch 11 per GPU, and
 gradient accumulation 1: effective batch **33**. Dataset selection and the

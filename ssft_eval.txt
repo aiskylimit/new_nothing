@@ -1,9 +1,18 @@
 # manager: uv
 # python: 3.11
-# From SegmentSelectiveSFT (chi cho stage split, ig, segments cua run_pipeline.sh; khong can vllm). Version lay theo cac env khac trong repo de mirror offline co san.
-torch==2.9.0
-transformers==4.56.1
+# Legacy eval environment alias. New jobs use palign.txt.
+accelerate==1.11.0
+datasets==4.0.0
+jsonlines
+llamafactory==0.9.5
+math-verify==0.9.0
 numpy==2.2.6
-datasets==4.1.1
-accelerate==1.10.1
+peft==0.18.1
+pyyaml==6.0.3
+sentencepiece
+torch==2.13.0
+torchaudio==2.11.0
+torchvision==0.28.0
 tqdm
+transformers==5.5.4
+vllm==0.27.1

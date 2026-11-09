@@ -45,8 +45,8 @@ CONDA_ENV="${CONDA_ENV:-selective_sft}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
 
 # --- Model ---
-ATTR_MODEL="${ATTR_MODEL:-Qwen/Qwen2.5-7B-Instruct}"   # model tinh IG
-TRAIN_MODEL="${TRAIN_MODEL:-Qwen/Qwen2.5-7B-Instruct}"  # model SFT
+ATTR_MODEL="${ATTR_MODEL:-$ROOT_DIR/models/Qwen2.5-7B-Instruct}"   # model tinh IG
+TRAIN_MODEL="${TRAIN_MODEL:-$ROOT_DIR/models/Qwen2.5-7B-Instruct}"  # model SFT
 COT_MODEL="${COT_MODEL:-deepseek-ai/DeepSeek-R1-Distill-Qwen-7B}"     # model sinh CoT
 
 # --- GPU ---
@@ -56,7 +56,7 @@ GPU_COT="${GPU_COT:-0,1,2,3}"
 
 # --- Duong dan du lieu ---
 HF_DATASET="${HF_DATASET:-simplescaling/s1K-1.1}"
-RAW_DATA="${RAW_DATA:-data/s1k/train.jsonl}"
+RAW_DATA="${RAW_DATA:-datasets/s1k/train.jsonl}"
 SEGMENT_FILE="${SEGMENT_FILE:-data/s1k/solution_segments.jsonl}"
 IG_RAW_FILE="${IG_RAW_FILE:-Attribution/processed_data/s1k/solution_segments_attn.jsonl}"
 IG_FILE="${IG_FILE:-Attribution/processed_data/s1k/IG.jsonl}"

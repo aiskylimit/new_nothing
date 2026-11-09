@@ -2,6 +2,8 @@
 
 Ngày kiểm tra: 2026-11-09. Nhánh: `rebuttal_iclr_ssft`, HEAD `ce7c934d2fc1ea02f1960130d9728e445f2696d2`, có thay đổi chưa commit. Báo cáo phản ánh **working tree hiện tại**, không chỉ HEAD. Không chạy GPU training, không đo runtime/FLOPs/VRAM, không sửa pipeline.
 
+**Cập nhật theo phạm vi người dùng đã chốt:** đo method total từ s1K có teacher CoT sẵn; loại bước sinh teacher CoT cho tất cả phương pháp. Không yêu cầu tái lập cấu hình gốc từng paper. Phần so sánh cấu hình paper và ghi chú logging bên dưới chỉ là bối cảnh của lượt audit trước; chưa thuộc công việc triển khai hiện tại. Với phạm vi này, SSFT `commands.sh` hiện tính đủ IG/selection trước SFT; nó chỉ giống P-ALIGN ở khả năng dùng artifact có sẵn của upstream/entrypoint train riêng.
+
 ## Kết luận
 
 Không thể dùng tổng thời gian của các launcher hiện tại làm phép so sánh end-to-end công bằng: P-ALIGN nhận dữ liệu đã xử lý; SGL xây mask; SSFT `commands.sh` tính lại IG. SSFT upstream cũng phát hành dữ liệu có lựa chọn segment sẵn và script train mặc định bỏ qua việc tính IG.
@@ -51,7 +53,7 @@ Nguồn: [paper arXiv §4.1, C.3, C.4](https://arxiv.org/html/2602.00425v1), [re
 
 ## 2. Ranh giới đo đề xuất
 
-Nên báo cả hai phạm vi, không trộn chúng trong một cột:
+**Phạm vi được chốt cho rebuttal là mục 2 dưới đây.** Mục 1 chỉ là breakdown có thể lấy thêm, không phải một mục tiêu benchmark riêng được yêu cầu:
 
 1. **SFT-only:** bắt đầu khi dữ liệu/mask đã sẵn sàng; đo optimization theo cùng quy ước cho mọi phương pháp. Công bố rõ không bao gồm method-specific preprocessing.
 2. **Method total từ một tập teacher CoT chung:** cộng toàn bộ preprocessing riêng của phương pháp và SFT. P-ALIGN gồm judge/search, continuation và lọc; SGL gồm capture/SVD; SSFT gồm IG/selection. Tính cả mẫu/candidate xử lý rồi bị loại.
@@ -65,6 +67,8 @@ Với kết quả xử lý công khai nhưng thiếu log, ghi **preprocessing ch
 Nếu tái sử dụng preprocessing qua K lần train, công bố thêm chi phí amortized `C_sft + C_prep/K`, đồng thời giữ chi phí một lần chạy `C_sft + C_prep`. Chỉ amortize artifact thật sự dùng lại được; mask phụ thuộc backbone/tokenizer/truncation không tự chuyển sang backbone khác.
 
 ## 3. Vấn đề trong cost logger hiện tại
+
+Các ghi chú trong mục này được giữ từ lượt audit trước. Người dùng đã yêu cầu tạm gác logging cho đến khi chốt implementation details; chưa sửa hoặc triển khai các đề xuất này.
 
 ### FLOPs của masked SFT
 
@@ -105,3 +109,21 @@ OpenReview trực tiếp yêu cầu xác minh/chặn truy cập. Đã đọc to�
 Đã kiểm tra live repository tác giả P-ALIGN tại tree SHA `4ddef39ff8812cedac939739029d2678d1978284` và SSFT tại tree SHA `cb1d834c3870f29b15bbb798946bf3ba88591c2e`. Không xác minh official SGL code; nhận xét về SGL code chỉ áp dụng thư mục `sgl/` đang được launcher rebuttal dùng.
 
 Không có số đo GPU mới, không có kết luận phương pháp nào rẻ nhất. Đây là audit công đoạn và cách hạch toán trước khi benchmark.
+
+## Kiểm tra bổ sung: khả năng chạy và ước lượng preprocessing
+
+Đã thực thi bảy kiểm tra trên source hiện tại bằng Python chuẩn, dùng phản hồi model/attribution giả lập, không import hoặc chạy model thật. Bằng chứng nằm ở `/private/tmp/training-cost-followup-checks.json`.
+
+- Binary search tìm đúng minimum trong tám trường hợp ranh giới khác nhau khi judge có tính đơn điệu.
+- Đưa trực tiếp record schema s1K có `deepseek_thinking_trajectory` vào `process_jsonl` tạo output rỗng vì hàm chỉ đọc `Long-CoT`. Cần adapter trường dữ liệu.
+- Lỗi inference judge giả lập bị chuyển thành NOT_ENOUGH; cuối cùng ghi full-CoT với `is_sufficient=False`, không làm run thất bại.
+- Script continuation vẫn xử lý record có `is_sufficient=False`, giữ cả câu trả lời sai giả lập, làm mất gold answer/status, và chưa xuất schema SFT. Cần lọc/ghép prefix-continuation/export trước khi coi đây là pipeline hoàn chỉnh.
+- Sentence splitter tái tạo văn bản có thể thêm dấu chấm; nó không bảo toàn nguyên văn.
+- Hàm `stage_prep` thực tế của SSFT gọi attribution J=50 cho mọi record và ghi đè selection cũ trong kiểm tra giả lập. Vì vậy đường chạy one-pass hiện không có khoản IG bị bỏ qua.
+- Năm file source liên quan parse thành công. Điều này không chứng minh GPU execution thành công; local là macOS arm64, không có torch/transformers/vLLM hay model weights trong các thư mục đã kiểm tra.
+
+Có thể ước lượng preprocessing sau khi nối/sửa các bước tối thiểu trên: lấy mẫu ngẫu nhiên theo nhóm độ dài token của s1K (ví dụ bắt đầu 50–100 mẫu, tăng nếu sai số còn lớn), chạy đúng backbone/hardware/context/batching dự kiến, đo riêng setup và xử lý. Tổng chi phí biến đổi có thể ước lượng theo `sum_h(N_h * mean_cost_h)`; GPU-hours phải phản ánh số GPU của mỗi stage. Với vLLM batching, cần đo các batch có phân bố độ dài đại diện và hiệu chỉnh throughput; không bảo đảm nhân thời gian một request đơn lẻ lên N là đúng.
+
+P-ALIGN cần chạy cả judge/search và generation/filter trên mỗi mẫu pilot, tính cả các mẫu bị loại; bỏ artificial sleep bằng `--sleep_sec 0` nếu không phải một phần thiết kế được giữ. SSFT cần chạy đủ J=50 trên mỗi mẫu pilot; không lấy J nhỏ rồi nhân tuyến tính làm số chính. Kiểm tra trạng thái OOM/long của SSFT: code có đường gán điểm 0 thay cho IG, nên một run kết thúc không tự chứng minh mọi mẫu đã được attribution thành công.
+
+FLOPs từ pilot cần đếm/ước lượng công việc thực và công bố sai số. Peak memory không ngoại suy tuyến tính theo số mẫu: đo trực tiếp với các độ dài cực trị và batching thực tế, chỉ gọi là peak đo trên pilot nếu chưa kiểm tra workload đầy đủ. Nếu SFT vẫn dùng 966 bản ghi P-ALIGN công khai, overhead ước lượng trên s1K chỉ là ước lượng của pipeline đã chọn, không phải chi phí lịch sử được xác minh để tạo đúng 966 bản ghi đó.

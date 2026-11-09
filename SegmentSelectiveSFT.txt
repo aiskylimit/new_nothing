@@ -1,0 +1,22 @@
+# manager: uv
+# python: 3.11
+# SSFT train + attribution only. Eval uses the separate palign.txt environment.
+accelerate==1.10.1
+bitsandbytes==0.48.2
+datasets==4.3.0
+numpy==2.2.6
+peft==0.18.1
+pyarrow
+pyyaml==6.0.3
+sentencepiece>=0.2.0
+setuptools
+wheel
+torch==2.9.0
+torchvision==0.24.0
+torchao==0.14.1
+transformers==4.57.1
+trl==0.23.0
+unsloth==2025.11.3
+unsloth_zoo==2025.11.4
+xformers==0.0.33.post1
+tqdm
