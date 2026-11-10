@@ -3,8 +3,6 @@
 #v2
 
 
-tree  /mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json-v5
-
 #2 -f-/mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/eval-impact/outputs/llama2-tinyllama-opd/logs/dolly-dskd-opd-10.log
@@ -28,7 +26,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 
-# cd ./cred
+cd ./cred
+tree MMEB-eval_outputs_v5/llava_ov-0.5B_cls_talas_jepa_v2_d1_cse1_vis1_sig1_kd1.0_sw0.5_l256_dt0.02
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
