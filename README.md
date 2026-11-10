@@ -1,19 +1,5 @@
 # Chạy thực nghiệm rebuttal trên 3 B200
 
-Chạy các lệnh từ root repo. Đổi `GPUS` theo ba GPU được cấp.
-
-## Chạy end-to-end cả 3 setting
-
-```bash
-# Máy có Internet: cài thư viện, tải model/data, prepare, kiểm tra, train/eval và report.
-GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
-
-# Máy offline: cần provision đủ thư viện và model/data trước.
-GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
-```
-
-Chọn một trong hai lệnh trên. Toàn bộ cấu hình và hướng dẫn H100/smoke nằm trong
-[rebuttal/README.md](rebuttal/README.md).
 
 ## Chạy lần lượt từng bước, chỉ setting A và C
 
@@ -39,3 +25,14 @@ bash rebuttal/project_commands.sh report --allow-partial
 Đổi `--settings A C` thành `--settings A` hoặc `--settings C` nếu chỉ chạy một
 setting; bỏ tùy chọn này để chạy cả ba. Báo cáo dùng `--allow-partial` vì bỏ B
 nên chưa đủ ma trận 15 run. Training log vẫn được lưu tự động như trước.
+
+
+## Chạy end-to-end cả 3 setting
+
+```bash
+# Máy có Internet: cài thư viện, tải model/data, prepare, kiểm tra, train/eval và report.
+GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
+
+# Máy offline: cần provision đủ thư viện và model/data trước.
+GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
+```
