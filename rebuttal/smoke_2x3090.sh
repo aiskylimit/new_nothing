@@ -32,10 +32,6 @@ case "$ACTION" in
     HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
       exec "$PY" -m rebuttal.eval_preflight --assets "$ASSETS" --runs "$RUNS" --gpus "${GPUS:-0,1}" "$@"
     ;;
-  eval-existing)
-    HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 WANDB_MODE=disabled \
-      exec "$PY" -m rebuttal.eval_existing --gpus "${GPUS:-0,1}" "$@"
-    ;;
   download)
     HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
       "$PY" -m rebuttal.provision --assets "$ASSETS" "$@"
@@ -47,5 +43,5 @@ case "$ACTION" in
     "$PY" -m rebuttal.smoke_2gpu --assets "$ASSETS" --runs "$RUNS" --gpus "${GPUS:-0,1}" "$@" \
       2>&1 | tee -a "${RUNS}.launcher.log"
     ;;
-  *) echo 'Usage: bash rebuttal/smoke_2x3090.sh {setup|setup-eval|check-eval|eval-existing|download|all} [options]' >&2; exit 2 ;;
+  *) echo 'Usage: bash rebuttal/smoke_2x3090.sh {setup|setup-eval|check-eval|download|all} [options]' >&2; exit 2 ;;
 esac

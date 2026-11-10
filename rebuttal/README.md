@@ -8,6 +8,11 @@ they are validated against `common.matrix()` to prevent unnoticed drift.
 
 ## Main three-B200 launcher
 
+For short commands that train all **A+C** runs before evaluation, see the
+[root README](../README.md#chạy-lần-lượt-từng-bước-chỉ-setting-a-và-c).
+Use `train --settings A C`, then `eval --settings A C` to omit B.
+Use `--run-id` to select individual methods/runs instead.
+
 ```bash
 # Offline B200 server: environments and attested assets must already be provisioned.
 GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
@@ -81,7 +86,8 @@ as if they used the same hardware/training batch.
 
 Keep the five training environments from `palign.txt`, `sft.txt`, `sgl.txt`,
 `SegmentSelectiveSFT.txt`, and `cored.txt`: their stacks are incompatible.
-`rebuttal.txt` provisions the common coordinator/evaluation environment. The code
+`rebuttal.txt` provisions the common coordinator; `rebuttal_eval.txt` provisions
+the separate shared evaluation environment. The code
 is unified by orchestration, provenance, output layout, cost definitions and
 evaluation; native method trainers/losses remain in their original folders.
 
@@ -108,7 +114,7 @@ The common vLLM evaluator uses **`rebuttal_eval`**, independently of every nativ
 training environment. Override `REBUTTAL_EVAL_PYTHON` for an already-provisioned
 evaluator, or `REBUTTAL_EVAL_VENV` to change the directory created by setup.
 
-### Shared evaluator and recovery of a trained checkpoint
+### Shared evaluator
 
 `rebuttal_eval.txt` pins official Linux x86_64/CPython 3.11 CUDA 12.9 wheels:
 Torch 2.13.0, torchvision 0.28.0, torchaudio 2.11.0 and vLLM 0.27.1+cu129.
@@ -118,16 +124,13 @@ The model/data sources, prompts, decoding budgets and math-verify rule are uncha
 The [official vLLM installation guide](https://docs.vllm.ai/en/v0.27.1/getting_started/installation/gpu/)
 describes CUDA-specific binaries and their PyTorch compatibility requirements.
 
-All three launchers support `setup-eval`, `check-eval` and `eval-existing`:
+Full `setup` in all three launchers installs the shared evaluator automatically.
+For a fresh development smoke run:
 
 ```bash
-# Online: install ONLY the new evaluator, without reinstalling native train envs.
-bash rebuttal/smoke_2x3090.sh setup-eval
-# GPU node, offline assets: test imports, bf16 kernel, local base and rank-16 zero LoRA.
-GPUS=0,1 bash rebuttal/smoke_2x3090.sh check-eval --sizes 1.5b
-# Reuse the previously saved checkpoint after a failed eval; no train action.
-GPUS=0,1 bash rebuttal/smoke_2x3090.sh eval-existing \
-  --run-dir rebuttal/smoke-2x3090/dev2_C_longcot_1.5b_seed42
+bash rebuttal/smoke_2x3090.sh setup
+bash rebuttal/smoke_2x3090.sh download
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh all --settings C
 ```
 
 Main/H100 preflight and the development launcher automatically run these small
@@ -137,14 +140,9 @@ it does not certify 32k-context/batch memory fit. A failure stops before trainin
 Full `setup` now installs the evaluator as a seventh environment. Offline nodes
 must provision it and its wheel dependencies first; a txt file is not a wheelhouse.
 
-Evaluation records `evaluator_environment.json` and refuses to append generations
-from a different or unknown package/build environment. If old partial raw files
-already exist without provenance, add `--fresh-output` to `eval-existing`; it
-writes to `<run>/eval-only-shared/evaluation/` and preserves the old evaluation.
-The utility verifies checkpoint hashes and never resumes optimizer/training state.
-It updates per-run eval status; the earlier smoke launcher's `summary.json`
-remains the history of that earlier invocation. Code fingerprint changes can
-still prevent resuming *training* from an older checkout; do not bypass that guard.
+Evaluation records package/build versions in `evaluator_environment.json`.
+All three launchers also support `setup-eval` to install only this environment,
+and `check-eval --sizes 1.5b` for a standalone GPU probe with local assets.
 
 This migration does **not** replace Torch/vLLM in `cored`, `palign` or other train
 envs. Their GPU builds must separately match the driver. P-ALIGN/CoReD generation

@@ -66,15 +66,6 @@ def evaluator_environment():
             'backend_source_sha256':sha(ROOT/'palign/src/test.py')}
 
 
-def bind_evaluator_environment(destination, identity):
-    path = destination/'evaluator_environment.json'
-    previous = json.loads(path.read_text()) if path.exists() else None
-    has_raw = any(p.stat().st_size for p in destination.glob('*.rank*.jsonl'))
-    if has_raw and previous != identity:
-        raise ValueError('Cannot mix raw responses from different/unknown evaluator environments; use a fresh eval output')
-    write(path, identity)
-
-
 def validate_records(records, questions, benchmark, scored=False, config=None):
     schedule = math_schedule(config) if benchmark in MATH else [(0, 1)]
     expected = {(row['question_id'], seed, sample) for row in questions for seed, count in schedule for sample in range(count)}
@@ -140,7 +131,7 @@ def generate(config, checkpoint, benchmarks, destination, shard, shards, batch_s
                         'where X is the letter of the correct choice.\n\n' + row['question'])
                     prompts.append(backend.apply_chat(tokenizer, [{'role': 'user', 'content': instruction}]))
                 if model is None:
-                    bind_evaluator_environment(destination, evaluator_environment())
+                    write(destination/'evaluator_environment.json', evaluator_environment())
                     options = {'enforce_eager': True, 'max_num_seqs': 1} if development else {}
                     model = backend._make_llm(str(base), context, 1, .9, seed=42, adapter_config=adapter_config, **options)
                     if adapter_config:

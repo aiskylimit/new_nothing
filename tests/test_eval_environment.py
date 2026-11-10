@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from rebuttal.common import ROOT, sha, write
+from rebuttal.common import ROOT, write
 
 
 def test_eval_python_is_independent_of_native_palign(monkeypatch, tmp_path):
@@ -105,51 +105,6 @@ def test_eval_preflight_uses_eval_python_each_gpu_and_no_training_telemetry(tmp_
     for command, kwargs in calls:
         assert command[0] == '/eval/python' and 'rebuttal.eval_probe' in command
         assert 'RANK' not in kwargs['env'] and 'REBUTTAL_STAGE_DIR' not in kwargs['env']
-
-
-def test_raw_environment_guard_rejects_mixed_or_unknown_old_generations(tmp_path):
-    from rebuttal.evaluate import bind_evaluator_environment
-    first, second = {'cuda':'12.9'}, {'cuda':'13.0'}
-    bind_evaluator_environment(tmp_path, first)
-    raw = tmp_path/'math500.rank0.jsonl'
-    raw.write_text('{}\n')
-    bind_evaluator_environment(tmp_path, first)
-    with pytest.raises(ValueError, match='Cannot mix'):
-        bind_evaluator_environment(tmp_path, second)
-    (tmp_path/'evaluator_environment.json').unlink()
-    with pytest.raises(ValueError, match='Cannot mix'):
-        bind_evaluator_environment(tmp_path, first)
-
-
-@pytest.mark.parametrize('fresh', [False, True])
-def test_eval_existing_reuses_verified_checkpoint_without_training(tmp_path, monkeypatch, fresh):
-    from rebuttal import eval_existing
-    from rebuttal.smoke_2gpu import configurations
-    root = tmp_path/'runs/dev2_C_longcot_1.5b_seed42'
-    config = configurations('C')[0]
-    config['fingerprint'] = 'old-training-code'
-    write(root/'run.json', config)
-    checkpoint = root/'checkpoint'
-    checkpoint.mkdir()
-    (checkpoint/'adapter_model.safetensors').write_bytes(b'fixture')
-    write(checkpoint/'checkpoint_manifest.json', {'base_local_path':str(tmp_path/'assets/models/base'),
-        'files_sha256':{'adapter_model.safetensors':sha(checkpoint/'adapter_model.safetensors')}})
-    write(root/'final_checkpoint.json', {'path':str(checkpoint)})
-    before = (root/'run.json').read_bytes()
-    calls = []
-    monkeypatch.setattr(eval_existing, 'check_eval', lambda *a, **kw: calls.append('probe'))
-    class EvalOnlyJob:
-        def __init__(self, *a): pytest.fail('Training constructor/fingerprint must not be reused')
-        def evaluate(self):
-            assert self.data == root.parent/'fixtures'
-            assert self.root == (root/'eval-only-shared' if fresh else root)
-            calls.append('eval')
-    monkeypatch.setattr(eval_existing, 'Job', EvalOnlyJob)
-    monkeypatch.setattr(sys, 'argv', ['eval-existing','--run-dir',str(root),'--gpus','0,1',
-                                     *(['--fresh-output'] if fresh else [])])
-    eval_existing.main()
-    assert calls == ['probe','eval'] and (root/'run.json').read_bytes() == before
-    assert (checkpoint/'adapter_model.safetensors').read_bytes() == b'fixture'
 
 
 def test_eval_manifest_pins_matching_cuda_builds_without_training_frameworks():

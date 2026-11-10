@@ -28,6 +28,33 @@ def test_final_matrix_and_committed_configs():
             assert config['data']['answer_source'] == 'gemini_attempt'
 
 
+@pytest.mark.parametrize('action', ['train', 'eval'])
+@pytest.mark.parametrize('settings,count', [([], 15), (['A','C'], 10), (['A'], 5)])
+def test_main_setting_selection_keeps_train_and_eval_separate(tmp_path, monkeypatch, action, settings, count):
+    import sys
+    from rebuttal import runner, preflight, eval_preflight
+    calls = []
+    class Job:
+        def __init__(self, config, assets, data, runs, gpus):
+            self.config = config
+            self.root = runs/config['run_id']
+            self.root.mkdir()
+        def train(self):
+            calls.append(('train', self.config['setting'], self.config['run_id']))
+        def evaluate(self):
+            calls.append(('eval', self.config['setting'], self.config['run_id']))
+    monkeypatch.setattr(runner, 'Job', Job)
+    monkeypatch.setattr(runner, 'aggregate', lambda *a: None)
+    monkeypatch.setattr(preflight, 'validate', lambda *a, **kw: None)
+    monkeypatch.setattr(eval_preflight, 'check_eval', lambda *a, **kw: None)
+    monkeypatch.setattr(sys, 'argv', ['runner', action, '--runs', str(tmp_path/'runs'),
+                                    *(['--settings', *settings] if settings else [])])
+    runner.main()
+    expected = {c['run_id'] for c in matrix() if not settings or c['setting'] in settings}
+    assert len(calls) == count and {run_id for _, _, run_id in calls} == expected
+    assert all(stage == action for stage, _, _ in calls)
+
+
 def test_paired_teacher_mapping_no_gold_as_training_trace(tmp_path):
     source = [{'question': ' Q  one ', 'deepseek_thinking_trajectory': 'D reasoning', 'deepseek_attempt': 'D answer', 'solution': '42',
                'gemini_thinking_trajectory': 'G reasoning', 'gemini_attempt': 'G answer', 'gemini_grade': 'Yes',

@@ -358,6 +358,8 @@ def main():
     p.add_argument('--runs', type=Path, default=ROOT / 'rebuttal/runs')
     p.add_argument('--gpus', default='3,4,5')
     p.add_argument('--run-id', nargs='+')
+    p.add_argument('--settings', nargs='+', choices=['A', 'B', 'C'],
+                   help='Only run these settings; default: A B C')
     args = p.parse_args()
     args.assets, args.data, args.runs = args.assets.resolve(), args.data.resolve(), args.runs.resolve()
     if len(args.gpus.split(',')) != 3 or len(set(args.gpus.split(','))) != 3:
@@ -371,7 +373,8 @@ def main():
         saved = json.loads((ROOT / 'rebuttal/configs' / (expected['run_id']+'.json')).read_text())
         if saved != expected:
             raise ValueError('Frozen main config differs from the shared protocol; update matrix and regenerate configs explicitly')
-    selected = [c for c in configs if args.run_id is None or c['run_id'] in args.run_id]
+    selected = [c for c in configs if (args.settings is None or c['setting'] in args.settings)
+                and (args.run_id is None or c['run_id'] in args.run_id)]
     if args.run_id and set(args.run_id) != {c['run_id'] for c in selected}:
         p.error('Unknown run ID')
     args.runs.mkdir(parents=True, exist_ok=True)

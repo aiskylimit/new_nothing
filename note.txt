@@ -41,10 +41,7 @@ GPUS=0,1 bash rebuttal/formal_B_2h100.sh all
 # Tao lai report khi da du 5 methods:
 # bash rebuttal/formal_B_2h100.sh report
 
-# Eval chung mới: không dùng venv palign; setup-eval chỉ cài rebuttal_eval.txt (online).
-# Cài/check riêng, rồi eval lại checkpoint đã train mà không train lại:
-# bash rebuttal/smoke_2x3090.sh setup-eval
+# setup ở trên tự cài cả venv eval chung rebuttal_eval từ rebuttal_eval.txt.
+# all tự kiểm tra evaluator trên từng GPU trước khi train; có thể check riêng:
 # GPUS=0,1 bash rebuttal/smoke_2x3090.sh check-eval --sizes 1.5b
-# GPUS=0,1 bash rebuttal/smoke_2x3090.sh eval-existing \
-#   --run-dir rebuttal/smoke-2x3090/dev2_C_longcot_1.5b_seed42
-# Venv train/preprocess vẫn cần CUDA build hợp driver; setup-eval không tự sửa cored.
+# Venv train/preprocess vẫn cần CUDA build hợp driver; eval chung không tự sửa cored.

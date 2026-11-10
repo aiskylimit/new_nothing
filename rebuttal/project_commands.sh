@@ -41,10 +41,6 @@ case "$ACTION" in
     HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
       exec "$PY" -m rebuttal.eval_preflight --assets "$ASSETS" --runs "$RUNS" --gpus "${GPUS:-3,4,5}" "$@"
     ;;
-  eval-existing)
-    HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 WANDB_MODE=disabled \
-      exec "$PY" -m rebuttal.eval_existing --gpus "${GPUS:-3,4,5}" "$@"
-    ;;
   download)
     HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
       exec "$PY" -m rebuttal.provision --assets "$ASSETS" "$@"
@@ -77,5 +73,5 @@ case "$ACTION" in
     "$PY" -m rebuttal.statistics --runs "$RUNS" --output "$REPORTS" "$@"
     exec "$PY" -m rebuttal.cost --runs "$RUNS" --output "$REPORTS"
     ;;
-  *) echo "Usage: $0 {setup|setup-eval|check-eval|eval-existing|download|endtoend [--online|--offline]|prepare|preflight|smoke|train|eval|all|report|configs}" >&2; exit 2 ;;
+  *) echo "Usage: $0 {setup|setup-eval|check-eval|download|endtoend [--online|--offline]|prepare|preflight|smoke|train|eval|all|report|configs}" >&2; exit 2 ;;
 esac
