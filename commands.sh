@@ -1,5 +1,5 @@
-#1 +10
-#log
+#1 +30
+#cred
 #v2
 
 
@@ -27,8 +27,7 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-mv models/Qwen/Qwen2-VL-2B-Instruct models/
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
