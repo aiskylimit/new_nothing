@@ -1,7 +1,9 @@
-#2 -4 +a
+#1 +10
 #log 
 #v2
 
+
+tree  /mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json-v5
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
