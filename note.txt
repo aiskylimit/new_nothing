@@ -1,3 +1,17 @@
+
+## Chạy end-to-end cả 3 setting
+
+```bash
+# Máy có Internet: cài thư viện, tải model/data, prepare, kiểm tra, train/eval và report.
+GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
+
+# Máy offline: cần provision đủ thư viện và model/data trước.
+GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
+```
+
+
+
+
 # Thực nghiệm chính 15 runs trên 3 B200 (sửa GPUS theo số GPU thực tế được cấp).
 # Máy B200 OFFLINE, thư viện/model/data đã được provision: một lệnh từ prepare tới report.
 GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
@@ -45,3 +59,5 @@ GPUS=0,1 bash rebuttal/formal_B_2h100.sh all
 # all tự kiểm tra evaluator trên từng GPU trước khi train; có thể check riêng:
 # GPUS=0,1 bash rebuttal/smoke_2x3090.sh check-eval --sizes 1.5b
 # Venv train/preprocess vẫn cần CUDA build hợp driver; eval chung không tự sửa cored.
+
+

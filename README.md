@@ -25,14 +25,3 @@ bash rebuttal/project_commands.sh report --allow-partial
 Đổi `--settings A C` thành `--settings A` hoặc `--settings C` nếu chỉ chạy một
 setting; bỏ tùy chọn này để chạy cả ba. Báo cáo dùng `--allow-partial` vì bỏ B
 nên chưa đủ ma trận 15 run. Training log vẫn được lưu tự động như trước.
-
-
-## Chạy end-to-end cả 3 setting
-
-```bash
-# Máy có Internet: cài thư viện, tải model/data, prepare, kiểm tra, train/eval và report.
-GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
-
-# Máy offline: cần provision đủ thư viện và model/data trước.
-GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
-```
