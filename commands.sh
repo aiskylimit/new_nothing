@@ -1,4 +1,7 @@
-#2 -5 +a
+#d
+#models
+--hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/@PROJECT@/cred/models/Qwen/Qwen2-VL-2B-Instruct
+
 #cred5 
 #v2
 
