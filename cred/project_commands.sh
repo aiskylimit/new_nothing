@@ -80,7 +80,7 @@ tar -xzf ./datasets/B3_Qwen2_2B_ret.tar.gz -C .
 # CUDA_VISIBLE_DEVICES=3 bash ./scripts/cred_ablation/train_distill_sigreg_ret_VisDial_CIRR.sh &
 
 # cred8
-bash scripts/cred_ablation/run_ablation_cred_cls.sh 1 1 1 1 1.0 0.1 256 0.02 "" 0 none var_cov 1.0 1.0 1.0 &
+# bash scripts/cred_ablation/run_ablation_cred_cls.sh 1 1 1 1 1.0 0.1 256 0.02 "" 0 none var_cov 1.0 1.0 1.0 &
 
 # bash run_time_mem.sh &
 
