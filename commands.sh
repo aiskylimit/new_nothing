@@ -1,4 +1,6 @@
-#2
+#d
+--hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/cred/models/B3_Qwen2_2B
+
 #cred6
 #v2
 
