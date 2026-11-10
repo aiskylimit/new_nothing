@@ -76,8 +76,11 @@ tar -xzf ./datasets/B3_Qwen2_2B_ret.tar.gz -C .
 # CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh &
 # CUDA_VISIBLE_DEVICES=2 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-0.5B_span_attn_ret_VisDial_CIRR.sh &
 
-# cred7
-CUDA_VISIBLE_DEVICES=3 bash ./scripts/cred_ablation/train_distill_sigreg_ret_VisDial_CIRR.sh
+# # cred7
+# CUDA_VISIBLE_DEVICES=3 bash ./scripts/cred_ablation/train_distill_sigreg_ret_VisDial_CIRR.sh &
+
+# cred8
+bash scripts/cred_ablation/run_ablation_cred_cls.sh 1 1 1 1 1.0 0.1 256 0.02 "" 0 none var_cov 1.0 1.0 1.0 &
 
 # bash run_time_mem.sh &
 
