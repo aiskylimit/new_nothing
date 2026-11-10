@@ -1,6 +1,6 @@
 # manager: uv
 # python: 3.11
-# SGL train + spectral masks. Shared vLLM eval uses palign.txt in another env.
+# SGL train + spectral masks. Shared vLLM eval uses rebuttal_eval.txt in another env.
 accelerate==1.13.0
 datasets==4.8.4
 math-verify==0.9.0

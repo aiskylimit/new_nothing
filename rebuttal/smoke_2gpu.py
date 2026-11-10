@@ -128,7 +128,7 @@ def main():
             from rebuttal.provision import verify_snapshot
             for repo, revision in {(c['model']['repo'], c['model']['revision']) for c in selected}:
                 verify_snapshot(assets / 'models' / repo.split('/')[-1], repo, revision)
-            environments = {python_for(c['method']) for c in selected} | {python_for('palign')}
+            environments = {python_for(c['method']) for c in selected} | {python_for('eval')}
             probe_env = {**os.environ, 'CUDA_VISIBLE_DEVICES': args.gpus,
                          'PYTHONPATH': os.pathsep.join([str(ROOT), os.environ.get('PYTHONPATH', '')]), 'OMP_NUM_THREADS': '1'}
             for key in ('RANK', 'WORLD_SIZE', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE', 'MASTER_ADDR', 'MASTER_PORT'):
@@ -139,6 +139,8 @@ def main():
                     subprocess.run([python, '-m', 'torch.distributed.run', '--standalone', '--nproc_per_node=2',
                         '-m', 'rebuttal.smoke_2gpu', '--probe-worker'], cwd=ROOT, env=probe_env,
                         stdout=log, stderr=subprocess.STDOUT, check=True, timeout=240)
+            from rebuttal.eval_preflight import check_eval
+            check_eval(assets, runs, args.gpus, sizes=tuple(sorted({c['model']['size'] for c in selected})))
             data = runs / 'fixtures'
             fixtures(data)
             for config in selected:

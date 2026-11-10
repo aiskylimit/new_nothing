@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 from rebuttal.common import BUDGETS, MATH, ROOT, SEEDS, jsonl, rows, sha, signature, write
@@ -50,6 +51,28 @@ def development_limits(config):
 
 def math_schedule(config=None):
     return [(42, 1)] if development_limits(config) else list(zip(SEEDS, BUDGETS))
+
+
+def evaluator_environment():
+    import importlib.metadata
+    import torch
+    versions = {}
+    for package in ('torch','torchvision','torchaudio','vllm','transformers','peft','math-verify'):
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = None
+    return {'python':sys.executable, 'packages':versions, 'torch_cuda':torch.version.cuda,
+            'backend_source_sha256':sha(ROOT/'palign/src/test.py')}
+
+
+def bind_evaluator_environment(destination, identity):
+    path = destination/'evaluator_environment.json'
+    previous = json.loads(path.read_text()) if path.exists() else None
+    has_raw = any(p.stat().st_size for p in destination.glob('*.rank*.jsonl'))
+    if has_raw and previous != identity:
+        raise ValueError('Cannot mix raw responses from different/unknown evaluator environments; use a fresh eval output')
+    write(path, identity)
 
 
 def validate_records(records, questions, benchmark, scored=False, config=None):
@@ -117,6 +140,7 @@ def generate(config, checkpoint, benchmarks, destination, shard, shards, batch_s
                         'where X is the letter of the correct choice.\n\n' + row['question'])
                     prompts.append(backend.apply_chat(tokenizer, [{'role': 'user', 'content': instruction}]))
                 if model is None:
+                    bind_evaluator_environment(destination, evaluator_environment())
                     options = {'enforce_eager': True, 'max_num_seqs': 1} if development else {}
                     model = backend._make_llm(str(base), context, 1, .9, seed=42, adapter_config=adapter_config, **options)
                     if adapter_config:

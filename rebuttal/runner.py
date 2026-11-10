@@ -16,10 +16,13 @@ from rebuttal.cost import aggregate
 
 
 def python_for(method):
-    folder = {'longcot': 'sft', 'ssft': 'SegmentSelectiveSFT'}.get(method, method)
-    value = os.environ.get('REBUTTAL_PYTHON_' + method.upper(), f'/mnt/local/uvenvs/{folder}/bin/python')
+    folder = {'longcot': 'sft', 'ssft': 'SegmentSelectiveSFT', 'eval': 'rebuttal_eval'}.get(method, method)
+    root = Path(os.environ.get('REBUTTAL_ENV_ROOT', '/mnt/local/uvenvs'))
+    variable = 'REBUTTAL_EVAL_PYTHON' if method == 'eval' else 'REBUTTAL_PYTHON_' + method.upper()
+    default = Path(os.environ.get('REBUTTAL_EVAL_VENV', str(root / folder))) if method == 'eval' else root / folder
+    value = os.environ.get(variable, str(default / 'bin/python'))
     if not Path(value).is_file():
-        raise FileNotFoundError(f'Provision {folder}.txt or set REBUTTAL_PYTHON_{method.upper()}: {value}')
+        raise FileNotFoundError(f'Provision {folder}.txt or set {variable}: {value}')
     return value
 
 
@@ -334,7 +337,7 @@ class Job:
 
     def evaluate(self):
         checkpoint = json.loads((self.root / 'final_checkpoint.json').read_text())['path']
-        python = python_for('palign')
+        python = python_for('eval')
         output = self.root / 'evaluation'
         commands = [([python, '-m', 'rebuttal.evaluate', '--config', self.root / 'run.json', '--checkpoint', checkpoint,
                      '--benchmarks', self.data / 'benchmarks', '--output', output, '--shard', str(i), '--shards', str(len(self.gpus.split(','))),
@@ -376,6 +379,9 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         from rebuttal.preflight import validate
         validate(args.assets, args.data, args.runs, environments=args.action != 'eval', gpus=args.gpus)
+        if args.action == 'eval':
+            from rebuttal.eval_preflight import check_eval
+            check_eval(args.assets, args.runs, args.gpus, sizes=tuple(sorted({c['model']['size'] for c in selected})))
         for config in selected:
             if args.action == 'smoke':
                 config = dict(config, run_id='smoke_'+config['run_id'], smoke=True,

@@ -9,6 +9,8 @@ export REBUTTAL_PYTHON_PALIGN="${REBUTTAL_PYTHON_PALIGN:-$ENV_ROOT/palign/bin/py
 export REBUTTAL_PYTHON_SGL="${REBUTTAL_PYTHON_SGL:-$ENV_ROOT/sgl/bin/python}"
 export REBUTTAL_PYTHON_SSFT="${REBUTTAL_PYTHON_SSFT:-$ENV_ROOT/SegmentSelectiveSFT/bin/python}"
 export REBUTTAL_PYTHON_CORED="${REBUTTAL_PYTHON_CORED:-$ENV_ROOT/cored/bin/python}"
+EVAL_ENV="${REBUTTAL_EVAL_VENV:-$ENV_ROOT/rebuttal_eval}"
+export REBUTTAL_EVAL_PYTHON="${REBUTTAL_EVAL_PYTHON:-$EVAL_ENV/bin/python}"
 PY="${PY:-$REBUTTAL_VENV/bin/python}"
 ASSETS="${REBUTTAL_ASSETS:-$PWD/rebuttal/assets}"
 DATA="${REBUTTAL_DATA:-$PWD/rebuttal/prepared}"
@@ -25,6 +27,16 @@ case "$ACTION" in
       uv pip install --python "$ENV_ROOT/$name/bin/python" -r "$name.txt"
       uv pip check --python "$ENV_ROOT/$name/bin/python"
     done
+    bash rebuttal/setup_eval.sh
+    ;;
+  setup-eval) exec bash rebuttal/setup_eval.sh "$@" ;;
+  check-eval)
+    HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+      exec "$PY" -m rebuttal.eval_preflight --assets "$ASSETS" --runs "$RUNS" --gpus "${GPUS:-0,1}" "$@"
+    ;;
+  eval-existing)
+    HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 WANDB_MODE=disabled \
+      exec "$PY" -m rebuttal.eval_existing --gpus "${GPUS:-0,1}" "$@"
     ;;
   download)
     HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
@@ -41,5 +53,5 @@ case "$ACTION" in
       --runs "$RUNS" --reports "$REPORTS" --gpus "${GPUS:-0,1}" "$@" \
       2>&1 | tee -a "${RUNS}.${ACTION}.log"
     ;;
-  *) echo 'Usage: bash rebuttal/formal_B_2h100.sh {setup|download|prepare|preflight|train|eval|all|report} [--run-id B_...]' >&2; exit 2 ;;
+  *) echo 'Usage: bash rebuttal/formal_B_2h100.sh {setup|setup-eval|check-eval|eval-existing|download|prepare|preflight|train|eval|all|report} [--run-id B_...]' >&2; exit 2 ;;
 esac

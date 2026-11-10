@@ -58,6 +58,9 @@ def validate(assets, data, runs, environments=False, gpus='3,4,5', formal_2h100=
         if len(hardware['devices']) != expected_devices or any(gpu_type not in device['name'] for device in hardware['devices']):
             raise ValueError(f'Expected {expected_devices} {gpu_type} GPUs; hardware mismatch recorded')
         checks['checks'].append(f'five provisioned environments and {expected_devices} {gpu_type} CUDA/NCCL/bf16 GPUs')
+        from rebuttal.eval_preflight import check_eval
+        check_eval(assets, runs, gpus, sizes=('7b',) if formal_2h100 else ('1.5b','7b'))
+        checks['checks'].append('separate shared evaluator: CUDA kernel and zero-LoRA generation on every reserved GPU')
     checks['persistent_storage'] = {'runs': str(runs.resolve()), 'free_bytes': shutil.disk_usage(runs).free,
                                   'note': 'Required space depends on generated trace lengths; free space is reported, not assumed sufficient.'}
     checks['gpu_training_smoke'] = 'not executed by static preflight; use runner smoke in a separate runs root'

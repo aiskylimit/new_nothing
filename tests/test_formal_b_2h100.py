@@ -198,6 +198,9 @@ def test_preflight_selects_h100_profile_without_loosening_b200_default(tmp_path,
     write(data/'benchmarks/manifest.json', {})
     monkeypatch.setattr(provision, 'verify_snapshot', lambda *a: None)
     monkeypatch.setattr(runner, 'python_for', lambda method: '/fixture/python')
+    from rebuttal import eval_preflight
+    eval_checks = []
+    monkeypatch.setattr(eval_preflight, 'check_eval', lambda *a, **kw: eval_checks.append(kw['sizes']))
     count, expected_name = (2,'H100') if formal else (3,'B200')
     def command(args, **kwargs):
         if '-m' in args:
@@ -212,3 +215,4 @@ def test_preflight_selects_h100_profile_without_loosening_b200_default(tmp_path,
         result = preflight.validate(assets, data, runs, environments=True,
                                     gpus='0,1' if formal else '0,1,2', formal_2h100=formal)
         assert result['configurations'] == (5 if formal else 15)
+        assert eval_checks == [('7b',) if formal else ('1.5b','7b')]

@@ -82,18 +82,30 @@ def test_offline_end_to_end_never_installs_or_downloads(tmp_path, mode):
     assert (tmp_path/'logs/endtoend.log').is_file()
 
 
-def test_online_end_to_end_bootstraps_six_requirements_before_download(tmp_path):
+def test_online_end_to_end_bootstraps_seven_requirements_before_download(tmp_path):
     env = launcher_environment(tmp_path, installed=False)
     result = invoke(tmp_path, ['endtoend','--online'], env)
     assert result.returncode == 0, result.stderr + result.stdout
     recorded = events(tmp_path)
     requirements = [e['args'][e['args'].index('-r')+1] for e in recorded
                     if e['tool']=='uv' and '-r' in e['args']]
-    assert requirements == ['rebuttal.txt','palign.txt','sft.txt','sgl.txt','SegmentSelectiveSFT.txt','cored.txt']
+    assert requirements == ['rebuttal.txt','palign.txt','sft.txt','sgl.txt','SegmentSelectiveSFT.txt','cored.txt','rebuttal_eval.txt']
     python = [e for e in recorded if e['tool']=='python']
     assert [e['stage'] for e in python] == ['download','prepare','preflight','all','statistics','cost']
     assert python[0]['offline']=='0' and all(e['offline']=='1' for e in python[1:])
     assert recorded[0]['tool']=='uv'
+
+
+def test_setup_eval_installs_only_shared_eval_environment(tmp_path):
+    env = launcher_environment(tmp_path, installed=False)
+    result = invoke(tmp_path, ['setup-eval'], env)
+    assert result.returncode == 0, result.stderr + result.stdout
+    recorded = events(tmp_path)
+    requirements = [e['args'][e['args'].index('-r')+1] for e in recorded
+                    if e['tool']=='uv' and '-r' in e['args']]
+    assert requirements == ['rebuttal_eval.txt']
+    assert sorted(p.name for p in (tmp_path/'envs').iterdir()) == ['rebuttal_eval']
+    assert all(e['tool'] == 'uv' for e in recorded)
 
 
 @pytest.mark.parametrize('failed,expected', [('prepare',['prepare']), ('preflight',['prepare','preflight'])])

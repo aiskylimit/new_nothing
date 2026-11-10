@@ -1,0 +1,17 @@
+# manager: uv
+# python: 3.11
+# Shared evaluation only: Linux x86_64, CUDA 12.9, driver >=575.51.03.
+# Explicit local versions prevent PyPI's CUDA 13 Torch wheels from being selected.
+torch @ https://download-r2.pytorch.org/whl/cu129/torch-2.13.0%2Bcu129-cp311-cp311-manylinux_2_28_x86_64.whl#sha256=545c1ecc90e0fb13a94a51ea9e82d03aaf416fa78fc8efe43be64cf93e7bc0fa
+torchvision @ https://download-r2.pytorch.org/whl/cu129/torchvision-0.28.0%2Bcu129-cp311-cp311-manylinux_2_28_x86_64.whl
+torchaudio @ https://download-r2.pytorch.org/whl/cu129/torchaudio-2.11.0%2Bcu129-cp311-cp311-manylinux_2_28_x86_64.whl#sha256=fa6fa276ac84fd44c87ea26b44b01442ae0ca434253eb3b039484d3f898be1da
+vllm @ https://github.com/vllm-project/vllm/releases/download/v0.27.1/vllm-0.27.1%2Bcu129-cp38-abi3-manylinux_2_28_x86_64.whl#sha256=bf0d52faa2a51e7a01c6856a7a8a2d1307fd0ff711415d34168a67ffac0fa47b
+transformers==5.5.4
+peft==0.18.1
+math-verify==0.9.0
+numpy==2.2.6
+pyyaml==6.0.3
+jsonlines
+safetensors
+sentencepiece
+tqdm

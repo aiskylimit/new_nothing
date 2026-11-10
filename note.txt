@@ -5,7 +5,7 @@ GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --offline
 # Nếu máy CÓ INTERNET và cần cả cài thư viện/tải assets: dùng lệnh thay thế này.
 # Cần uv trước (nếu thiếu: python3 -m pip install uv).
 # GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
-# --online = setup 6 file thư viện txt -> tải model/data đúng revision -> prepare -> preflight -> all -> report.
+# --online = setup 7 venv (có rebuttal_eval riêng) -> tải assets -> prepare -> preflight -> all -> report.
 # --offline KHÔNG cài/tải online; all giữ nghĩa cũ là train + eval, cần dữ liệu đã prepare.
 # Có thể chạy riêng: bash rebuttal/project_commands.sh setup
 #                   bash rebuttal/project_commands.sh download
@@ -40,3 +40,11 @@ GPUS=0,1 bash rebuttal/formal_B_2h100.sh all
 # GPUS=0,1 bash rebuttal/formal_B_2h100.sh all --run-id B_cored_7b_seed42
 # Tao lai report khi da du 5 methods:
 # bash rebuttal/formal_B_2h100.sh report
+
+# Eval chung mới: không dùng venv palign; setup-eval chỉ cài rebuttal_eval.txt (online).
+# Cài/check riêng, rồi eval lại checkpoint đã train mà không train lại:
+# bash rebuttal/smoke_2x3090.sh setup-eval
+# GPUS=0,1 bash rebuttal/smoke_2x3090.sh check-eval --sizes 1.5b
+# GPUS=0,1 bash rebuttal/smoke_2x3090.sh eval-existing \
+#   --run-dir rebuttal/smoke-2x3090/dev2_C_longcot_1.5b_seed42
+# Venv train/preprocess vẫn cần CUDA build hợp driver; setup-eval không tự sửa cored.

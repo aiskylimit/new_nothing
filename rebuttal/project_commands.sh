@@ -9,6 +9,8 @@ export REBUTTAL_PYTHON_PALIGN="${REBUTTAL_PYTHON_PALIGN:-$ENV_ROOT/palign/bin/py
 export REBUTTAL_PYTHON_SGL="${REBUTTAL_PYTHON_SGL:-$ENV_ROOT/sgl/bin/python}"
 export REBUTTAL_PYTHON_SSFT="${REBUTTAL_PYTHON_SSFT:-$ENV_ROOT/SegmentSelectiveSFT/bin/python}"
 export REBUTTAL_PYTHON_CORED="${REBUTTAL_PYTHON_CORED:-$ENV_ROOT/cored/bin/python}"
+EVAL_ENV="${REBUTTAL_EVAL_VENV:-$ENV_ROOT/rebuttal_eval}"
+export REBUTTAL_EVAL_PYTHON="${REBUTTAL_EVAL_PYTHON:-$EVAL_ENV/bin/python}"
 ACTION="${1:-preflight}"
 if [[ $# -gt 0 ]]; then shift; fi
 # Setup must work before the environment exists. End-to-end delegates activation
@@ -32,6 +34,16 @@ case "$ACTION" in
       uv pip install --python "$ENV_ROOT/$name/bin/python" -r "$name.txt"
       uv pip check --python "$ENV_ROOT/$name/bin/python"
     done
+    bash rebuttal/setup_eval.sh
+    ;;
+  setup-eval) exec bash rebuttal/setup_eval.sh "$@" ;;
+  check-eval)
+    HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+      exec "$PY" -m rebuttal.eval_preflight --assets "$ASSETS" --runs "$RUNS" --gpus "${GPUS:-3,4,5}" "$@"
+    ;;
+  eval-existing)
+    HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 WANDB_MODE=disabled \
+      exec "$PY" -m rebuttal.eval_existing --gpus "${GPUS:-3,4,5}" "$@"
     ;;
   download)
     HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
@@ -65,5 +77,5 @@ case "$ACTION" in
     "$PY" -m rebuttal.statistics --runs "$RUNS" --output "$REPORTS" "$@"
     exec "$PY" -m rebuttal.cost --runs "$RUNS" --output "$REPORTS"
     ;;
-  *) echo "Usage: $0 {setup|download|endtoend [--online|--offline]|prepare|preflight|smoke|train|eval|all|report|configs}" >&2; exit 2 ;;
+  *) echo "Usage: $0 {setup|setup-eval|check-eval|eval-existing|download|endtoend [--online|--offline]|prepare|preflight|smoke|train|eval|all|report|configs}" >&2; exit 2 ;;
 esac

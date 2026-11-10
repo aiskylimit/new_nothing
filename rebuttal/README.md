@@ -16,7 +16,7 @@ GPUS=3,4,5 bash rebuttal/project_commands.sh endtoend --online
 ```
 
 Choose the command matching the machine; `endtoend` defaults to offline. The
-online mode runs `setup` (six requirements files, isolated Python 3.11 environments)
+online mode runs `setup` (seven requirements files, isolated Python 3.11 environments)
 and `download` (pinned model/data provisioner), then both modes run `prepare`,
 `preflight`, `all` and `report` in order. The first failed stage stops the launcher.
 Install `uv` before online setup if missing (`python3 -m pip install uv`). Runtime
@@ -35,14 +35,14 @@ the txt files alone are not offline installation bundles.
 Existing `all` still means native training plus evaluation over the 15 configs;
 it does not reinstall dependencies or alter the training/eval protocol. The
 end-to-end wrapper changes no Python trainers, batch/epoch settings or frozen
-configs. Use `REBUTTAL_ENV_ROOT` to relocate all six environments and the usual
+configs. Use `REBUTTAL_ENV_ROOT` to relocate all seven environments and the usual
 `REBUTTAL_ASSETS`, `REBUTTAL_DATA`, `REBUTTAL_RUNS`, `REBUTTAL_REPORTS` overrides
 for storage. Resume with the same command, code, configuration and storage roots.
 
 ## Formal Setting B on two H100s
 
 ```bash
-# Online only; skip if the six environments and attested assets already exist.
+# Online only; skip if the seven environments and attested assets already exist.
 bash rebuttal/formal_B_2h100.sh setup
 bash rebuttal/formal_B_2h100.sh download
 # End to end: real-data preparation, H100 preflight, five full train/eval runs, reports.
@@ -104,7 +104,52 @@ Only `provision.py` accesses the Hub; runtime/evaluation stay offline.
 Environment paths default to `/mnt/local/uvenvs/<folder>/bin/python`.
 Override `REBUTTAL_PYTHON_LONGCOT`, `REBUTTAL_PYTHON_SGL`,
 `REBUTTAL_PYTHON_SSFT`, `REBUTTAL_PYTHON_PALIGN`, `REBUTTAL_PYTHON_CORED` as needed.
-The common vLLM evaluator uses the P-ALIGN environment for every method.
+The common vLLM evaluator uses **`rebuttal_eval`**, independently of every native
+training environment. Override `REBUTTAL_EVAL_PYTHON` for an already-provisioned
+evaluator, or `REBUTTAL_EVAL_VENV` to change the directory created by setup.
+
+### Shared evaluator and recovery of a trained checkpoint
+
+`rebuttal_eval.txt` pins official Linux x86_64/CPython 3.11 CUDA 12.9 wheels:
+Torch 2.13.0, torchvision 0.28.0, torchaudio 2.11.0 and vLLM 0.27.1+cu129.
+These builds target driver >=575.51.03; no CUDA 13 Torch wheel is selected by
+the eval installer. GPU execution still needs validation on the actual node.
+The model/data sources, prompts, decoding budgets and math-verify rule are unchanged.
+The [official vLLM installation guide](https://docs.vllm.ai/en/v0.27.1/getting_started/installation/gpu/)
+describes CUDA-specific binaries and their PyTorch compatibility requirements.
+
+All three launchers support `setup-eval`, `check-eval` and `eval-existing`:
+
+```bash
+# Online: install ONLY the new evaluator, without reinstalling native train envs.
+bash rebuttal/smoke_2x3090.sh setup-eval
+# GPU node, offline assets: test imports, bf16 kernel, local base and rank-16 zero LoRA.
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh check-eval --sizes 1.5b
+# Reuse the previously saved checkpoint after a failed eval; no train action.
+GPUS=0,1 bash rebuttal/smoke_2x3090.sh eval-existing \
+  --run-dir rebuttal/smoke-2x3090/dev2_C_longcot_1.5b_seed42
+```
+
+Main/H100 preflight and the development launcher automatically run these small
+LoRA probes on every reserved GPU before training (outside training cost logs).
+Reports/logs are under `<runs>/eval-preflight/`. This tests kernels and loading;
+it does not certify 32k-context/batch memory fit. A failure stops before training.
+Full `setup` now installs the evaluator as a seventh environment. Offline nodes
+must provision it and its wheel dependencies first; a txt file is not a wheelhouse.
+
+Evaluation records `evaluator_environment.json` and refuses to append generations
+from a different or unknown package/build environment. If old partial raw files
+already exist without provenance, add `--fresh-output` to `eval-existing`; it
+writes to `<run>/eval-only-shared/evaluation/` and preserves the old evaluation.
+The utility verifies checkpoint hashes and never resumes optimizer/training state.
+It updates per-run eval status; the earlier smoke launcher's `summary.json`
+remains the history of that earlier invocation. Code fingerprint changes can
+still prevent resuming *training* from an older checkout; do not bypass that guard.
+
+This migration does **not** replace Torch/vLLM in `cored`, `palign` or other train
+envs. Their GPU builds must separately match the driver. P-ALIGN/CoReD generation
+preprocessing still runs in its native environment and can expose an independent
+CUDA mismatch even after the shared evaluator passes.
 
 ## Prepare and validate on B200
 

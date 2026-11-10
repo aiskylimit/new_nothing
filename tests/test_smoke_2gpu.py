@@ -120,6 +120,8 @@ def test_development_orchestration_records_all_five_methods(tmp_path, monkeypatc
     monkeypatch.setattr(dev, 'python_for', lambda _: '/fixture/python')
     from rebuttal import provision
     monkeypatch.setattr(provision, 'verify_snapshot', lambda *a: None)
+    from rebuttal import eval_preflight
+    monkeypatch.setattr(eval_preflight, 'check_eval', lambda *a, **kw: None)
     probes = []
     def probe(command, **kwargs):
         probes.append(command)
