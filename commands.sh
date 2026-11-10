@@ -27,7 +27,9 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-tree MMEB-eval_outputs_v5/llava_ov-0.5B_cls_talas_jepa_v2_d1_cse1_vis1_sig1_kd1.0_sw0.5_l256_dt0.02
+tree MMEB-eval_outputs_v5
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v5}"
+python json_filter.py ./MMEB-eval_outputs_v5 "${JSON_FILTER_DESTINATION}" --overwrite
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
