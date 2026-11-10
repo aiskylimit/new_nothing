@@ -60,12 +60,17 @@ python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zi
 # CUDA_VISIBLE_DEVICES=5 bash ./script_full/train_distill_sigreg_cls_abaltion_l.sh 1 1 1 1 1.0 0.4 256 0.02 &
 
 #cred4
-CUDA_VISIBLE_DEVICES=6 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_cls.sh &
-CUDA_VISIBLE_DEVICES=7 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh &
-CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_FastVLM-1.5B_cls.sh &
-CUDA_VISIBLE_DEVICES=2 bash ./script_full/train_distill_sigreg_llava_ov_cls_bz16_2.sh 1 1 1 0 1.0 2.0 256 0.1 &
-CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.5 256 0.07 "" 5 none pr &
-CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh 1 1 1 1 1.0 0.5 256 0.07 "" 0 12 pr &
+# CUDA_VISIBLE_DEVICES=6 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_cls.sh &
+# CUDA_VISIBLE_DEVICES=7 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh &
+# CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_FastVLM-1.5B_cls.sh &
+# CUDA_VISIBLE_DEVICES=2 bash ./script_full/train_distill_sigreg_llava_ov_cls_bz16_2.sh 1 1 1 0 1.0 2.0 256 0.1 &
+# CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.5 256 0.07 "" 5 none pr &
+# CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh 1 1 1 1 1.0 0.5 256 0.07 "" 0 12 pr &
+
+#cred5
+CUDA_VISIBLE_DEVICES=6 bash ./script_full/train_distill_sigreg_cls_1.5b.sh 1 1 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=7 bash ./script_full/train_distill_sigreg_vqa_1.5b.sh 1 1 1 1 1.0 0.5 256 0.02 &
+CUDA_VISIBLE_DEVICES=5 bash ./scripts/cred_ablation/train_FastVLM-1.5B_vqa.sh &
 
 # bash run_time_mem.sh &
 
