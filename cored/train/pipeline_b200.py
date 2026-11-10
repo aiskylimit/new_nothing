@@ -164,7 +164,7 @@ def main():
         processes, handles, worker_starts, worker_ends = [], [], [], {}
         try:
             for rank, (command, devices) in enumerate(commands):
-                env = {**base_env, "CUDA_VISIBLE_DEVICES": devices}
+                env = {**base_env, "CUDA_VISIBLE_DEVICES": devices, "REBUTTAL_WORKER_ID": str(rank)}
                 if base_env.get("REBUTTAL_STAGE_DIR"):
                     directory = Path(base_env["REBUTTAL_STAGE_DIR"]) / stage
                     directory.mkdir(parents=True, exist_ok=True)
@@ -230,15 +230,33 @@ def main():
             command.append("--no_gradient_checkpointing")
         execute([(command, ",".join(gpus))], stage)
 
+    def record_timing(record):
+        with (run / "timings.jsonl").open("a") as handle:
+            handle.write(json.dumps(record) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+
     def stage(name, action, validate):
         if name not in args.stages:
             return
         marker = run / f"{name}.done.json"
+        history = read_jsonl(str(run / "timings.jsonl")) if (run / "timings.jsonl").exists() else []
+        recorded = next((r for r in reversed(history) if r['stage'] == name and r['status'] == 'complete'
+                         and r.get('fingerprint') == fingerprint), None)
         if marker.exists():
-            if json.loads(marker.read_text())["fingerprint"] != fingerprint:
+            saved = json.loads(marker.read_text())
+            if saved["fingerprint"] != fingerprint:
                 raise ValueError(f"Stale stage marker: {marker}")
             validate()
+            if recorded is None:
+                # Native markers contain the full timing record, so legacy gaps are recoverable.
+                record_timing(saved)
             print(f"[cored] reuse {name}", flush=True)
+            return
+        if recorded is not None:
+            validate()
+            write_json(str(marker), recorded)
+            print(f"[cored] reuse recorded {name}", flush=True)
             return
         print(f"[cored] start {name}; logs: {run / 'logs'}", flush=True)
         started = time.perf_counter()
@@ -246,9 +264,8 @@ def main():
             action()
             validate()
         except BaseException:
-            with (run / "timings.jsonl").open("a") as handle:
-                handle.write(json.dumps({"stage": name, "seconds": time.perf_counter() - started, "status": "failed",
-                    "telemetry_dir": str(Path(base_env['REBUTTAL_STAGE_DIR']) / name) if base_env.get('REBUTTAL_STAGE_DIR') else None}) + "\n")
+            record_timing({"stage": name, "seconds": time.perf_counter() - started, "status": "failed",
+                "telemetry_dir": str(Path(base_env['REBUTTAL_STAGE_DIR']) / name) if base_env.get('REBUTTAL_STAGE_DIR') else None})
             raise
         dry = bool(args.dry_run and name in {"phase1", "distill"})
         record = {"stage": name, "seconds": time.perf_counter() - started,
@@ -256,10 +273,10 @@ def main():
                   "telemetry_dir": str(Path(base_env['REBUTTAL_STAGE_DIR']) / name) if base_env.get('REBUTTAL_STAGE_DIR') else None}
         record['workers'] = worker_accounting.get(name, [])
         record['gpu_hours'] = sum(w['seconds']*w['gpu_count']/3600 for w in record['workers'])
+        record['expected_workers'] = 0 if name == 'prepare' else world if name in {'phase1', 'distill'} else len(record['workers'])
+        record_timing(record)
         if not dry:
             write_json(str(marker), record)
-        with (run / "timings.jsonl").open("a") as handle:
-            handle.write(json.dumps(record) + "\n")
         print(f"[cored] done {name}: {record['seconds']:.1f}s", flush=True)
 
     def require(path):

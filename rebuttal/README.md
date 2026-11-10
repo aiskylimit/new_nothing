@@ -312,6 +312,13 @@ Cost definitions are identical across methods:
   they are not assumed equal to unique dataset tokens. Native sampler padding,
   filtering and truncation can change budgets and must be reported.
 
+SSFT's direct IG decoder/head calls have explicit counters. Reports check all
+expected workers (including finalized idle shards) and required method stages;
+missing counters or native CoReD timings are marked incomplete. Cost events are
+committed before completion markers, and resume verifies the matching event.
+An old coordinator marker without its cost event raises an accounting error;
+it does not silently skip the stage or invent its missing cost.
+
 `cost_setting_A.md` is the primary table, with B/C tables and CoReD stage details
 in JSON. Throughput, optimization steps, process/library versions and all attempt
 logs are retained. Evaluation is excluded from training cost.

@@ -152,6 +152,18 @@ def test_pipeline_preparation_reuses_data_but_rejects_changed_recipe(tmp_path):
     assert repeated.returncode == 0, repeated.stderr
     assert "reuse prepare" in repeated.stdout
     assert len((output / "timings.jsonl").read_text().splitlines()) == 1
+    # Recover either side of an interrupted timing/marker commit without redoing preparation.
+    original_timing = (output / "timings.jsonl").read_text()
+    (output / "prepare.done.json").unlink()
+    recovered = subprocess.run(command, cwd=ROOT / "cored", env=env, capture_output=True, text=True, timeout=30)
+    assert recovered.returncode == 0, recovered.stderr
+    assert "reuse recorded prepare" in recovered.stdout
+    assert (output / "timings.jsonl").read_text() == original_timing
+    (output / "timings.jsonl").unlink()
+    repaired = subprocess.run(command, cwd=ROOT / "cored", env=env, capture_output=True, text=True, timeout=30)
+    assert repaired.returncode == 0, repaired.stderr
+    assert "reuse prepare" in repaired.stdout
+    assert (output / "timings.jsonl").read_text() == original_timing
     changed = subprocess.run(command + ["--seed", "43"], cwd=ROOT / "cored", env=env,
                              capture_output=True, text=True, timeout=30)
     assert changed.returncode != 0

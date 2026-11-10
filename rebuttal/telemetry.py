@@ -13,13 +13,15 @@ STATE = {'forward_tokens': 0, 'autograd_tokens': 0, 'sample_presentations': 0,
 LOCAL = threading.local()
 
 
-def flush():
+def flush(final=False):
     if not os.environ.get('REBUTTAL_STAGE_DIR'):
         return
     import torch
+    STATE['finalized'] = bool(final or STATE.get('finalized', False))
     result = {k: v for k, v in STATE.items() if k != 'installed'}
     result.update(pid=os.getpid(), rank=int(os.environ.get('RANK', '0')), unix_time=time.time(),
-                  cuda=torch.version.cuda, versions={})
+                  cuda=torch.version.cuda, versions={}, worker_id=os.environ.get('REBUTTAL_WORKER_ID'),
+                  distributed_rank=int(os.environ['RANK']) if 'RANK' in os.environ else None)
     for name in ('torch', 'transformers', 'peft', 'accelerate', 'deepspeed', 'vllm', 'unsloth'):
         try:
             result['versions'][name] = importlib.metadata.version(name)
@@ -88,7 +90,7 @@ def install():
         original(self, *args, **kwargs)
         self.register_step_post_hook(lambda *unused: STATE.__setitem__('optimization_steps', STATE['optimization_steps'] + 1))
     torch.optim.Optimizer.__init__ = optimizer_init
-    atexit.register(flush)
+    atexit.register(flush, True)
 
     def periodic():
         while True:
@@ -98,6 +100,25 @@ def install():
             except Exception:
                 pass
     threading.Thread(target=periodic, daemon=True).start()
+
+
+def integrated_gradients(model, batch_size, sequence_length, answer_length):
+    """Count the direct decoder/head path used by SSFT, without changing its graph."""
+    if not os.environ.get('REBUTTAL_STAGE_DIR'):
+        return
+    install()
+    tokens = batch_size * sequence_length
+    decoder_parameters = sum(p.numel() for p in model.model.parameters())
+    head_parameters = model.lm_head.weight.numel()
+    config = model.config
+    forward = (2.0 * decoder_parameters * tokens
+               + 4.0 * config.num_hidden_layers * config.hidden_size * batch_size * sequence_length ** 2)
+    # Input-gradient backward, plus decoder recomputation when checkpointed.
+    multiplier = 2 + int(model.model.training and getattr(model, 'is_gradient_checkpointing', False))
+    STATE['forward_tokens'] += tokens
+    STATE['autograd_tokens'] += tokens
+    STATE['sample_presentations'] += batch_size
+    STATE['estimated_flops'] += forward * multiplier + 4.0 * head_parameters * batch_size * answer_length
 
 
 def inference(outputs, config):

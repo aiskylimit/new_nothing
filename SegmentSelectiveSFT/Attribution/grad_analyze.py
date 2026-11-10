@@ -191,6 +191,9 @@ class IntegratedGradientsAttribution:
             n_tokens = int(interpolated_embeddings.shape[0] * interpolated_embeddings.shape[1])
             self.tokens_forwarded += n_tokens
             self.tokens_backwarded += n_tokens
+            if os.environ.get('REBUTTAL_STAGE_DIR'):
+                from rebuttal.telemetry import integrated_gradients
+                integrated_gradients(self.model, chunk_size, input_ids.shape[1], ans_end - ans_start)
             step_pos = chunk_end
 
         avg_gradients = total_gradients / steps  # [1, L, D]

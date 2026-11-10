@@ -89,8 +89,22 @@ class Job:
     def execute(self, name, commands, gpu_count, instrument=True):
         commands = [(list(map(str, command)), gpu) for command, gpu in commands]
         marker = self.root / f'{name}.complete.json'
+        recorded = rows(self.root / 'stage_events.jsonl', repair=True)
         if marker.exists():
+            saved = json.loads(marker.read_text())
+            if saved.get('fingerprint') != self.fingerprint:
+                raise ValueError(f'Stale completion marker: {marker}')
+            if not any(e['stage'] == name and e['attempt_id'] == saved.get('attempt_id')
+                       and e['status'] == 'complete' for e in recorded):
+                raise ValueError(f'Completion marker has no completed cost event: {marker}; accounting is incomplete')
             print(f'[{self.config["run_id"]}] reuse {name}', flush=True)
+            return
+        # Recover an interruption after the event commit but before the marker.
+        previous = next((e for e in reversed(recorded) if e['stage'] == name and e['status'] == 'complete'
+                         and e.get('fingerprint') == self.fingerprint), None)
+        if previous is not None:
+            write(marker, {'fingerprint': self.fingerprint, 'attempt_id': previous['attempt_id']})
+            print(f'[{self.config["run_id"]}] reuse recorded {name}', flush=True)
             return
         attempt = name + '-' + uuid.uuid4().hex[:10]
         telemetry = self.root / 'telemetry' / attempt
@@ -105,7 +119,8 @@ class Job:
         for variable in ('RANK', 'WORLD_SIZE', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE', 'MASTER_ADDR', 'MASTER_PORT'):
             base_env.pop(variable, None)
         event = {'stage': name, 'attempt_id': attempt, 'gpu_count': gpu_count, 'gpus': self.gpus,
-                 'started_unix': time.time(), 'commands': commands, 'status': 'failed'}
+                 'started_unix': time.time(), 'commands': commands, 'status': 'failed',
+                 'fingerprint': self.fingerprint, 'expected_workers': gpu_count if instrument else 0}
         started = time.perf_counter()
         stop = threading.Event()
         device_samples = []
@@ -131,7 +146,8 @@ class Job:
                 handle = (self.root / 'logs' / f'{attempt}-{i}.log').open('w')
                 handles.append(handle)
                 processes.append(subprocess.Popen(list(map(str, command)), cwd=ROOT,
-                    env={**base_env, 'CUDA_VISIBLE_DEVICES': gpu}, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True))
+                    env={**base_env, 'CUDA_VISIBLE_DEVICES': gpu, 'REBUTTAL_WORKER_ID': str(i)},
+                    stdout=handle, stderr=subprocess.STDOUT, start_new_session=True))
                 worker_starts.append(time.perf_counter())
             pending = set(range(len(processes)))
             while pending:
@@ -145,7 +161,6 @@ class Job:
                 if pending:
                     time.sleep(.2)
             event['status'] = 'complete'
-            write(marker, {'fingerprint': self.fingerprint, 'attempt_id': attempt})
         except BaseException as error:
             event['error'] = repr(error)
             write(self.root / 'status.json', {'status': 'failed', 'stage': name, 'error': repr(error)})
@@ -172,6 +187,10 @@ class Job:
             event['gpu_hours'] = sum(w['seconds']*w['gpu_count']/3600 for w in event['workers'])
             with (self.root / 'stage_events.jsonl').open('a') as f:
                 f.write(json.dumps(event) + '\n')
+                f.flush()
+                os.fsync(f.fileno())
+            if event['status'] == 'complete':
+                write(marker, {'fingerprint': self.fingerprint, 'attempt_id': attempt})
             aggregate(self.root)
 
     def instrument(self, python, module=None, script=None, args=(), multi=False, unsloth=False):
