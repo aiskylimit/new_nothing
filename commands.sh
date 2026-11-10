@@ -1,5 +1,5 @@
-#2 -1
-#log
+#1 +120
+#cred7
 #v2
 
 
@@ -25,8 +25,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 
-# cd ./cred
-# bash ./project_commands.sh
+cd ./cred
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh

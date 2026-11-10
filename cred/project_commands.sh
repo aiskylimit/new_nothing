@@ -5,7 +5,7 @@ set -e
 source /mnt/local/uvenvs/cred/bin/activate
 
 
-bash set_base_model_path.sh
+# bash set_base_model_path.sh
 # python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
 # python fix_lib.py
 
@@ -40,10 +40,11 @@ bash set_base_model_path.sh
 # #
 # # 4. Unzip the cache
 # #
-# tar -xzf ./vlm2vec_train/MMEB-train/B3_Qwen2_2B_cls.tar.gz -C .
-# tar -xzf ./vlm2vec_train/MMEB-train/B3_Qwen2_2B_vqa.tar.gz -C .
+# tar -xzf ./datasets/B3_Qwen2_2B_cls.tar.gz -C .
+# tar -xzf ./datasets/B3_Qwen2_2B_vqa.tar.gz -C .
 # tar -xzf ./datasets/B3_Qwen2_2B_grounding.tar.gz -C .
 # tar -xzf ./datasets/B3_Qwen2_7B_cls.tar.gz -C .
+tar -xzf ./datasets/B3_Qwen2_2B_ret.tar.gz -C .
 
 
 # CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_sigreg_threshold_cls.sh  1 1 1 1 1.0 0.5 256 0.05 "" 5 none pr &
@@ -70,10 +71,13 @@ bash set_base_model_path.sh
 # CUDA_VISIBLE_DEVICES=7 bash ./script_full/train_distill_sigreg_vqa_1.5b.sh 1 1 1 1 1.0 0.5 256 0.02 &
 # CUDA_VISIBLE_DEVICES=5 bash ./scripts/cred_ablation/train_FastVLM-1.5B_vqa.sh &
 
-#cred6
-CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_cls.sh &
-CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh &
-CUDA_VISIBLE_DEVICES=2 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-0.5B_span_attn_ret_VisDial_CIRR.sh &
+# #cred6
+# CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_cls.sh &
+# CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh &
+# CUDA_VISIBLE_DEVICES=2 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-0.5B_span_attn_ret_VisDial_CIRR.sh &
+
+# cred7
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/cred_ablation/train_distill_sigreg_ret_VisDial_CIRR.sh
 
 # bash run_time_mem.sh &
 
