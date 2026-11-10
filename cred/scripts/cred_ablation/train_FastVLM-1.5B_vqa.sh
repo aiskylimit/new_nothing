@@ -39,7 +39,7 @@ torchrun --nproc_per_node=$NUM_GPUS_PER_NODE \
     --seed 42 \
     --weight_decay 0.01 \
     --normalize True \
-    --lr_scheduler_type "constant" \
+    --lr_scheduler_type "cosine" \
     --warmup_ratio 0.05 \
     --kd_loss_type "contrastive" \
     --image_resolution "low" \
@@ -51,7 +51,7 @@ SUBSETS=(
 )
 
 MODEL=training/FastVLM-1.5B_base_16_eos_vqa/checkpoint-final
-EVAL_OUTPUT=MMEB-eval_outputs/FastVLM-1.5B_base_16_eos_vqa/
+EVAL_OUTPUT=MMEB-eval_outputs_v5/FastVLM-1.5B_base_16_eos_vqa/
 
 python eval_mmeb.py \
     --model_name "$MODEL" \

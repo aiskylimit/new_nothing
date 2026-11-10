@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json/ +a
-#log
+#1 +120
+#cred10
 #v2
 
 
@@ -26,9 +26,7 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
-python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
