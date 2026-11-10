@@ -5,7 +5,7 @@ set -e
 source /mnt/local/uvenvs/cred/bin/activate
 
 
-# bash set_base_model_path.sh
+bash set_base_model_path.sh
 # python -c "import zipfile; zipfile.ZipFile('en_core_web_sm.zip/en_core_web_sm.zip').extractall('.')"
 # python fix_lib.py
 
