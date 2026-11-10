@@ -3,6 +3,7 @@
 --url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_ret.tar.gz /mnt/local/@PROJECT@/cred/datasets
 #models
 --hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/cred/models/B3_Qwen2_2B
+
 #cred6
 #v2
 
