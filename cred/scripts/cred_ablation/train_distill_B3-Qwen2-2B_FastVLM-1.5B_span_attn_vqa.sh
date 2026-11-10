@@ -59,7 +59,7 @@ torchrun --standalone \
     --sigreg_weight 0.5
 
 
-SUBSETS=(
+EVAL_SUBSETS=(
   "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W"
   "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
