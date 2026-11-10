@@ -10,4 +10,4 @@
 --hf apple/FastVLM-0.5B /mnt/local/@PROJECT@/cred/models/FastVLM-0.5B
 --hf apple/FastVLM-1.5B /mnt/local/@PROJECT@/cred/models/FastVLM-1.5B
 --hf llava-hf/llava-onevision-qwen2-0.5b-ov-hf /mnt/local/@PROJECT@/cred/models/llava-onevision-qwen2-0.5b-ov-hf
---hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/@PROJECT@/cred/models/Qwen/Qwen2-VL-2B-Instruct
+--hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/@PROJECT@/cred/models/Qwen2-VL-2B-Instruct

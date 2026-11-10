@@ -27,7 +27,7 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-tree models
+mv models/Qwen/Qwen2-VL-2B-Instruct models/
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
