@@ -1,5 +1,5 @@
-#2
-#cred6
+#1 +10
+#log
 #v2
 
 
@@ -9,6 +9,8 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
+kill -9 497 498 499
+
 nvidia-smi
 
 
@@ -19,15 +21,13 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export NCCL_DEBUG=WARN
 
-# for d in datasets vlm2vec_eval vlm2vec_train; do
-#   rsync -a --delete VLM_Embed_Gvendi/$d/ cred/$d/
-# done
-
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 
-cd ./cred
-bash ./project_commands.sh
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
+
+
+# cd ./cred
+# bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
