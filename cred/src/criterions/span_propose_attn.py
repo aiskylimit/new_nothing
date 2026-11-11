@@ -12,6 +12,10 @@ from spacy.matcher import Matcher
 from sklearn.cluster import DBSCAN
 from src.model.llava.constants import IMAGE_TOKEN_INDEX
 
+
+
+spacy.prefer_gpu()
+
 # ====== Text Processing Functions ======
 
 def filter_overlapping_spans(spans):
@@ -52,7 +56,7 @@ def get_spans_offsets(texts, nlp, matcher):
     words = []
     phrases = []
 
-    for doc in nlp.pipe(texts, disable=disabled_components, n_process=4):
+    for doc in nlp.pipe(texts, disable=disabled_components, n_process=16):
         spans_with_offsets = []
         
         vps = matcher(doc)

@@ -1,4 +1,7 @@
-#i cred.txt
+#d
+#datasets
+--url https://huggingface.co/minhhotboy9x/VLM_embed_cache/resolve/main/Qwen3VL_8B_cls.tar.gz /mnt/local/@PROJECT@/cred/datasets
+
 #cred7
 #v1
 
