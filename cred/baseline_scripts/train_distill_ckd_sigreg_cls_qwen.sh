@@ -48,6 +48,7 @@ torchrun --standalone \
     --image_resolution "low" \
     --projector_config_path "./config/projector_config_emo.json" \
     --projector_lr 5e-4 \
+    --teacher_hidden_dim 4096 \
     --sigreg_weight -1
 
 
