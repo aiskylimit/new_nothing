@@ -1,8 +1,5 @@
-#d
-#datasets
---url https://huggingface.co/minhhotboy9x/VLM_embed_cache/resolve/main/Qwen3VL_8B_cls.tar.gz /mnt/local/@PROJECT@/cred/datasets
-
-#cred7
+#1 +10
+#log
 #v1
 
 
@@ -29,7 +26,8 @@ export NCCL_DEBUG=WARN
 
 
 cd ./cred
-bash ./project_commands.sh
+tree datasets
+# bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
