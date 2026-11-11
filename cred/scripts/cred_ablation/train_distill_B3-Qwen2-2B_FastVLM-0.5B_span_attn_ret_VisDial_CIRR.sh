@@ -60,8 +60,7 @@ torchrun --standalone \
 
 
 EVAL_SUBSETS=(
-    VisDial CIRR
-    OVEN FashionIQ EDIS Wiki-SS-NQ
+    VisDial CIRR FashionIQ EDIS Wiki-SS-NQ
 )
 
 
