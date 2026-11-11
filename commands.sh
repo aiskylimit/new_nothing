@@ -24,9 +24,9 @@ export NCCL_DEBUG=WARN
 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
-
+tree /mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json-v5
+tree /mnt/local/uvenvs
 cd ./cred
-tree datasets
 # bash ./project_commands.sh
 
 # cd ./multi-mode-distill
