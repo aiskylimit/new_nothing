@@ -1,4 +1,4 @@
-#2 -0-20
+#i cred.txt
 #log
 #v1
 
