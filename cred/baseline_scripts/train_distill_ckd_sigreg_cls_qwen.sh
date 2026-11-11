@@ -27,7 +27,7 @@ torchrun --standalone \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
-    --output_dir "training/FastVLM-0.5B_ckd_sigreg_cls" \
+    --output_dir "training/FastVLM-0.5B_ckd_sigreg_cls_tqwen" \
     --per_device_train_batch_size 16 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
@@ -67,8 +67,8 @@ EVAL_SUBSETS=(
 
 
 python eval_mmeb.py \
-  --model_name "training/FastVLM-0.5B_ckd_sigreg_cls/checkpoint-epoch-0" \
-  --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_ckd_sigreg_cls" \
+  --model_name "training/FastVLM-0.5B_ckd_sigreg_cls_tqwen/checkpoint-epoch-0" \
+  --encode_output_path "./MMEB-eval_outputs_v5/FastVLM-0.5B_ckd_sigreg_cls_tqwen" \
   --lora True \
   --lora_r 64 \
   --lora_alpha 64 \
@@ -79,7 +79,7 @@ python eval_mmeb.py \
   --dataset_name vlm2vec_eval/MMEB-eval \
   --subset_name "${EVAL_SUBSETS[@]}" \
   --dataset_split test \
-  --per_device_eval_batch_size 4 \
+  --per_device_eval_batch_size 8 \
   --image_dir eval_images/ \
   --image_resolution "low" \
   --tgt_prefix_mod \
