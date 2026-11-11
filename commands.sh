@@ -1,5 +1,5 @@
-#2 -0-10
-#cred11
+#1 +10
+#log
 #v1
 
 
@@ -9,6 +9,7 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
+kill -9 117225
 nvidia-smi
 
 
@@ -21,11 +22,11 @@ export NCCL_DEBUG=WARN
 
 
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python ./cred/multi_gpu_v2.py
 
 
-cd ./cred
-bash ./project_commands.sh
+# cd ./cred
+# bash ./project_commands.sh
 
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
