@@ -71,27 +71,28 @@ tar -xzf ./datasets/B3_Qwen2_2B_ret.tar.gz -C .
 # CUDA_VISIBLE_DEVICES=7 bash ./script_full/train_distill_sigreg_vqa_1.5b.sh 1 1 1 1 1.0 0.5 256 0.02 &
 # CUDA_VISIBLE_DEVICES=5 bash ./scripts/cred_ablation/train_FastVLM-1.5B_vqa.sh &
 
-# #cred6
-# CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_cls.sh &
-# CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh &
-# CUDA_VISIBLE_DEVICES=2 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-0.5B_span_attn_ret_VisDial_CIRR.sh &
+#cred6
+CUDA_VISIBLE_DEVICES=0 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_cls.sh &
+CUDA_VISIBLE_DEVICES=1 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-1.5B_span_attn_vqa.sh &
+CUDA_VISIBLE_DEVICES=2 bash scripts/cred_ablation/train_distill_B3-Qwen2-2B_FastVLM-0.5B_span_attn_ret_VisDial_CIRR.sh &
 
 # cred7
 CUDA_VISIBLE_DEVICES=3 bash ./scripts/cred_ablation/train_distill_sigreg_ret_VisDial_CIRR.sh &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/cred_ablation/run_ablation_cred_cls.sh 1 1 1 1 1.0 0.1 256 0.02 "" 0 none var_cov 1.0 1.0 1.0 &
 
 # cred8
-# bash scripts/cred_ablation/run_ablation_cred_cls.sh 1 1 1 1 1.0 0.1 256 0.02 "" 0 none var_cov 1.0 1.0 1.0 &
+CUDA_VISIBLE_DEVICES=4 bash ./script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 2.0 256 0.02 &
 
 #cred9
-# CUDA_VISIBLE_DEVICES=4 bash ./script_full/train_distill_sigreg_llava_ov_vqa.sh 1 1 1 1 1.0 2.0 256 0.02 &
+CUDA_VISIBLE_DEVICES=6 bash ./script_full/train_distill_sigreg_cls_1.5b.sh 1 1 1 1 1.0 0.5 256 0.05 &
+CUDA_VISIBLE_DEVICES=6 bash ./script_full/train_distill_sigreg_vqa_1.5b.sh 1 1 1 1 1.0 0.5 256 0.05 &
+CUDA_VISIBLE_DEVICES=7 bash ./script_full/train_distill_sigreg_cls_1.5b.sh 1 1 1 0 1.0 0.5 256 0.05 &
+CUDA_VISIBLE_DEVICES=7 bash ./script_full/train_distill_sigreg_vqa_1.5b.sh 1 1 1 0 1.0 0.5 256 0.05 &
+CUDA_VISIBLE_DEVICES=5 bash ./scripts/cred_ablation/train_FastVLM-1.5B_cls.sh &
+CUDA_VISIBLE_DEVICES=5 bash ./scripts/cred_ablation/train_FastVLM-1.5B_vqa.sh &
 
-# #cred10
-# CUDA_VISIBLE_DEVICES=6 bash ./script_full/train_distill_sigreg_cls_1.5b.sh 1 1 1 1 1.0 0.5 256 0.05 &
-# CUDA_VISIBLE_DEVICES=6 bash ./script_full/train_distill_sigreg_vqa_1.5b.sh 1 1 1 1 1.0 0.5 256 0.05 &
-# CUDA_VISIBLE_DEVICES=7 bash ./script_full/train_distill_sigreg_cls_1.5b.sh 1 1 1 0 1.0 0.5 256 0.05 &
-# CUDA_VISIBLE_DEVICES=7 bash ./script_full/train_distill_sigreg_vqa_1.5b.sh 1 1 1 0 1.0 0.5 256 0.05 &
-# CUDA_VISIBLE_DEVICES=5 bash ./scripts/cred_ablation/train_FastVLM-1.5B_cls.sh &
-# CUDA_VISIBLE_DEVICES=5 bash ./scripts/cred_ablation/train_FastVLM-1.5B_vqa.sh &
+
+
 
 # bash run_time_mem.sh &
 
