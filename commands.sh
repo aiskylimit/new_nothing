@@ -1,4 +1,4 @@
-#1 +120
+#2 -1
 #rivad
 
 #log
@@ -31,8 +31,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 
-cd ./multi-mode-distill
-bash ./project_commands.sh
+# cd ./multi-mode-distill
+# bash ./project_commands.sh
 
 # cd ./grit
 # bash ./project_commands.sh
