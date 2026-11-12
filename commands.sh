@@ -1,5 +1,5 @@
 #1 +10
-#vlm_ablation
+#log
 
 #log
 #v1
@@ -30,6 +30,7 @@ export NCCL_DEBUG=WARN
 # cd ./cred
 # bash ./project_commands.sh
 
+tree /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/code_eval/
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
 
@@ -48,7 +49,7 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
 
-cd VLM_Distillation-main
-bash ./project_commands.sh
+# cd VLM_Distillation-main
+# bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
