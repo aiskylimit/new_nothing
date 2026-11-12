@@ -1,5 +1,5 @@
-#2 -2
-#rivad
+#1 +10
+#check
 
 #log
 #v1
