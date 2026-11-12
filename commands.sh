@@ -23,7 +23,6 @@
 --hf KamilaMila/FastVLM-0.5B /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/KamilaMila/FastVLM-0.5B
 --hf Qwen/Qwen2-VL-7B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2-VL-7B-Instruct
 
-
 #log
 #v1
 
