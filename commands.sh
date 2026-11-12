@@ -1,7 +1,7 @@
 #d
 #datasets
---hf-dataset https://huggingface.co/datasets/DVLe/llava_dataset /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
---hf-dataset https://huggingface.co/datasets/DVLe/Eval_VLM /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
+--hf-dataset DVLe/llava_dataset /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
+--hf-dataset DVLe/Eval_VLM /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
 
 #log
 #v1
