@@ -1,6 +1,8 @@
 #d
 #datasets
---hf-dataset https://huggingface.co/datasets/DVLe/llava_dataset /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
+--hf-dataset DVLe/llava_dataset /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
+--url https://raw.githubusercontent.com/huggingface/evaluate/v0.4.6/metrics/code_eval/execute.py /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/code_eval/
+
 
 #log
 #v1
