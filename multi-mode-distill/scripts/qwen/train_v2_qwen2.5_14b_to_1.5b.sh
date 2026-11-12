@@ -123,8 +123,10 @@ case "${EXPOSURE_SCHEDULE:-adaptive}" in
         OPTS+=(--predetermined-off-init "${PREDETERMINED_OFF_INIT:-0.80}")
         OPTS+=(--predetermined-self-init "${PREDETERMINED_SELF_INIT:-0.10}")
         OPTS+=(--predetermined-on-init "${PREDETERMINED_ON_INIT:-0.10}")
-        OPTS+=(--predetermined-off-decrement "${PREDETERMINED_OFF_DECREMENT:-0.02}")
+        OPTS+=(--predetermined-self-increment "${PREDETERMINED_SELF_INCREMENT:-0.02}")
         OPTS+=(--predetermined-on-increment "${PREDETERMINED_ON_INCREMENT:-0.02}")
+        OPTS+=(--predetermined-self-max "${PREDETERMINED_SELF_MAX:-0.25}")
+        OPTS+=(--predetermined-on-max "${PREDETERMINED_ON_MAX:-0.25}")
         OPTS+=(--predetermined-update-interval "${PREDETERMINED_UPDATE_INTERVAL:-1}")
         ;;
     *) printf 'EXPOSURE_SCHEDULE must be adaptive or predetermined\n' >&2; exit 2 ;;

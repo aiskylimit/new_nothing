@@ -15,15 +15,17 @@ export TOKENIZERS_PARALLELISM=false
 
 # Fill in these hyperparameters. Initial OFF + SELF + ON must equal 1.
 # After n = completed_optimizer_steps // UPDATE_INTERVAL changes:
-# OFF = OFF_INIT - n * OFF_DECREMENT; ON = ON_INIT + n * ON_INCREMENT.
-# SELF = 1 - OFF - ON (constant when decrement == increment).
-# The ramp stops at the first probability boundary; it never uses dev loss.
+# SELF = min(SELF_INIT + n * SELF_INCREMENT, SELF_MAX).
+# ON = min(ON_INIT + n * ON_INCREMENT, ON_MAX); OFF = 1 - SELF - ON.
+# SELF_MAX + ON_MAX must be <= 1; this schedule never uses dev loss.
 # Budget matching to an adaptive run is manual through these parameters.
 export PREDETERMINED_OFF_INIT="${PREDETERMINED_OFF_INIT:-0.8}"
 export PREDETERMINED_SELF_INIT="${PREDETERMINED_SELF_INIT:-0.10}"
 export PREDETERMINED_ON_INIT="${PREDETERMINED_ON_INIT:-0.10}"
-export PREDETERMINED_OFF_DECREMENT="${PREDETERMINED_OFF_DECREMENT:-0.02}"
+export PREDETERMINED_SELF_INCREMENT="${PREDETERMINED_SELF_INCREMENT:-0.02}"
 export PREDETERMINED_ON_INCREMENT="${PREDETERMINED_ON_INCREMENT:-0.02}"
+export PREDETERMINED_SELF_MAX="${PREDETERMINED_SELF_MAX:-0.40}"
+export PREDETERMINED_ON_MAX="${PREDETERMINED_ON_MAX:-0.40}"
 export PREDETERMINED_UPDATE_INTERVAL="${PREDETERMINED_UPDATE_INTERVAL:-50}"
 
 # Same objective/training defaults as run_rivad.sh; only routing changes.

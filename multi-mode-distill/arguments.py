@@ -257,7 +257,8 @@ def add_distillation_args(parser: argparse.ArgumentParser):
     predetermined = PredeterminedConfig()
     group.add_argument('--predetermined-schedule', action='store_true',
                        help='Route OFF/SELF/ON using a step-only linear schedule')
-    for name in ('off_init', 'self_init', 'on_init', 'off_decrement', 'on_increment'):
+    for name in ('off_init', 'self_init', 'on_init', 'self_increment', 'on_increment',
+                 'self_max', 'on_max'):
         group.add_argument('--predetermined-' + name.replace('_', '-'), type=float,
                            default=getattr(predetermined, name))
     group.add_argument('--predetermined-update-interval', type=int,
