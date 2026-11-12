@@ -1,4 +1,4 @@
-#1 +10
+#i reasoning-velocity-distill.txt reasoning-velocity-distill-eval.txt
 #log
 
 #log
@@ -30,7 +30,7 @@ export NCCL_DEBUG=WARN
 # cd ./cred
 # bash ./project_commands.sh
 
-tree /mnt/local/aiskylimit_new_nothing/reasoning_velocity_distill/data/eval/code_eval/
+
 # cd ./multi-mode-distill
 # bash ./project_commands.sh
 
