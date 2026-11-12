@@ -171,7 +171,9 @@ class LMTrainDataset(Dataset):
         self.with_teacher = with_teacher
         self.distill_mode = distill_mode
         self.needs_self_distill_context = distill_mode == "self_distill" or (
-            distill_mode is not None and with_teacher and getattr(args, "adaptive_on_policy", False))
+            distill_mode is not None and with_teacher and (
+                getattr(args, "adaptive_on_policy", False)
+                or getattr(args, "predetermined_schedule", False)))
         self.needs_opsd_reference = distill_mode == "opsd"
         self.geometry = geometry
         self.split = split

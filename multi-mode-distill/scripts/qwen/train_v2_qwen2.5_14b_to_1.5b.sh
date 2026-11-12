@@ -113,8 +113,22 @@ fi
 if [[ "$CKA" == 1 ]]; then
     OPTS+=(--cka)
 fi
-OPTS+=(--dual-adaptive-exposure --do-sample)
-OPTS+=(--adaptive-mode-set "$ADAPTIVE_MODE_SET")
+OPTS+=(--do-sample)
+case "${EXPOSURE_SCHEDULE:-adaptive}" in
+    adaptive)
+        OPTS+=(--dual-adaptive-exposure --adaptive-mode-set "$ADAPTIVE_MODE_SET")
+        ;;
+    predetermined)
+        OPTS+=(--predetermined-schedule)
+        OPTS+=(--predetermined-off-init "${PREDETERMINED_OFF_INIT:-0.80}")
+        OPTS+=(--predetermined-self-init "${PREDETERMINED_SELF_INIT:-0.10}")
+        OPTS+=(--predetermined-on-init "${PREDETERMINED_ON_INIT:-0.10}")
+        OPTS+=(--predetermined-off-decrement "${PREDETERMINED_OFF_DECREMENT:-0.02}")
+        OPTS+=(--predetermined-on-increment "${PREDETERMINED_ON_INCREMENT:-0.02}")
+        OPTS+=(--predetermined-update-interval "${PREDETERMINED_UPDATE_INTERVAL:-1}")
+        ;;
+    *) printf 'EXPOSURE_SCHEDULE must be adaptive or predetermined\n' >&2; exit 2 ;;
+esac
 OPTS+=(--rho-self-init "${RHO_SELF_INIT:-0.1}" --rho-on-init "${RHO_ON_INIT:-0.05}")
 OPTS+=(--rho-self-max "${RHO_SELF_MAX:-0.25}" --rho-on-max "${RHO_ON_MAX:-0.25}")
 OPTS+=(--rho-self-increment "${RHO_SELF_INCREMENT:-0.025}" --rho-on-increment "${RHO_ON_INCREMENT:-0.025}")
