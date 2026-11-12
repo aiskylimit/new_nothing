@@ -49,7 +49,7 @@ export NCCL_DEBUG=WARN
 
 
 cd VLM_Distillation-main
-cd train_data && ls 
+cd train_data && du -h --max-depth=1
 cd ..
 cd eval_data/LMUData && ls
 # bash ./project_commands.sh
