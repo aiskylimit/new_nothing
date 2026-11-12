@@ -11,7 +11,10 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-# kill -9 117225
+kill -9 31048
+kill -9 31049
+kill -9 31050
+kill -9 31051
 nvidia-smi
 
 
