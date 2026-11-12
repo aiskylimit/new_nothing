@@ -1,4 +1,4 @@
-#i cored.txt
+#i vlm-distill-train-3.txt
 #log
 #v1
 
