@@ -1,8 +1,4 @@
-#d
-#datasets
---hf-dataset DVLe/llava_dataset /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
---hf-dataset DVLe/Eval_VLM /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
-
+#2 -0-10
 #log
 #v1
 
