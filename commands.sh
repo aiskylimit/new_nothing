@@ -1,5 +1,5 @@
-#i reasoning-velocity-distill.txt reasoning-velocity-distill-eval.txt
-#log
+#1 +120
+#rivad
 
 #log
 #v1
@@ -31,8 +31,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 
-# cd ./multi-mode-distill
-# bash ./project_commands.sh
+cd ./multi-mode-distill
+bash ./project_commands.sh
 
 # cd ./grit
 # bash ./project_commands.sh
