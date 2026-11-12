@@ -1,5 +1,5 @@
-#2 -0-10
-#vlm_distill_ablation
+#1 +150
+#rivad
 
 #log
 #v1
@@ -31,8 +31,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 
-# cd ./multi-mode-distill
-# bash ./project_commands.sh
+cd ./multi-mode-distill
+bash ./project_commands.sh
 
 # cd ./grit
 # bash ./project_commands.sh
