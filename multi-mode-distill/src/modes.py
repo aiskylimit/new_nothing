@@ -24,6 +24,21 @@ def validate_mode_args(args):
         raise ValueError("Old adaptive scheduler arguments were removed: " +
                          ", ".join("--" + name for name in old_flags))
     adaptive = getattr(args, "adaptive_on_policy", False)
+    predetermined = getattr(args, "predetermined_schedule", False)
+    if adaptive and predetermined:
+        raise ValueError("Adaptive and predetermined schedules are mutually exclusive")
+    if predetermined:
+        from .predetermined import PredeterminedConfig
+        PredeterminedConfig.from_args(args)
+        if (args.student_gen or args.distill_mode not in (None, "off_policy")
+                or args.type not in (None, "kd") or not args.do_train):
+            raise ValueError("Predetermined scheduling requires --do-train --type kd and no fixed mode")
+        if not args.teacher_model_path:
+            raise ValueError("Predetermined scheduling requires --teacher-model-path")
+    if getattr(args, 'experiment_log_interval', 100) < 1:
+        raise ValueError("Experiment log interval must be positive")
+    from .experiment import checkpoint_milestones
+    checkpoint_milestones(1, getattr(args, 'save_fractions', None))
     adaptive_mode_set = getattr(args, "adaptive_mode_set", "all")
     if adaptive_mode_set != "all" and not adaptive:
         raise ValueError("--adaptive-mode-set requires --dual-adaptive-exposure")
@@ -96,9 +111,9 @@ def validate_mode_args(args):
         raise ValueError("--type lm requires canonical LM supervision")
     if not 0 < args.max_prompt_length < args.max_length:
         raise ValueError("Require 0 < --max-prompt-length < --max-length")
-    if (args.distill_mode in ("self_distill", "opsd") or adaptive) and not 0 < args.t_max_prompt_length < args.t_max_length:
+    if (args.distill_mode in ("self_distill", "opsd") or adaptive or predetermined) and not 0 < args.t_max_prompt_length < args.t_max_length:
         raise ValueError("Require 0 < --t-max-prompt-length < --t-max-length")
-    if (args.distill_mode in ("self_distill", "opsd") or adaptive) and args.t_max_length < args.max_length:
+    if (args.distill_mode in ("self_distill", "opsd") or adaptive or predetermined) and args.t_max_length < args.max_length:
         raise ValueError("Self-distillation reference length must fit the full student response")
     if not 0 <= args.self_distill_context_drop_ratio <= 1 or not math.isfinite(args.self_distill_context_drop_ratio):
         raise ValueError("--self-distill-context-drop-ratio must be finite and in [0, 1]")

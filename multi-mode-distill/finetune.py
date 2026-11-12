@@ -46,6 +46,9 @@ from src.opsd import (prepare_opsd_reference_batch, opsd_forward_kl,
                       fixed_base_teacher_forward)
 from src.adaptive import (AdaptiveConfig, AdaptiveScheduler,
                                OptimizerStepModeRouter)
+from src.predetermined import PredeterminedConfig, PredeterminedScheduler
+from src.experiment import (ExperimentTracker, checkpoint_milestones,
+                            append_json, write_json)
 
 torch.set_num_threads(4)
 
@@ -270,12 +273,13 @@ def teacher_batch_for_response(args, student_batch):
 
 
 def evaluate_adaptive_losses(args, tokenizer, model, teacher_model, reference_model,
-                             dataset, device, enabled_modes=AdaptiveScheduler.MODES):
+                             dataset, device, enabled_modes=AdaptiveScheduler.MODES,
+                             include_off=False):
     """Return token-weighted dev discrepancies for enabled adaptive modes."""
     if not dataset.with_teacher or not dataset.needs_self_distill_context:
         raise ValueError("Adaptive dev data must include canonical self-distillation steps")
-    evaluation_modes = tuple(
-        mode for mode in ("self_distill", "on_policy") if mode in enabled_modes)
+    candidates = AdaptiveScheduler.MODES if include_off else ("self_distill", "on_policy")
+    evaluation_modes = tuple(mode for mode in candidates if mode in enabled_modes)
     if not evaluation_modes:
         raise ValueError("Adaptive routing requires SELF or ON evaluation")
     world_size, rank = dist.get_world_size(), dist.get_rank()
@@ -308,10 +312,15 @@ def evaluate_adaptive_losses(args, tokenizer, model, teacher_model, reference_mo
                         student_batch, student_meta, teacher_batch, teacher_meta = prepare_self_distill_batches(
                             args, tokenizer, model_batch, metadata, rngs)
                         source_model = reference_model
-                    else:
+                    elif mode == "on_policy":
                         student_batch = generator.run_sample(model, gen_data)
                         labels = student_batch.pop("no_model_batch")
                         student_meta = {"label": labels}
+                        teacher_batch = teacher_batch_for_response(args, student_batch)
+                        teacher_meta = student_meta
+                        source_model = teacher_model
+                    else:
+                        student_batch, student_meta = model_batch, metadata
                         teacher_batch = teacher_batch_for_response(args, student_batch)
                         teacher_meta = student_meta
                         source_model = teacher_model
@@ -360,13 +369,16 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
         num_workers=args.num_workers, collate_fn=dataset["train"].collate)
 
     adaptive = getattr(args, "adaptive_on_policy", False)
+    predetermined = getattr(args, "predetermined_schedule", False)
     scheduler = (AdaptiveScheduler(
         AdaptiveConfig.from_args(args), seed=getattr(args, "seed", 42),
         mode_set=getattr(args, "adaptive_mode_set", "all"))
         if adaptive else None)
+    if predetermined:
+        scheduler = PredeterminedScheduler(PredeterminedConfig.from_args(args), seed=args.seed)
     if adaptive and (teacher_model is None or "dev" not in dataset or args.eval_interval < 1):
         raise ValueError("Adaptive training requires a teacher, dev data, and positive eval_interval")
-    student_gen = ((adaptive and "on_policy" in scheduler.enabled_modes)
+    student_gen = ((scheduler is not None and "on_policy" in scheduler.enabled_modes)
                    or args.distill_mode in ("on_policy", "opsd"))
     student_generator = SampleGenerator(args, tokenizer) if student_gen else None
     if teacher_model is not None:
@@ -374,7 +386,7 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
         teacher_model.eval()
     reference_model = None
     reference_eval_step = 0
-    if adaptive or args.distill_mode == "self_distill":
+    if scheduler is not None or args.distill_mode == "self_distill":
         reference_model = make_reference_model(model.module)
     if args.distill_mode == "opsd" and not callable(getattr(model.module, "disable_adapter", None)):
         raise ValueError("OPSD fixed teacher requires a PEFT model with disable_adapter()")
@@ -382,6 +394,18 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
 
     step, global_step = 1, 1
     mode_router = OptimizerStepModeRouter(scheduler, args.distill_mode)
+    milestones = checkpoint_milestones(args.total_iters, args.save_fractions)
+    milestone_steps = {s for _, s in milestones}
+    if milestones and dist.get_rank() == 0:
+        write_json(os.path.join(args.save, "checkpoint_manifest.json"), {
+            "total_steps": args.total_iters,
+            "checkpoints": [{"fraction": f, "global_step": s,
+                             "path": os.path.abspath(os.path.join(args.save, str(s)))}
+                            for f, s in milestones],
+        })
+    tracker = (ExperimentTracker(args.save, device, args.seed,
+                                "adaptive" if adaptive else "predetermined" if predetermined else "fixed")
+               if args.track_experiment else None)
     total_time, log_steps = 0.0, 0
     # loss, distil, lm, kl, magnitude, direction, CKA, Menger, context tokens,
     # generated samples
@@ -401,6 +425,8 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             st_time = time.time()
 
             selected_mode = mode_router.for_microbatch(device)
+            step_probabilities = (scheduler.mode_probabilities.copy() if scheduler is not None
+                                  else {selected_mode: 1.0})
             student_gen = selected_mode in ("on_policy", "opsd")
             if selected_mode == "opsd":
                 source_model = model
@@ -448,6 +474,14 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             else:
                 t_model_batch = teacher_batch_for_response(args, model_batch)
                 t_no_model_batch = no_model_batch
+
+            if tracker is not None:
+                tracker.add_microbatch(
+                    selected_mode, model_batch,
+                    t_model_batch if source_model is not None else None,
+                    no_model_batch["label"],
+                    no_model_batch.get("self_distill_context_tokens")
+                    if selected_mode == "self_distill" else None)
 
             with capture_last_hidden(model, use_menger) as student_capture:
                 outputs = model(
@@ -530,6 +564,8 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
             model.step()
             if boundary:
                 mode_router.on_optimizer_step()
+                if tracker is not None:
+                    tracker.record_step(selected_mode, step_probabilities)
 
             context_tokens = no_model_batch.get("self_distill_context_tokens") if selected_mode == "self_distill" else None
             context_count = context_tokens.sum() if context_tokens is not None else loss.new_zeros(())
@@ -548,6 +584,8 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 torch.cuda.synchronize()
             elapsed_time = time.time() - st_time
             total_time += elapsed_time
+            if tracker is not None:
+                tracker.seconds["optimization"] += elapsed_time
 
             # Logging
             def get_log(log_losses, log_time, aggregate=False):
@@ -564,10 +602,10 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                     optimizer.cur_scale if hasattr(optimizer, "cur_scale") else 0,
                     elapsed_time, log_time)
                 log_str += (
-                    f" | mode: {'adaptive' if adaptive and aggregate else selected_mode} | loss/lm: {log_lm:.6f} | loss/total: {log_loss:.6f}"
+                    f" | mode: {('adaptive' if adaptive else 'predetermined') if scheduler is not None and aggregate else selected_mode} | loss/lm: {log_lm:.6f} | loss/total: {log_loss:.6f}"
                     f" | loss/mag: {log_mag:.6f} | loss/dir: {log_dir:.6f} | loss/cka: {log_cka:.6f}"
                     f" | loss/menger: {log_menger:.6f}"
-                    f" | data/source: {'mixed' if adaptive and aggregate else data_source} | data/on_policy_fresh_count: {fresh:.0f}"
+                    f" | data/source: {'mixed' if scheduler is not None and aggregate else data_source} | data/on_policy_fresh_count: {fresh:.0f}"
                     f" | data/self_distill_context_tokens: {context:.0f}")
                 for mode in log_modes:
                     mode_kl = (mode_kl_totals[mode] / max(1, mode_log_counts[mode]) if aggregate
@@ -595,19 +633,26 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
 
             # Evaluation
             if boundary and args.eval_interval and global_step % args.eval_interval == 0:
+                dev_started = time.perf_counter()
                 evaluate(args, tokenizer, model, dataset["dev"], "dev", epoch, device,
                          global_step=global_step)
-                if scheduler:
+                if adaptive:
                     adaptive_losses = evaluate_adaptive_losses(
                         args, tokenizer, model, teacher_model, reference_model,
-                        dataset["dev"], device, scheduler.enabled_modes)
+                        dataset["dev"], device, scheduler.enabled_modes,
+                        include_off=tracker is not None)
+                    before_probabilities = scheduler.mode_probabilities.copy()
                     scheduler_log = scheduler.on_evaluation(
                         self_loss=adaptive_losses.get("self_distill"),
                         on_loss=adaptive_losses.get("on_policy"))
                     scheduler_log["global_step"] = global_step
+                    scheduler_log["scheduler/eval_off_loss"] = adaptive_losses.get("off_policy")
+                    scheduler_log["probabilities_before_update"] = before_probabilities
                     log_str = "scheduler | " + json.dumps(scheduler_log, sort_keys=True, allow_nan=False)
                     print_rank(log_str)
                     save_rank(log_str, os.path.join(args.save, "log.txt"))
+                    if tracker is not None and dist.get_rank() == 0:
+                        append_json(os.path.join(args.save, "scheduler.jsonl"), scheduler_log)
                 if args.do_eval:
                     evaluate(args, tokenizer, model, dataset["test"], "test", epoch, device,
                              global_step=global_step)
@@ -615,11 +660,15 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                 if reference_model is not None:
                     refresh_reference_model(reference_model, model.module)
                     reference_eval_step = global_step
+                if tracker is not None:
+                    tracker.seconds["dev_evaluation"] += time.perf_counter() - dev_started
 
             # Save model weights for evaluation or inference.
             if boundary and args.save and (
-                (args.save_interval and global_step % args.save_interval == 0) or global_step == args.total_iters
+                (args.save_interval and global_step % args.save_interval == 0)
+                or global_step in milestone_steps or global_step == args.total_iters
             ):
+                checkpoint_started = time.perf_counter()
                 save_dir_path = os.path.join(args.save, str(global_step))
                 if dist.get_rank() == 0:
                     os.makedirs(save_dir_path, exist_ok=True)
@@ -637,6 +686,15 @@ def finetune(args, tokenizer, model, optimizer, lr_scheduler, dataset, device, t
                         with open(checkpoint_file, "w") as handle:
                             handle.write(os.path.abspath(save_dir_path) + "\n")
                 dist.barrier()
+                if tracker is not None:
+                    tracker.seconds["checkpoint"] += time.perf_counter() - checkpoint_started
+
+            if tracker is not None and boundary and (
+                    global_step % args.experiment_log_interval == 0 or global_step == args.total_iters):
+                tracker.snapshot(global_step,
+                                 scheduler.mode_probabilities.copy() if scheduler is not None
+                                 else step_probabilities,
+                                 final=global_step == args.total_iters)
 
             step += 1
             if boundary:
@@ -817,6 +875,9 @@ def main():
         required_epochs = math.ceil(args.total_iters * args.gradient_accumulation_steps / micro_batches)
         args.epochs = max(args.epochs or 0, required_epochs)
         print_rank("total_iters", args.total_iters)
+        # Persist resolved total steps, not the pre-dataset value (often None).
+        if dist.get_rank() == 0:
+            write_json(os.path.join(args.save, "args.json"), vars(args))
 
         if args.save_interval == -1:
             args.save_interval = args.train_iters_per_epoch

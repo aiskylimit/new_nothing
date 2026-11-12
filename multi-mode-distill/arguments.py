@@ -57,6 +57,11 @@ def add_runtime_args(parser: argparse.ArgumentParser):
     group.add_argument("--mid-log-num", type=int, default=4)
     group.add_argument('--save-interval', type=int, default=1000,
                        help='number of iterations between saves')
+    group.add_argument('--save-fractions', type=float, nargs='+', default=None,
+                       help='Also save at ceil(total optimizer steps * fraction)')
+    group.add_argument('--track-experiment', action='store_true',
+                       help='Write distributed exposure/token/timing statistics')
+    group.add_argument('--experiment-log-interval', type=int, default=100)
     group.add_argument("--eval-interval", type=int, default=1000)
     group.add_argument('--local_rank', type=int, default=None,
                        help='local rank passed from distributed launcher')
@@ -248,6 +253,16 @@ def add_distillation_args(parser: argparse.ArgumentParser):
                        dest="adaptive_deterioration_threshold", type=float,
                        default=defaults.deterioration_threshold)
     group.add_argument("--adaptive-eps", type=float, default=defaults.eps)
+    from src.predetermined import PredeterminedConfig
+    predetermined = PredeterminedConfig()
+    group.add_argument('--predetermined-schedule', action='store_true',
+                       help='Route OFF/SELF/ON using a step-only linear schedule')
+    for name in ('off_init', 'self_init', 'on_init', 'off_decrement', 'on_increment'):
+        group.add_argument('--predetermined-' + name.replace('_', '-'), type=float,
+                           default=getattr(predetermined, name))
+    group.add_argument('--predetermined-update-interval', type=int,
+                       default=predetermined.update_interval,
+                       help='Number of completed optimizer steps between ratio changes')
     for name in DEPRECATED_ADAPTIVE_ARGUMENTS:
         group.add_argument("--" + name.replace("_", "-"), default=argparse.SUPPRESS,
                            help=argparse.SUPPRESS)
