@@ -1,20 +1,5 @@
-#d
-#datasets
---url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/ocr_vqa/ocr_vqa_images.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/ocr_vqa
---url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/ocr_vqa/dataset.json /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/ocr_vqa
---url https://huggingface.co/datasets/DVLe/llava_dataset/resolve/main/vg/images2.zip /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data/vg
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/MME.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/RealWorldQA.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/ScienceQA_TEST.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/AI2D_TEST_NO_MASK.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/MMMU_DEV_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/MMStar.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/ChartQA_TEST.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/DocVQA_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/TextVQA_VAL.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---url https://huggingface.co/datasets/DVLe/Eval_VLM/resolve/main/OCRBench.tsv /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
-
-#log
+#2 -0-5
+#cred
 #v1
 
 
@@ -24,7 +9,6 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-# kill -9 117225
 nvidia-smi
 
 
