@@ -1,4 +1,4 @@
-#i vlm-distill-train-3.txt
+#i vlm-distill-eval-2.txt
 #log
 #v1
 
