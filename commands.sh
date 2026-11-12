@@ -1,5 +1,5 @@
 #1 +10
-#check
+#vlm_distill_ablation
 
 #log
 #v1
@@ -11,10 +11,7 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-kill -9 31048
-kill -9 31049
-kill -9 31050
-kill -9 31051
+
 nvidia-smi
 
 
@@ -52,7 +49,7 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
 
-# cd VLM_Distillation-main
-# bash ./project_commands.sh
+cd VLM_Distillation-main
+bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
