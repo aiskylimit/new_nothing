@@ -1,6 +1,5 @@
-#d
-#datasets
---hf-dataset https://huggingface.co/datasets/DVLe/llava_dataset /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
+#1 +10
+#check
 
 #log
 #v1
@@ -49,7 +48,10 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
 
-# cd VLM_Distillation-main
+cd VLM_Distillation-main
+cd train_data && ls 
+cd ..
+cd eval_data/LMUData && ls
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
