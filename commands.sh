@@ -1,4 +1,4 @@
-#1 +10
+#2 -0
 #vlm_distill_ablation
 
 #log
@@ -49,7 +49,7 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=2 bash ./run_8k_b200.sh
 
 
-cd VLM_Distillation-main
-bash ./project_commands.sh
+# cd VLM_Distillation-main
+# bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
