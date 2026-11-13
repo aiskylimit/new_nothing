@@ -20,7 +20,7 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 torchrun --standalone \
     --nproc_per_node="$NUM_GPUS_PER_NODE" "$TRAIN_SCRIPT" \
-    --model_name "apple/FastVLM-0.5B" \
+    --model_name "models/FastVLM-0.5B" \
     --lora "True" \
     --lora_r "64" \
     --lora_alpha "64" \

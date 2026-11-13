@@ -20,7 +20,7 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 torchrun --standalone \
     --nproc_per_node="$NUM_GPUS_PER_NODE" "$TRAIN_SCRIPT" \
-    --model_name "llava-hf/llava-onevision-qwen2-0.5b-ov-hf" \
+    --model_name "models/llava-onevision-qwen2-0.5b-ov-hf" \
     --lora "True" \
     --lora_r "64" \
     --lora_alpha "64" \
@@ -33,7 +33,7 @@ torchrun --standalone \
     --flickr_caption_seed "42" \
     --percent_data "1.0" \
     --output_dir "training/Qwen3-VL-8B-Instruct_Llava-OV-0.5B_pga2_flickr30k" \
-    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-16}" \
+    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-8}" \
     --gradient_accumulation_steps "1" \
     --learning_rate "1e-4" \
     --num_train_epochs "1" \

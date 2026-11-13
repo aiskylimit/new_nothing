@@ -20,20 +20,20 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 torchrun --standalone \
     --nproc_per_node="$NUM_GPUS_PER_NODE" "$TRAIN_SCRIPT" \
-    --model_name "llava-hf/llava-onevision-qwen2-0.5b-ov-hf" \
+    --model_name "models/llava-onevision-qwen2-0.5b-ov-hf" \
     --lora True \
     --lora_r 64 \
     --lora_alpha 64 \
     --student_hidden_dim 896 \
     --model_backbone "llava_onevision" \
     --pooling "eos" \
-    --dataset_name "TIGER-Lab/MMEB-train" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "training/Qwen3-VL-8B-Instruct_Llava-OV-0.5B_pga2_cls" \
-    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-16}" \
+    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-8}" \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -94,7 +94,7 @@ do
       --model_backbone llava_onevision \
       --normalize True \
       --bf16 \
-      --dataset_name TIGER-Lab/MMEB-eval \
+      --dataset_name vlm2vec_eval/MMEB-eval \
       --subset_name "${EVAL_SUBSETS[@]}" \
       --dataset_split test \
       --per_device_eval_batch_size "$BATCH_SIZE" \

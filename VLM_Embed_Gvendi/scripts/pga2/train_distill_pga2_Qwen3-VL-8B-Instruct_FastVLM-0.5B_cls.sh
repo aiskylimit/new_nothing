@@ -27,7 +27,7 @@ torchrun --standalone \
     --student_hidden_dim 896 \
     --model_backbone "llava_qwen2" \
     --pooling "eos" \
-    --dataset_name "TIGER-Lab/MMEB-train" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "ImageNet_1K" "N24News" "HatefulMemes" "VOC2007" "SUN397" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
@@ -102,7 +102,7 @@ do
       --model_backbone llava_qwen2 \
       --normalize True \
       --bf16 \
-      --dataset_name TIGER-Lab/MMEB-eval \
+      --dataset_name vlm2vec_eval/MMEB-eval \
       --subset_name "${EVAL_SUBSETS[@]}" \
       --dataset_split test \
       --per_device_eval_batch_size "$BATCH_SIZE" \
