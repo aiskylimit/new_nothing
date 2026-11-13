@@ -1,4 +1,4 @@
-#1 +10
+#i multi-mode-distill-eval.txt
 #rivad-eval
 #v1
 
