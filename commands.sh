@@ -1,5 +1,5 @@
 #1 +10
-#log
+#rivad-eval
 #v1
 
 
@@ -9,7 +9,7 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-kill -9 49359 49360 49361 49362
+kill -9 499
 nvidia-smi
 
 
@@ -29,7 +29,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 
-# cd ./multi-mode-distill
+cd ./multi-mode-distill
+CUDA_VISIBLE_DEVICES=4,5,6,7 bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
 # cd ./grit
