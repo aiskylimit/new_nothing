@@ -9,11 +9,8 @@ MASTER_PORT="${MASTER_PORT:-$((29500 + RANDOM % 1000))}"
 GPUS_PER_NODE=${#GPUS[@]}
 NNODES="${NNODES:-1}"
 DISTRIBUTED_ARGS=(
+    --standalone 
     --nproc_per_node "$GPUS_PER_NODE"
-    --nnodes "$NNODES"
-    --node_rank "${NODE_RANK:-0}"
-    --master_addr "${MASTER_ADDR}"
-    --master_port "${MASTER_PORT}"
 )
 
 # Model and data
