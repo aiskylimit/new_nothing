@@ -40,6 +40,11 @@ if [[ "${DRY_RUN:-0}" != 1 ]]; then
 fi
 
 # Process Qwen data before training.
+QWEN_RAW_DATA="${QWEN_RAW_DATA:-$ASSET_ROOT/data/raw/Qwen/Qwen2.5-14B-Instruct/generated_train.jsonl}"
+export MAX_LENGTH="${MAX_LENGTH:-1024}" MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-512}"
+export DEV_NUM="${DEV_NUM:-512}"
+# Keep the train/valid split fixed when changing the training seed.
+PREPROCESS_SEED="${PREPROCESS_SEED:-10}"
 PROCESS_CMD=(
     python tools/process_data_ultraInteract.py
     --base-path "$BASE_PATH" --data-dir "$QWEN_RAW_DATA"
