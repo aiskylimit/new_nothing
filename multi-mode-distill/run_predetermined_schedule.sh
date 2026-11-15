@@ -39,6 +39,27 @@ if [[ "${DRY_RUN:-0}" != 1 ]]; then
     source "$VENV_PATH/bin/activate"
 fi
 
+# Process Qwen data before training.
+PROCESS_CMD=(
+    python tools/process_data_ultraInteract.py
+    --base-path "$BASE_PATH" --data-dir "$QWEN_RAW_DATA"
+    --processed-data-dir "$PROCESSED_DATA_ROOT"
+    --model-path "$CKPT" --model-type qwen
+    --data-process-workers "${DATA_PROCESS_WORKERS:-8}"
+    --max-length "$MAX_LENGTH" --max-prompt-length "$MAX_PROMPT_LENGTH"
+    --dev-num "$DEV_NUM" --seed "$PREPROCESS_SEED"
+)
+printf '\n[process] Raw data: %s\n[process] Output: %s\n[process] Split seed: %s\n' \
+    "$QWEN_RAW_DATA" "$DATA_DIR" "$PREPROCESS_SEED"
+if [[ "${DRY_RUN:-0}" == 1 ]]; then
+    printf 'Command: '
+    printf '%q ' "${PROCESS_CMD[@]}"
+    printf '\n'
+else
+    "${PROCESS_CMD[@]}"
+    printf '[process] Finished. Training will read: %s\n' "$DATA_DIR"
+fi
+
 export EXPOSURE_SCHEDULE=predetermined
 export EVAL_MAX_LORA_RANK="${EVAL_MAX_LORA_RANK:-${LORA_R:-16}}"
 
