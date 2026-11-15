@@ -1,9 +1,9 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
-#pga
+#1 +60
+#rivad
 #v1
 
 
-#2 -f-/mnt/local/aiskylimit_new_nothing/cred/MMEB-evaloutputs-json-v5/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +adolly-dskd-opd-10.log
 
 # sleep 2
@@ -25,9 +25,9 @@ export NCCL_DEBUG=WARN
 # cd ./cred
 # bash ./project_commands.sh
 
-# cd ./multi-mode-distill
+cd ./multi-mode-distill
 # CUDA_VISIBLE_DEVICES=4,5,6,7 bash ./eval_rivad.sh
-# bash ./project_commands.sh
+bash ./project_commands.sh
 
 # cd ./VLM_Embed_Gvendi
 # bash ./project_commands.sh
