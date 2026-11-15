@@ -5,8 +5,6 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/VOC2007.zip /mnt/local/@PROJECT@/VLM_Embed_Gvendi/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/N24News.zip /mnt/local/@PROJECT@/VLM_Embed_Gvendi/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/images_zip/SUN397.zip /mnt/local/@PROJECT@/VLM_Embed_Gvendi/datasets
---url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_cls.tar.gz /mnt/local/@PROJECT@/VLM_Embed_Gvendi/datasets
---url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/B3_Qwen2_2B_vqa.tar.gz /mnt/local/@PROJECT@/VLM_Embed_Gvendi/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/images.zip /mnt/local/@PROJECT@/VLM_Embed_Gvendi/datasets
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/OK-VQA/diverse_instruction-00000-of-00001.parquet /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_train/MMEB-train/OK-VQA
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-train/resolve/main/OK-VQA/original-00000-of-00001.parquet /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_train/MMEB-train/OK-VQA
@@ -81,6 +79,7 @@
 --url https://huggingface.co/datasets/TIGER-Lab/MMEB-eval/resolve/main/MSCOCO/test-00000-of-00001.parquet /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_eval/MMEB-eval/MSCOCO
 --url https://huggingface.co/datasets/nlphuji/flickr30k/resolve/main/flickr30k-images.zip /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_external/flickr30k
 --url https://huggingface.co/datasets/nlphuji/flickr30k/resolve/main/flickr_annotations_30k.csv /mnt/local/@PROJECT@/VLM_Embed_Gvendi/vlm2vec_external/flickr30k
+--hf-dataset minhhotboy9x/VLM_embed_cache /mnt/local/@PROJECT@/VLM_Embed_Gvendi/datasets
 #models
 --hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/VLM_Embed_Gvendi/models/B3_Qwen2_2B
 --hf raghavlite/B3_Qwen2_7B /mnt/local/@PROJECT@/VLM_Embed_Gvendi/models/B3_Qwen2_7B
