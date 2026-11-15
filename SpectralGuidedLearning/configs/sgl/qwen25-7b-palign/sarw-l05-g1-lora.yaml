@@ -1,2 +1,0 @@
-defaults: [../tracks/qwen25-7b-palign.yaml, ../methods/sarw.yaml]
-name: sarw-l05-g1-lora

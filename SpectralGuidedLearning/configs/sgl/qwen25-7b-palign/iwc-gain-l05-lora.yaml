@@ -1,2 +1,0 @@
-defaults: [../tracks/qwen25-7b-palign.yaml, ../methods/iwc-gain.yaml]
-name: iwc-gain-l05-lora

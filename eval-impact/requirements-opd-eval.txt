@@ -1,3 +1,0 @@
-# Use a separate environment to avoid coupling training dependencies to graders.
-lm_eval[hf,math]==0.4.13
-peft>=0.15,<1

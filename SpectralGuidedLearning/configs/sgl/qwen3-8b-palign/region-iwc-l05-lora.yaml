@@ -1,2 +1,0 @@
-defaults: [../tracks/qwen3-8b-palign.yaml, ../methods/region-iwc.yaml]
-name: region-iwc-l05-lora

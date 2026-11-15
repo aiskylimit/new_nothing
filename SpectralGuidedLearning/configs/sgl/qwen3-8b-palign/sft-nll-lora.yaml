@@ -1,2 +1,0 @@
-defaults: [../tracks/qwen3-8b-palign.yaml, ../methods/sft.yaml]
-name: sft-nll-lora

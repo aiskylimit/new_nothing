@@ -1,2 +1,0 @@
-defaults: [../tracks/r1-qwen-1.5b-palign.yaml, ../methods/provenance-junction.yaml]
-name: prov-nll-dft-j8
