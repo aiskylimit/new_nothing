@@ -1,4 +1,4 @@
-#i reasoning-velocity-distill.txt
+#i vlm-gvendi.txt
 #log 
 #v2
 
