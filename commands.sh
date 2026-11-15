@@ -1,4 +1,4 @@
-#2 -1 +a
+#i reasoning-velocity-distill.txt
 #log 
 #v2
 
