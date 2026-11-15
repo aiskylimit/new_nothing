@@ -1,4 +1,4 @@
-#1 +60
+#2 -0-10
 #rivad
 #v1
 
@@ -25,9 +25,9 @@ export NCCL_DEBUG=WARN
 # cd ./cred
 # bash ./project_commands.sh
 
-cd ./multi-mode-distill
+# cd ./multi-mode-distill
 # CUDA_VISIBLE_DEVICES=4,5,6,7 bash ./eval_rivad.sh
-bash ./project_commands.sh
+# bash ./project_commands.sh
 
 # cd ./VLM_Embed_Gvendi
 # bash ./project_commands.sh
