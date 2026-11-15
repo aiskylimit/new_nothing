@@ -1,11 +1,4 @@
-#d
-#datasets
---hf-dataset DVLe/Eval_VLM  /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/eval_data/LMUData
---hf-dataset DVLe/llava_dataset /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/train_data
-#models
---hf KamilaMila/FastVLM-0.5B /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/KamilaMila/FastVLM-0.5B
---hf Qwen/Qwen2-VL-7B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2-VL-7B-Instruct
-
+#i vlm-distill-train-3.txt
 #log 
 #v2
 
