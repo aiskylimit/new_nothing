@@ -1,4 +1,4 @@
-#1 +10
+#2
 #pga
 #v2
 
@@ -29,8 +29,8 @@ export NCCL_DEBUG=WARN
 # CUDA_VISIBLE_DEVICES=4,5,6,7 bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
-cd ./VLM_Embed_Gvendi
-bash ./project_commands.sh
+# cd ./VLM_Embed_Gvendi
+# bash ./project_commands.sh
 
 # cd ./unified-ie
 # bash ./project_commands.sh
