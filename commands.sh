@@ -1,5 +1,5 @@
-#i reasoning-velocity-distill-eval.txt
-#pga
+#1 +30
+#rivad-eval
 #v2
 
 
@@ -25,8 +25,8 @@ export NCCL_DEBUG=WARN
 # cd ./cred
 # bash ./project_commands.sh
 
-# cd ./multi-mode-distill
-# CUDA_VISIBLE_DEVICES=4,5,6,7 bash ./eval_rivad.sh
+cd ./multi-mode-distill
+bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
 # cd ./VLM_Embed_Gvendi
