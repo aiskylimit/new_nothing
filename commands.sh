@@ -36,8 +36,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd VLM_Distillation-main
-cd models/trained_model && ls
-# bash ./project_commands_eval_qwen2vl_kd_4gpu.sh
+# cd models/trained_model && ls
+bash ./project_commands_eval_qwen2vl_run1_3gpu.sh
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
