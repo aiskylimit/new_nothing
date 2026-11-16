@@ -1,4 +1,7 @@
-#2 -0
+#d
+#models
+--hf Qwen/Qwen2.5-VL-7B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-7B-Instruct
+
 #vlm_check_models
 #v1
 
