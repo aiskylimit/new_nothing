@@ -1,4 +1,6 @@
-#2 -0-5
+#d
+#models
+--hf DVLe/model_qwen2_2b_distilled_7b /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models
 #pga
 #v1
 
