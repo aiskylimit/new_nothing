@@ -93,7 +93,7 @@ run_adapter() {
       --suite requested_benchmarks \
       --suite-config "${SUITE_CONFIG}" \
       --mode all \
-      --attention-backend eager \
+      --attention-backend sdpa \
       --max-new-tokens 128
 }
 
@@ -108,7 +108,7 @@ run_base_model() {
       --suite requested_benchmarks \
       --suite-config "${SUITE_CONFIG}" \
       --mode all \
-      --attention-backend eager \
+      --attention-backend sdpa \
       --max-new-tokens 128
 }
 
