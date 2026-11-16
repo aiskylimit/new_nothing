@@ -1,5 +1,5 @@
-#2 -0
-#vlm_eval
+#1 +10
+#kill
 #v2
 
 
@@ -8,6 +8,10 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
+kill -9 148578
+kill -9 148579
+kill -9 148580
+kill -9 148581
 nvidia-smi
 
 
