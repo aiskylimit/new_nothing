@@ -1,9 +1,6 @@
 #d
 #models
---hf DiningSystem/vlm-distillation-ckpt-bucket /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/vlm-distillation-ckpt-bucket
---hf DiningSystem/qwen2vl-2b-kd-sre-full /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/qwen2vl-2b-kd-sre-full
---hf DiningSystem/qwen2vl-2b-kd-emkd-full /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/qwen2vl-2b-kd-emkd-full
---hf DiningSystem/qwen2vl-2b-kd-ce-only-full /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/qwen2vl-2b-kd-ce-only-full
+--hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2-VL-2B-Instruct
 
 #rivad-eval
 #v2
