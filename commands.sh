@@ -1,4 +1,10 @@
-#1 +30
+#d
+#models
+--hf DiningSystem/vlm-distillation-ckpt-bucket /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/vlm-distillation-ckpt-bucket
+--hf DiningSystem/qwen2vl-2b-kd-sre-full /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/qwen2vl-2b-kd-sre-full
+--hf DiningSystem/qwen2vl-2b-kd-emkd-full /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/qwen2vl-2b-kd-emkd-full
+--hf DiningSystem/qwen2vl-2b-kd-ce-only-full /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/qwen2vl-2b-kd-ce-only-full
+
 #rivad-eval
 #v2
 
@@ -25,8 +31,8 @@ export NCCL_DEBUG=WARN
 # cd ./cred
 # bash ./project_commands.sh
 
-cd ./multi-mode-distill
-bash ./eval_rivad.sh
+# cd ./multi-mode-distill
+# bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
 # cd ./VLM_Embed_Gvendi
