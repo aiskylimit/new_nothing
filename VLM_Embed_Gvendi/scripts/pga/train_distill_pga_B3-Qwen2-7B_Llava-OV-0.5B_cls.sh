@@ -32,7 +32,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "training/B3-Qwen2-7B_Llava-OV-0.5B_pga_cls" \
-    --per_device_train_batch_size 16 \
+    --per_device_train_batch_size 12 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -49,7 +49,6 @@ torchrun --standalone \
     --kd_weight 1 \
     --kd_loss_type "pga" \
     --image_resolution "tiny" \
-    --teacher_image_resolution "low" \
     --projector_lr 5e-4 \
     --projector_config_path "./config/projector_pga.json" \
     --teacher_hidden_dim 3584 \
