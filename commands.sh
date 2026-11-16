@@ -1,5 +1,5 @@
-#1 +10
-#pga-log
+#1 +120
+#pga
 #v2
 
 
@@ -8,7 +8,6 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-kill -9 154586 154576 154592
 nvidia-smi
 
 
@@ -30,8 +29,8 @@ export NCCL_DEBUG=WARN
 # bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
-# cd ./VLM_Embed_Gvendi
-# bash ./project_commands.sh
+cd ./VLM_Embed_Gvendi
+bash ./project_commands.sh
 
 # cd ./unified-ie
 # bash ./project_commands.sh
