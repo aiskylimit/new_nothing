@@ -15,8 +15,8 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 torchrun --master_port=$PORT \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name "apple/FastVLM-0.5B" \
-    --teacher_model_name "raghavlite/B3_Qwen2_7B" \
+    --model_name "models/FastVLM-0.5B" \
+    --teacher_model_name "models/B3_Qwen2_7B" \
     --lora True \
     --teacher_lora True \
     --lora_r 64 \
