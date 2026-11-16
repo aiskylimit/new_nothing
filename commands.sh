@@ -1,4 +1,4 @@
-#2 +a
+#2 -1 +a
 #rivad-eval
 #v2
 
@@ -25,8 +25,8 @@ export NCCL_DEBUG=WARN
 # cd ./cred
 # bash ./project_commands.sh
 
-cd ./multi-mode-distill
-bash ./eval_rivad.sh
+# cd ./multi-mode-distill
+# bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
 # cd ./VLM_Embed_Gvendi
@@ -36,6 +36,7 @@ bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
 # cd VLM_Distillation-main
+# bash ./project_commands_eval_qwen2vl_kd_4gpu.sh
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
