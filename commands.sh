@@ -1,6 +1,5 @@
-#d
-#models
---hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2-VL-2B-Instruct
+#1 +10
+#vlm_check_models
 
 #rivad-eval
 #v2
@@ -38,7 +37,9 @@ export NCCL_DEBUG=WARN
 # cd ./unified-ie
 # bash ./project_commands.sh
 
-# cd VLM_Distillation-main
+cd VLM_Distillation-main
+cd models && ls 
+cd Qwen && ls
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
