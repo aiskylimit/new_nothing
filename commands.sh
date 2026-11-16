@@ -1,8 +1,5 @@
-#d
-#models
---hf Qwen/Qwen2.5-VL-7B-Instruct /mnt/local/aiskylimit_new_nothing/VLM_Distillation-main/models/Qwen/Qwen2.5-VL-7B-Instruct
-
-#vlm_check_models
+#1 +10
+#vlm_eval_base
 #v1
 
 
@@ -38,9 +35,8 @@ export NCCL_DEBUG=WARN
 # cd ./unified-ie
 # bash ./project_commands.sh
 
-# cd VLM_Distillation-main
-# cd models/trained_model && ls
-# bash ./project_commands_eval_qwen2vl_run1_3gpu.sh
+cd VLM_Distillation-main
+bash ./project_commands_eval_qwen25vl_7b_gpu7.sh
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
