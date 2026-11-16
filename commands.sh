@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
+#2 -6
 #vlm_eval_check_v2
 #v1
 
