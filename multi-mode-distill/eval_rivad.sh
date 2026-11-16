@@ -14,7 +14,7 @@ export EVAL_PYTHON="${EVAL_PYTHON:-${EVAL_VENV_PATH:-/mnt/local/uvenvs/reasoning
 RESULTS_ROOT="${RESULTS_ROOT:-$BASE_PATH/results/qwen2.5-1.5B-Instruct-v2/rebuttal}"
 RUN_NAME="${RUN_NAME:-e2-bs8-lr0.0001-G4-N4-NN1-kd0.5-lora-16-128-0.05}"
 
-for RUN in adaptive_seed42 "predetermined_seed${PREDETERMINED_SEED:-10}"; do
+for RUN in "predetermined_seed${PREDETERMINED_SEED:-10}"; do
     RUN_DIR="$RESULTS_ROOT/$RUN/$RUN_NAME"
     FINAL_STEP="$("$EVAL_PYTHON" -c 'import json, sys; print(json.load(open(sys.argv[1]))["total_iters"])' "$RUN_DIR/args.json")"
     LORA_PATH="$RUN_DIR/$FINAL_STEP"
