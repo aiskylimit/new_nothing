@@ -32,7 +32,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "training/B3-Qwen2-7B_Llava-OV-0.5B_pga_grounding" \
-    --per_device_train_batch_size 12 \
+    --per_device_train_batch_size 10 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -44,8 +44,8 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --teacher_normalize True \
-    --lr_scheduler_type "cosine" \
-    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --warmup_ratio 0.05 \
     --kd_weight 1 \
     --kd_loss_type "pga" \
     --image_resolution "tiny" \

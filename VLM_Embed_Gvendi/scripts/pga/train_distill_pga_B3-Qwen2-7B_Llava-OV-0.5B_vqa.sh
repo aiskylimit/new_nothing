@@ -15,8 +15,8 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
 torchrun --master_port=$PORT \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-    --model_name "llava-hf/llava-onevision-qwen2-0.5b-ov-hf" \
-    --teacher_model_name "raghavlite/B3_Qwen2_7B" \
+    --model_name "models/llava-onevision-qwen2-0.5b-ov-hf" \
+    --teacher_model_name "models/B3_Qwen2_7B" \
     --lora True \
     --teacher_lora True \
     --lora_r 64 \
@@ -26,13 +26,13 @@ torchrun --master_port=$PORT \
     --teacher_backbone "qwen2_vl" \
     --model_backbone "llava_onevision" \
     --pooling "eos" \
-    --dataset_name "TIGER-Lab/MMEB-train" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
     --subset_name "OK-VQA" "A-OKVQA" "DocVQA" "InfographicsVQA" "ChartQA" "Visual7W" \
     --dataset_split "original" \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "training/B3-Qwen2-7B_Llava-OV-0.5B_pga_vqa" \
-    --per_device_train_batch_size 12 \
+    --per_device_train_batch_size 10 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -44,8 +44,8 @@ torchrun --master_port=$PORT \
     --weight_decay 0.01 \
     --normalize True \
     --teacher_normalize True \
-    --lr_scheduler_type "cosine" \
-    --warmup_ratio 0.03 \
+    --lr_scheduler_type "constant" \
+    --warmup_ratio 0.05 \
     --kd_weight 1 \
     --kd_loss_type "pga" \
     --image_resolution "tiny" \
@@ -91,7 +91,7 @@ do
       --model_backbone llava_onevision \
       --normalize True \
       --bf16 \
-      --dataset_name TIGER-Lab/MMEB-eval \
+      --dataset_name vlm2vec_eval/MMEB-eval \
       --subset_name "${EVAL_SUBSETS[@]}" \
       --dataset_split test \
       --per_device_eval_batch_size "$BATCH_SIZE" \
