@@ -50,7 +50,6 @@ torchrun --standalone \
     --kd_weight "1" \
     --kd_loss_type "pga" \
     --image_resolution "tiny" \
-    --teacher_image_resolution "low" \
     --projector_config_path "config/projector_pga.json" \
     --teacher_hidden_dim "3584" \
     --student_hidden_dim "896" \

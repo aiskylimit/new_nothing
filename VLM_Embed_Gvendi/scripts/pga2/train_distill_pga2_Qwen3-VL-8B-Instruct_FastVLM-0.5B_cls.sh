@@ -33,7 +33,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "training/Qwen3-VL-8B-Instruct_FastVLM-0.5B_pga2_cls" \
-    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-16}" \
+    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-12}" \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
