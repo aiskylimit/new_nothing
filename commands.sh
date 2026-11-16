@@ -1,5 +1,5 @@
-#2 -6
-#pga
+#1 +10
+#vlm_check_models
 #v1
 
 
@@ -35,7 +35,8 @@ export NCCL_DEBUG=WARN
 # cd ./unified-ie
 # bash ./project_commands.sh
 
-# cd VLM_Distillation-main
+cd VLM_Distillation-main
+cd models/trained_model && ls
 # bash ./project_commands_eval_qwen2vl_kd_4gpu.sh
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
