@@ -1,5 +1,5 @@
-#1 +120
-#pga
+#1 +10
+#pga-log
 #v2
 
 
@@ -29,8 +29,8 @@ export NCCL_DEBUG=WARN
 # bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
-cd ./VLM_Embed_Gvendi
-bash ./project_commands.sh
+# cd ./VLM_Embed_Gvendi
+# bash ./project_commands.sh
 
 # cd ./unified-ie
 # bash ./project_commands.sh
