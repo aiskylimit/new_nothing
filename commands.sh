@@ -1,5 +1,5 @@
 #1 +10
-#vlm_check_models
+#vlm_eval
 
 #rivad-eval
 #v2
@@ -38,8 +38,7 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd VLM_Distillation-main
-cd models && ls 
-cd Qwen && ls
+bash ./project_commands_eval_qwen2vl_kd_4gpu.sh
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh

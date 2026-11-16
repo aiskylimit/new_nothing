@@ -1,0 +1,25 @@
+{
+  "name": "requested_benchmarks",
+  "description": "Offline evaluation suite for the four-model Qwen2-VL run: nine benchmarks, excluding MME and OCRBench.",
+  "datasets": [
+    "GQA_TestDev_Balanced",
+    "RealWorldQA",
+    "ScienceQA_TEST",
+    "AI2D_TEST_NO_MASK",
+    "MMMU_DEV_VAL",
+    "MMStar",
+    "ChartQA_TEST",
+    "DocVQA_VAL",
+    "TextVQA_VAL"
+  ],
+  "dataset_class_overrides": {},
+  "judge_model": null,
+  "judge_kwargs": {},
+  "notes": {
+    "ScienceQA_TEST": "SQA means ScienceQA for this suite.",
+    "MMMU_DEV_VAL": "Public dev+validation split.",
+    "AI2D_TEST_NO_MASK": "No-mask variant.",
+    "DocVQA_VAL": "Public validation split; ANLS.",
+    "TextVQA_VAL": "Validation split; VQA score."
+  }
+}
