@@ -1,5 +1,5 @@
-#2 -1 +a
-#rivad
+#1 +10
+#vlm_check
 #v2
 
 
