@@ -6,7 +6,7 @@
 # Here all 8 get 5 epochs (the scripts' default; best_lora.py still picks the best dev epoch). Compare the
 # new dev/test scores with those above before rerunning the KD references.
 # Each queue then copies its teachers' best checkpoints to HF datht/unified-ie (tools/upload_teachers.py,
-# HF_TOKEN or a cached login). Teachers only: about 4.5 h (OntoNotes the longest); run6.sh comes after.
+# HF_TOKEN or a cached login). Teachers only, GPUs 0 and 1: about 6.5 h; run6.sh comes after.
 # Needs, after a fresh clone: the venv (install.sh), download.txt (models, processed_data.zip, mt_v2.zip).
 # Console output: logs/<run>.log; training logs: results/qwen3/general_domain/sft_4B_*/<settings>/log.txt.
 # SMOKE=1 bash run7.sh: every job trains 2 optimizer steps on 64 rows, saves, scores 16 dev and 16 test rows,
@@ -80,7 +80,7 @@ start () {  # $1 = GPU, then pairs: <log name> "<env and command>", run one afte
     local cmd=": > ${mark}; " names=""
     while [ $# -gt 0 ]; do
         local log=logs/${PREFIX}$1.log
-        cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu + PORT_OFFSET)) $2 > ${log} 2>&1; "
+        cmd+="GPU=${gpu} PORT=$((29600 + 10 * gpu + PORT_OFFSET)) $2 > ${log} 2>&1; "
         QUEUE_LOGS+=("${log}") names+=" $1"
         rm -f ${log}
         shift 2
@@ -99,16 +99,14 @@ start () {  # $1 = GPU, then pairs: <log name> "<env and command>", run one afte
     fi
 }
 
-# 5 epochs, rows x epochs: OntoNotes ~4.5 h, FewRel ~3 h, MAVEN ~2.5 h, CoNLL03 ~1.2 h, the rest < 0.6 h
-start 4 sft_teacher_4B_ner_ontonotes "${NER} ontonotes" \
-        upload_teachers_gpu4 "${UPLOAD} ${R}/sft_4B_ner_v2_ontonotes"
-start 5 sft_teacher_4B_re_fewrel "${FEWREL}" sft_teacher_4B_ee_v2_geneva "${EE} geneva" \
-        upload_teachers_gpu5 "${UPLOAD} ${R}/sft_4B_re_fewrel ${R}/sft_4B_ee_v2_geneva"
-start 6 sft_teacher_4B_ee_v2_maven "${EE} maven" sft_teacher_4B_ee_v2_rams "${EE} rams" \
-        sft_teacher_4B_ee_v2_ace "${EE} ace" \
-        upload_teachers_gpu6 "${UPLOAD} ${R}/sft_4B_ee_v2_maven ${R}/sft_4B_ee_v2_rams ${R}/sft_4B_ee_v2_ace"
-start 7 sft_teacher_4B_ner_conll03 "${NER} conll03" sft_teacher_4B_re_tacred "${TACRED}" \
-        upload_teachers_gpu7 "${UPLOAD} ${R}/sft_4B_ner_v2_conll03 ${R}/sft_4B_re_tacred"
+# 5 epochs, rows x epochs: OntoNotes ~4.5 h, FewRel ~3 h, MAVEN ~2.5 h, CoNLL03 ~1.2 h, the rest < 0.6 h.
+# GPUs 0 and 1, ~6.5 h each.
+start 0 sft_teacher_4B_ner_ontonotes "${NER} ontonotes" sft_teacher_4B_ner_conll03 "${NER} conll03" \
+        sft_teacher_4B_ee_v2_ace "${EE} ace" sft_teacher_4B_ee_v2_geneva "${EE} geneva" \
+        upload_teachers_gpu0 "${UPLOAD} ${R}/sft_4B_ner_v2_ontonotes ${R}/sft_4B_ner_v2_conll03 ${R}/sft_4B_ee_v2_ace ${R}/sft_4B_ee_v2_geneva"
+start 1 sft_teacher_4B_re_fewrel "${FEWREL}" sft_teacher_4B_ee_v2_maven "${EE} maven" \
+        sft_teacher_4B_ee_v2_rams "${EE} rams" sft_teacher_4B_re_tacred "${TACRED}" \
+        upload_teachers_gpu1 "${UPLOAD} ${R}/sft_4B_re_fewrel ${R}/sft_4B_ee_v2_maven ${R}/sft_4B_ee_v2_rams ${R}/sft_4B_re_tacred"
 
 echo "follow: tail -f ${QUEUE_LOGS[*]}"
 echo "results: grep -rh 'RESULT test' ${R}/sft_4B_* --include=log.txt"
