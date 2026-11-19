@@ -1,5 +1,5 @@
 #1 +10
-#unified
+#vlm_ablation_v3
 #v1
 
 
@@ -37,6 +37,6 @@ export NCCL_DEBUG=WARN
 
 cd VLM_Distillation-main
 # bash ./project_commands_eval_qwen25vl_7b_gpu7.sh
-# bash ./project_commands.sh
-bash ./project_commands_collect_eval_summary.sh
+bash ./project_commands.sh
+# bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
