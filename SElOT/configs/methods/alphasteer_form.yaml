@@ -1,0 +1,8 @@
+# AlphaSteer's steering form with a Delta fitted by AlphaSteer's own code (not reimplemented here):
+# h <- h + lambda h Delta, i.e. A = I + lambda Delta^T, b = 0. File: tensor [num_layers, d, d] or {layer: d x d}.
+# AlphaSteer uses negative strengths and steers with its own position rule.
+method:
+  name: alphasteer_form
+  path: null
+steer:
+  positions: alphasteer

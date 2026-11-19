@@ -1,0 +1,5 @@
+# Difference-in-means steering (Arditi et al., 2024): b = alpha * (mean(refused) - mean(source)), A = I.
+method:
+  name: dim
+  source: benign             # benign (Arditi convention) | jailbreak | answered (benign + jailbreak)
+  subspace_k: 0              # > 0: restrict to the transport subspace, P P^T r (Prop. 1b)

@@ -1,0 +1,4 @@
+# RQ2 ablation: same field and cost, constant target m_r - m_j instead of delta*.
+inherit: [selot.yaml]
+method:
+  target: constant

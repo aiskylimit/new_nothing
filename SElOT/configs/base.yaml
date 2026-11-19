@@ -1,0 +1,86 @@
+# Defaults shared by every run. Merge order: base -> models/<model>.yaml -> methods/<method>.yaml -> --set.
+# Relative paths are relative to the SElOT folder.
+run_id: dev
+work_dir: work               # large files: acts/, maps/, generations/
+results_dir: null            # small files; null = results_<run_id>/ next to this README
+device: cuda
+fit_device: null             # null = same as device
+
+model:
+  path: null                 # local model folder (set by models/*.yaml or project_commands.sh)
+  tag: null                  # short name; activations are cached under acts/<tag>/
+  dtype: bfloat16            # forward-pass dtype; activations are stored and fitted in float32
+  layers: null               # explicit list of layers to fit and steer, or null for layer_range
+  layer_range: [0.3, 0.6]    # fraction of depth, inclusive (proposal Sec. 4.1)
+
+# Fitting sets and eval sets: .txt / .json / .jsonl prompt files (see README "Dataset files").
+data:
+  fit:
+    benign: null             # D_b: prompts the model answers and should keep answering
+    refused: null            # D_r: harmful prompts the model already refuses
+    jailbreak: null          # D_j: jailbreaks the model answers
+  eval: []                   # list of {name, path, metric: asr|refusal|gsm8k|mmlu|alpaca_eval, kind, template,
+                             #          max_new_tokens, max_samples}; see configs/data/v1.yaml
+
+fit_data:                    # per-model D_b / D_r / D_j from the pools in data.fit (stage `label`, selot/fit_data.py)
+  behaviour: llamaguard      # llamaguard | keyword (refusal prefix) | none (ablation: keep every pooled prompt)
+  workflow: 2                # 2: fixed train/val split by behaviour groups (data/fit `split`) | 1: first Colab
+                             # run (per-pool groups `group_v1`, per-model split after the topic cap)
+  engine: vllm               # vllm | hf: engine of the unsteered responses (Llama Guard always runs on vLLM)
+  vllm_gpu_mem: 0.85
+  guard:
+    path: null               # local meta-llama/Llama-Guard-3-8B (vLLM)
+    dtype: bfloat16
+  max_new_tokens: {harmful: 256, benign: 64}
+  batch_size: 32             # generation batch of the label stage
+  topic_cap: 150             # D_r / D_j prompts per topic
+  val_folds: 7               # 1/7 held out for layer and alpha selection
+  max_weight: 5.0            # inverse-topic-frequency weights are clipped here
+  seed: 0
+
+extract:
+  batch_size: 16
+
+steer:
+  positions: prompt          # prompt (default) | alphasteer (AlphaSteer baseline rule) | all (ablation)
+  layers: null               # subset of the fitted layers to steer; null = all fitted layers
+  alphas: [0.0, 0.25, 0.5, 0.75, 1.0]   # 0 = unsteered model
+
+generate:
+  batch_size: 16
+  max_new_tokens: 256
+  max_samples: null          # cap per eval set (quick runs)
+
+judge:
+  name: keyword              # main ASR judge: llamaguard (AlphaSteer's Llama Guard protocol) | harmbench | keyword
+                             # (every judge is a local model; no API judge)
+  extra: []                  # more ASR judges reported as asr_<name>, e.g. [harmbench]
+                             # engines are fixed (selot.judge.ENGINE): Llama Guard + HarmBench on vLLM,
+                             # StrongREJECT + reward model on HF; each label stores its engine
+  vllm_gpu_mem: 0.85         # GPU memory fraction of the vLLM judges (vLLM batches by itself: no batch_size)
+  llamaguard:                # judge llamaguard: (prompt, response) -> safe / unsafe (vLLM)
+    path: null               # local meta-llama/Llama-Guard-3-8B
+    dtype: bfloat16
+  path: null                 # harmbench (vLLM): local cais/HarmBench-Llama-2-13b-cls
+  dtype: bfloat16
+  strongreject:              # StrongREJECT fine-tuned evaluator on the asr sets (HF)
+    enabled: false
+    base_path: null          # local google/gemma-2b
+    adapter_path: null       # local qylu4156/strongreject-15k-v1 (LoRA)
+    dtype: bfloat16
+    batch_size: 8
+    max_response_tokens: 512
+  overrefusal:               # over-refusal sets (metric refusal): AlphaSteer's XSTest 3-class prompt on a local model
+    enabled: false           # (vLLM); compliance_rate = share of 1_full_compliance. Off: refusal prefix only
+    path: null               # local Qwen/Qwen2.5-14B-Instruct
+    dtype: bfloat16
+  reward:                    # response quality on the alpaca_eval sets (selot/reward.py, HF): win rate vs alpha 0 / reference
+    enabled: false
+    path: null               # local Skywork/Skywork-Reward-V2-Llama-3.1-8B
+    dtype: bfloat16
+    batch_size: 8
+    max_length: 4096         # tokens of (prompt, response); the model was trained up to 16k
+
+analysis:
+  sets: []                   # list of {name, path, group}: held-out benign / borderline / refused / jailbreak
+  max_samples: 200

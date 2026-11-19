@@ -1,0 +1,26 @@
+# manager: uv
+# python: 3.13
+# Environment name: selot (SElOT: selective OT activation steering, Llama-3.1-8B-Instruct; GPUs 2,3).
+# Same pins as SElOT/requirements.txt (the launcher SElOT/run_stages.sh checks them), without wandb: no W&B on this
+# server. vllm 0.34.0 fixes torch 2.14.0 and transformers <5.23; numpy <2.5 for numba 0.65 (pulled in by vllm);
+# setuptools <81 for vllm. Do not use wheel URLs.
+torch==2.14.0
+transformers==5.22.1
+tokenizers==0.23.3
+huggingface_hub==2.4.0
+accelerate==1.16.0
+safetensors==0.8.0
+sentencepiece==0.2.3
+protobuf==7.36.2
+numpy==2.4.6
+scipy==1.18.1
+vllm==0.34.0
+peft==0.21.3
+setuptools==80.10.2
+pandas==3.1.1
+pyarrow==26.0.1
+scikit-learn==1.9.1
+sentence-transformers==6.3.0
+sacrebleu==2.6.0
+pyyaml==6.0.3
+tqdm==4.70.1

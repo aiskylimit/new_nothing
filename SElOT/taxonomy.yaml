@@ -1,0 +1,170 @@
+# SElOT harm-topic taxonomy (v1, 2026-11-11)
+# 11 topics. Built to line up with the test benchmarks (HarmBench semantic categories,
+# JBB's 10 categories) and with the native labels of the fitting sources
+# (Do-Not-Answer types_of_harm/specific_harms, WildGuardMix subcategory, MaliciousInstruct intents).
+# A prompt gets exactly one topic. "out_of_scope" prompts are dropped from Dr/Dj.
+
+topics:
+  cyber:
+    name: Cybercrime & malware
+    desc: Hacking, intrusion, malware/ransomware, phishing kits, exploits, DDoS, credential theft.
+    test_refs: [HarmBench:cybercrime_intrusion, JBB:Malware/Hacking]
+  weapons_cbrn:
+    name: Weapons, explosives & CBRN
+    desc: Making/acquiring guns, bombs, explosives; chemical, biological, radiological, nuclear agents; poisons.
+    test_refs: [HarmBench:chemical_biological, JBB:Physical harm (part)]
+  violence:
+    name: Violence, terrorism & physical harm
+    desc: Killing, assault, kidnapping, torture, terrorism planning, animal cruelty, threats and intimidation.
+    test_refs: [HarmBench:harmful (part), HarmBench:illegal (part), JBB:Physical harm]
+  illegal_crime:
+    name: Drugs, trafficking & other crime
+    desc: Drug synthesis/sale/abuse, human/arms trafficking, theft, burglary, sabotage, evading police, forgery.
+    test_refs: [HarmBench:illegal, JBB:Government decision-making (part)]
+  fraud_economic:
+    name: Fraud, scams & economic harm
+    desc: Scams, financial fraud, money laundering, tax evasion, counterfeiting, gambling/extortion schemes, spam.
+    test_refs: [JBB:Economic harm, JBB:Fraud/Deception]
+  misinfo:
+    name: Misinformation & manipulation
+    desc: Fake news, propaganda, disinformation campaigns, conspiracy, defamation, psychological manipulation.
+    test_refs: [HarmBench:misinformation_disinformation, JBB:Disinformation]
+  hate_harassment:
+    name: Hate, harassment & discrimination
+    desc: Hate speech, slurs, stereotypes, discrimination, bullying, cyberbullying, trolling, insults.
+    test_refs: [HarmBench:harassment_bullying, JBB:Harassment/Discrimination]
+  privacy:
+    name: Privacy & surveillance
+    desc: Doxxing, PII/biometric/medical data of individuals, stalking, illegitimate surveillance, leaking confidential org/gov info.
+    test_refs: [JBB:Privacy]
+  sexual:
+    name: Sexual & adult content
+    desc: Explicit sexual content, non-consensual or exploitative sexual material, sexual solicitation.
+    test_refs: [JBB:Sexual/Adult content]
+  self_harm_unsafe:
+    name: Self-harm & dangerous advice
+    desc: Suicide/self-harm, eating disorders, unsafe health practices, risky stunts, unlicensed medical/legal/financial advice that causes harm.
+    test_refs: [JBB:Expert advice]
+  copyright:
+    name: Copyright & IP
+    desc: Reproducing copyrighted text/lyrics, piracy, DRM circumvention.
+    test_refs: [HarmBench:copyright]
+
+# ---- native label -> topic. Labels listed under `refine` are split with keyword rules (build.py).
+mappings:
+  wildguardmix:            # column `subcategory`
+    cyberattack: cyber
+    violence_and_physical_harm: {default: violence, refine: true}
+    fraud_assisting_illegal_activities: {default: illegal_crime, refine: true}
+    disseminating_false_or_misleading_information_encouraging_disinformation_campaigns: misinfo
+    causing_material_harm_by_disseminating_misinformation: {default: misinfo, refine: true}
+    defamation_encouraging_unethical_or_unsafe_actions: {default: misinfo, refine: true}
+    social_stereotypes_and_unfair_discrimination: hate_harassment
+    toxic_language_hate_speech: hate_harassment
+    private_information_individual: privacy
+    sensitive_information_organization_government: privacy
+    sexual_content: sexual
+    mental_health_over-reliance_crisis: {default: self_harm_unsafe, refine: true}
+    copyright_violations: copyright
+    others: {default: out_of_scope, refine: true}
+  do_not_answer:           # column `specific_harms`, matched by prefix (text before ':')
+    Explicit Sexual Content: sexual
+    Graphic Violence: violence
+    Animal Abuse/Cruelty/Poaching: violence
+    Copyright Infringement: copyright
+    Financial Crimes: fraud_economic
+    Illegal Digital Activities: cyber
+    Illegal Drugs and Substances: illegal_crime
+    Illegal Trade: {default: illegal_crime, refine: true}
+    Illegitimate surveillance and censorship: privacy
+    Sexual Exploitation and Pornography: sexual
+    Substance Abuse: illegal_crime
+    Terrorist Activities: {default: violence, refine: true}
+    Threats and Intimidation: violence
+    Violence and Physical Harm: {default: violence, refine: true}
+    Financial Advice: out_of_scope
+    Legal Advice: out_of_scope
+    Medical Advice: out_of_scope
+    Unreliable Experts: out_of_scope
+    Biometric Data: privacy
+    Educational Information: privacy
+    Financial Information: privacy
+    Medical Information: privacy
+    Personal Identification Information (PII): privacy
+    Personal Life Information: privacy
+    False News: misinfo
+    Hazardous Activities: self_harm_unsafe
+    Misinterpretation or Wrong Context: out_of_scope
+    Propaganda: misinfo
+    Rumors: misinfo
+    Advice of coping strategies on anger management: out_of_scope
+    Consult advice on psychotic disorders: out_of_scope
+    Depression and Anxiety: out_of_scope
+    Self-Harm: self_harm_unsafe
+    Defamatory Content: misinfo
+    Endorsement of Cyberbullying or Online Harassment: hate_harassment
+    Endorsement of Unsafe Health Practices: self_harm_unsafe
+    Guide for Risky Pranks, Unsafe Behaviors or Destructive Behavior, Substance Misuse: self_harm_unsafe
+    Trolling or Flame baiting: hate_harassment
+    Disinformation: misinfo
+    Malinformation: misinfo
+    Spam Content: fraud_economic
+    Classified Information: privacy
+    Confidential Operations: privacy
+    Cybersecurity Vulnerabilities: cyber
+    Financial and Budgetary Information: privacy
+    Internal Communications: privacy
+    Internal Policies and Procedures: privacy
+    Legal Information: privacy
+    Sensitive Technological Details: privacy
+    Body Shaming: hate_harassment
+    Disability Discrimination: hate_harassment
+    Gender/Sexual Discrimination: hate_harassment
+    Location Discrimination: hate_harassment
+    Other Forms of Discrimination: hate_harassment
+    Racial/Ethnic Discrimination: hate_harassment
+    Religious Discrimination: hate_harassment
+    Insult: hate_harassment
+    Obscene: hate_harassment
+    Other Severe Toxicity: hate_harassment
+    Ask for personal information: out_of_scope
+    places personal emotional reliance on a chatbot: out_of_scope
+  malicious_instruct:      # 10 intents x 10 prompts, in file order
+    - misinfo            # psychological manipulation
+    - illegal_crime      # sabotage
+    - fraud_economic     # theft / scams
+    - misinfo            # defamation
+    - hate_harassment    # cyberbullying
+    - misinfo            # false accusation
+    - fraud_economic     # tax fraud
+    - cyber              # hacking
+    - fraud_economic     # fraud
+    - illegal_crime      # illegal drug use
+  jbb:                     # JBB-Behaviors column `Category`
+    Harassment/Discrimination: hate_harassment
+    Malware/Hacking: cyber
+    Physical harm: {default: violence, refine: true}
+    Economic harm: fraud_economic
+    Fraud/Deception: fraud_economic
+    Disinformation: misinfo
+    Sexual/Adult content: sexual
+    Privacy: privacy
+    Expert advice: self_harm_unsafe
+    Government decision-making: {default: illegal_crime, refine: true}
+  jailbreakv:              # JailbreakV-28K column `policy`
+    Malware: cyber
+    Illegal Activity: {default: illegal_crime, refine: true}
+    Fraud: fraud_economic
+    Economic Harm: {default: fraud_economic, refine: true}
+    Bias: hate_harassment
+    Hate Speech: hate_harassment
+    Government Decision: {default: illegal_crime, refine: true}
+    Unethical Behavior: {default: out_of_scope, refine: true}
+    Violence: violence
+    Physical Harm: {default: violence, refine: true}
+    Animal Abuse: violence
+    Tailored Unlicensed Advice: self_harm_unsafe
+    Health Consultation: self_harm_unsafe
+    Political Sensitivity: {default: misinfo, refine: true}
+    Privacy Violation: privacy
+    Child Abuse Content: {default: violence, refine: true}

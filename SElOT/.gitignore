@@ -1,0 +1,41 @@
+# ---------------------------------------------------------------- Python / tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+
+# ---------------------------------------------------------------- secrets: keys only ever live in the environment
+.env
+.env.*
+*.key
+.netrc
+
+# ---------------------------------------------------------------- data: hosted on the Hugging Face Hub, not in git
+# (scripts/fetch_data.py + build_fit_sets.py + prepare_eval.py rebuild it; see README "Data")
+data/
+
+# ---------------------------------------------------------------- run outputs
+outputs/
+results_*/
+results/
+wandb/
+work/
+*.pt
+*.npy
+*.log
+
+# internal notes, kept locally only
+tests/REVIEW_REPORT.md
+
+# tests stay local
+tests/
+pytest.ini
+
+# platform-specific runners, kept locally only (download.txt is the server's download job: tracked)
+colab/
+sync_to_drive.sh
+.gitattributes
