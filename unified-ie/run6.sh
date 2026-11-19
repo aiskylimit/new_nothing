@@ -1,11 +1,11 @@
 #! /bin/bash
-# Three things, about 27-30 h per GPU. Start after run7.sh has trained the 8 teachers again (server reset of
-# 2026-11-04); the references below came from the old teachers.
+# Three things on GPUs 0 and 1, about 55-57 h each. Start after run7.sh has trained the 8 teachers again
+# (server reset of 2026-11-04); the references below came from the old teachers.
 # 1. EventKD without BAM, one dataset per task (EE ACE, NER CoNLL03, RE FewRel, where the student is ~7 points
 #    under its teacher): the student learns only that dataset's rows from its one teacher
 #    (DATASET=<name>), constant KD weight 0.9, sfkl, as in the EventKD paper (span layers 25/28 <-> 33/36 as
 #    published). Each dataset twice: with the span loss (EventKD) and without it (sfkl only), so the gain of
-#    the span loss per dataset can be read off. 6 runs on GPUs 4-5 (ACE ~0.5 h, CoNLL03 ~2 h, FewRel ~4.5 h each).
+#    the span loss per dataset can be read off. 6 runs (ACE ~0.5 h, CoNLL03 ~2 h, FewRel ~4.5 h each).
 # 2. Span loss on the layers the CKA measure picked (Kaggle, base models): student 16/24/27 <-> teacher
 #    19/32/35, no last layer (the 28 <-> 36 pair matched worst and made ~90% of the span loss). On the best
 #    multi-task setting so far (fkl, constant KD 0.5, test mean 63.99). Those pairs start ~12x closer than the
@@ -84,7 +84,7 @@ start () {  # $1 = GPU, then pairs: <log name> "<env and command>", run one afte
     local cmd=": > ${mark}; " names=""
     while [ $# -gt 0 ]; do
         local log=logs/${PREFIX}$1.log
-        cmd+="GPU=${gpu} PORT=$((29500 + 10 * gpu + PORT_OFFSET)) $2 > ${log} 2>&1; "
+        cmd+="GPU=${gpu} PORT=$((29600 + 10 * gpu + PORT_OFFSET)) $2 > ${log} 2>&1; "
         QUEUE_LOGS+=("${log}") names+=" $1"
         rm -f ${log}
         shift 2
@@ -103,15 +103,17 @@ start () {  # $1 = GPU, then pairs: <log name> "<env and command>", run one afte
     fi
 }
 
-start 4 eventkd_fewrel "DATASET=fewrel ${ONE} W_SPAN=1.0 ${BAM}" sfkl_fewrel "DATASET=fewrel ${ONE} ${BAM}" \
+# GPU 0 ~57 h, GPU 1 ~55 h: per-dataset EventKD first (FewRel ~9 h; ACE + CoNLL03 ~5 h), then SFT MTO (~8 h),
+# the new span layers (~20 h) and BAM MTO (~20-22 h)
+start 0 eventkd_fewrel "DATASET=fewrel ${ONE} W_SPAN=1.0 ${BAM}" sfkl_fewrel "DATASET=fewrel ${ONE} ${BAM}" \
+        sft_mto_equal "MTO=equal ${SFT}" \
+        bam_kd0.5_span1_newlayers "${NEW_LAYERS} W_SPAN=1.0 ${KD05} ${BAM}" \
         bam_mto_equal "MTO=equal ${BAM}"
-start 5 eventkd_ace "DATASET=ace ${ONE} W_SPAN=1.0 ${BAM}" sfkl_ace "DATASET=ace ${ONE} ${BAM}" \
+start 1 eventkd_ace "DATASET=ace ${ONE} W_SPAN=1.0 ${BAM}" sfkl_ace "DATASET=ace ${ONE} ${BAM}" \
         eventkd_conll03 "DATASET=conll03 ${ONE} W_SPAN=1.0 ${BAM}" sfkl_conll03 "DATASET=conll03 ${ONE} ${BAM}" \
+        sft_mto_famo "MTO=famo ${SFT}" \
+        bam_kd0.5_span10_newlayers "${NEW_LAYERS} W_SPAN=10 ${KD05} ${BAM}" \
         bam_mto_famo "MTO=famo ${BAM}"
-start 6 sft_mto_equal "MTO=equal ${SFT}" \
-        bam_kd0.5_span10_newlayers "${NEW_LAYERS} W_SPAN=10 ${KD05} ${BAM}"
-start 7 sft_mto_famo "MTO=famo ${SFT}" \
-        bam_kd0.5_span1_newlayers "${NEW_LAYERS} W_SPAN=1.0 ${KD05} ${BAM}"
 
 echo "follow: tail -f ${QUEUE_LOGS[*]}"
 echo "results: grep -rh 'RESULT test' results/qwen3/general_domain/{bam_0.6B_4B_mt_v2*,sft_0.6B_mt_v2_mto*} --include=log.txt"
