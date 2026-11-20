@@ -1,10 +1,10 @@
-#2 +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #pga
 #v1
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +adolly-dskd-opd-10.log
+#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
@@ -29,8 +29,8 @@ export NCCL_DEBUG=WARN
 # bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
-cd ./VLM_Embed_Gvendi
-bash ./project_commands.sh
+# cd ./VLM_Embed_Gvendi
+# bash ./project_commands.sh
 
 # cd ./unified-ie
 # bash ./project_commands.sh
