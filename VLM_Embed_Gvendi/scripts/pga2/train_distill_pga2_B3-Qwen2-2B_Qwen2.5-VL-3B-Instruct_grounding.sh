@@ -33,7 +33,7 @@ torchrun --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "training/B3-Qwen2-2B_Qwen2.5-VL-3B-Instruct_pga2_grounding" \
-    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-16}" \
+    --per_device_train_batch_size "${TRAIN_BATCH_SIZE:-8}" \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
