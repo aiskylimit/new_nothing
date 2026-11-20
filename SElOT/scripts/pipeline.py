@@ -21,13 +21,15 @@ run_stages.sh (one RUN_ID each); every step resumes, so a stopped job continues 
   8. compare   results/compare_wf1.md: the two runs side by side
 
 Settings come from the environment (project_commands.sh sets them): WORK, RESULTS_ROOT, MODELS_DIR, GPU_IDS, MODEL,
-LAYERS, SWEEP_ALPHA, SMOKE. Steps finished are recorded in <WORK>/pipeline/<step>.done.
+LAYERS (sweep layers, e.g. "10-22"; empty = model.layer_range of configs/base.yaml, 30-70% of the model's decoder
+layers: 10-22 for Llama-3.1-8B), SWEEP_ALPHA, SMOKE. Steps finished are recorded in <WORK>/pipeline/<step>.done.
 SMOKE=1 (test run of the whole flow): SMOKE_SAMPLES prompts per eval / val set (default 16), runs and the result
 files end in _smoke, markers in <WORK>/pipeline_smoke; the label and extract steps are the real ones (their outputs
 are shared with the real run).
 """
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -46,7 +48,22 @@ RESULTS = Path(ENV["RESULTS_ROOT"])
 GPUS = [g.strip() for g in ENV.get("GPU_IDS", "0").split(",") if g.strip()]
 MODEL = ENV.get("MODEL", "llama3.1-8b")
 WF = "1"
-LAYERS = parse_layers(ENV.get("LAYERS", "8-22"))
+
+
+def default_layers():
+    """model.layer_range (configs/base.yaml, the model YAML may override it) over the model's decoder layers, as
+    selot.activations.resolve_layers; [] when the model folder is not there"""
+    mcfg = {**yaml.safe_load(open(ROOT / "configs" / "base.yaml"))["model"],
+            **yaml.safe_load(open(ROOT / "configs" / "models" / f"{MODEL}.yaml"))["model"]}
+    f = Path(ENV.get("MODELS_DIR", "models")) / Path(mcfg["path"]).name / "config.json"
+    if not f.exists():
+        return []
+    n = json.loads(f.read_text())["num_hidden_layers"]
+    lo, hi = mcfg.get("layer_range", [0.3, 0.7])
+    return list(range(math.ceil(lo * n), math.floor(hi * n) + 1))
+
+
+LAYERS = parse_layers(ENV["LAYERS"]) if ENV.get("LAYERS", "").strip() else default_layers()
 SWEEP_ALPHA = float(ENV.get("SWEEP_ALPHA", "1.0"))
 SMOKE = ENV.get("SMOKE", "0") == "1"
 SFX = "_smoke" if SMOKE else ""
@@ -167,7 +184,7 @@ def step_sweep(val_cfg):
 def step_select():
     out = RESULTS / f"sweep_selot_wf{WF}{SFX}"
     subprocess.run([sys.executable, str(ROOT / "scripts" / "select_layer.py"), "--results-root", str(RESULTS),
-                    "--prefix", f"sweep_selot_wf{WF}{SFX}_L", "--layers", ENV.get("LAYERS", "8-22"),
+                    "--prefix", f"sweep_selot_wf{WF}{SFX}_L", "--layers", ",".join(map(str, LAYERS)),
                     "--alpha", str(SWEEP_ALPHA), "--out", str(out)], check=True, cwd=ROOT)
     return int((out / "best_layer.txt").read_text())
 
@@ -221,6 +238,8 @@ def seed_alpha0(src_run, dst_run):
 
 
 def main():
+    if not LAYERS:
+        raise SystemExit(f"no sweep layers: set LAYERS, or put the model under MODELS_DIR ({ENV.get('MODELS_DIR')})")
     log(f"GPUs {GPUS}, model {MODEL}, fit-data workflow {WF}, sweep layers {LAYERS[0]}-{LAYERS[-1]} at alpha "
         f"{SWEEP_ALPHA:g}" + (f"; SMOKE run: {ENV.get('SMOKE_SAMPLES', '16')} prompts per set" if SMOKE else ""))
     step_label()

@@ -5,7 +5,8 @@
 #
 # Every job: rebuild the data from the downloaded source files (fetch_data --src, prepare_eval, build_fit_sets; checked
 # against data_manifest.json), then scripts/pipeline.py:
-#   label (workflow 1) -> activations at layers 8-22 -> SElOT layer sweep on the val split (k 5, m 256, alpha 1)
+#   label (workflow 1) -> activations at layers 8-22 (sweep 10-22 + AlphaSteer's 8-19) -> SElOT layer sweep on the
+#   val split (layers 10-22 = 30-70% of depth, k 5, m 256, alpha 1)
 #   -> best layer by mean val DSR -> SElOT full eval -> AlphaSteer full eval -> results/compare_wf1.md
 # No W&B. Small outputs: SElOT/results/ ; large files: /mnt/local/aiskylimit_new_nothing/selot/work/.
 # Test runs elsewhere (e.g. Colab, colab/smoke_new_nothing.ipynb) override the defaults with SELOT_* variables
@@ -21,7 +22,7 @@ BASE="${SELOT_BASE:-/mnt/local/${PROJECT_NAME}/selot}"   # must match download.t
 VENV="${SELOT_VENV:-/mnt/local/uvenvs/selot}"             # built from ../selot.txt by the env job
 GPU_IDS="${SELOT_GPU_IDS:-2,3}"                           # the GPUs SElOT may use on this server
 MODEL="llama3.1-8b"
-LAYERS="${SELOT_LAYERS:-8-22}"                            # SElOT sweep layers
+LAYERS="${SELOT_LAYERS:-}"         # SElOT sweep layers; empty = model.layer_range of configs/base.yaml (30-70%: 10-22)
 SWEEP_ALPHA="1.0"
 MIN_FREE_MB="${SELOT_MIN_FREE_MB:-60000}"                 # per GPU, checked before every run
 SMOKE="${SELOT_SMOKE:-0}"                                 # 1 = test run: few prompts per set, *_smoke runs

@@ -1,4 +1,4 @@
-# Qwen/Qwen2.5-7B-Instruct (28 decoder layers). Path: models/<folder> (README "Models"); layers default to 30-60% of depth.
+# Qwen/Qwen2.5-7B-Instruct (28 decoder layers). Path: models/<folder> (README "Models"); layers default to 30-70% of depth.
 model:
   path: models/Qwen2.5-7B-Instruct
   tag: qwen2.5-7b

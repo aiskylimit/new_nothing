@@ -1,4 +1,4 @@
-# google/gemma-2-9b-it (42 decoder layers). Path: models/<folder> (README "Models"); layers default to 30-60% of depth.
+# google/gemma-2-9b-it (42 decoder layers). Path: models/<folder> (README "Models"); layers default to 30-70% of depth.
 model:
   path: models/gemma-2-9b-it
   tag: gemma2-9b

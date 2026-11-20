@@ -11,7 +11,7 @@ model:
   tag: null                  # short name; activations are cached under acts/<tag>/
   dtype: bfloat16            # forward-pass dtype; activations are stored and fitted in float32
   layers: null               # explicit list of layers to fit and steer, or null for layer_range
-  layer_range: [0.3, 0.6]    # fraction of depth, inclusive (proposal Sec. 4.1)
+  layer_range: [0.3, 0.7]    # fraction of depth, inclusive (Llama-3.1-8B: layers 10-22); also the server sweep
 
 # Fitting sets and eval sets: .txt / .json / .jsonl prompt files (see README "Dataset files").
 data:

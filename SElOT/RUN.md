@@ -46,8 +46,8 @@ What one run does (GPUs 2 and 3, both on every step), in order:
 1. rebuild the data from `raw_src/` (`fetch_data.py --src`, `prepare_eval.py`, `build_fit_sets.py`); the log says
    whether it is identical to the reference build (`data_manifest.json`);
 2. `label`: this model's fit sets, fit-data **workflow 1** (the first Colab run's pipeline), Llama Guard 3;
-3. activations at layers 8-22;
-4. **SElOT layer sweep**: k = 5, m = 256, alpha = 1, one layer at a time per GPU, on the val split of the fit sets
+3. activations at layers 8-22 (the sweep's 10-22 and AlphaSteer's 8-19);
+4. **SElOT layer sweep** over layers 10-22 (30-70% of the 32 layers, `model.layer_range`): k = 5, m = 256, alpha = 1, one layer at a time per GPU, on the val split of the fit sets
    (val_jailbreak, val_refused: DSR by Llama Guard; val_benign: refusal prefix);
 5. best layer = highest mean DSR over val_jailbreak and val_refused;
 6. SElOT full eval at that layer (alpha 0 and 1) on the test sets, every judge;
@@ -76,7 +76,7 @@ Runs: `prep_wf1` (label), `sweep_selot_wf1_L<layer>`, `selot_wf1_L<best>`, `alph
 ## Settings
 
 Edit the defaults at the top of `SElOT/project_commands.sh` (commands.sh passes nothing): `GPU_IDS` (default
-`2,3`), `LAYERS` (`8-22`), `SWEEP_ALPHA` (`1.0`), `MIN_FREE_MB` (free memory needed per GPU).
+`2,3`), `LAYERS` (empty = 30-70% of depth: `10-22`), `SWEEP_ALPHA` (`1.0`), `MIN_FREE_MB` (free memory needed per GPU).
 
 ## If something goes wrong
 

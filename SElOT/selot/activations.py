@@ -42,7 +42,7 @@ def resolve_layers(model_cfg: dict, n_layers: int) -> List[int]:
     """Explicit `layers`, else every layer in `layer_range` (fractions of depth, inclusive)."""
     if model_cfg.get("layers"):
         return sorted(int(l) for l in model_cfg["layers"])
-    lo, hi = model_cfg.get("layer_range", [0.3, 0.6])
+    lo, hi = model_cfg.get("layer_range", [0.3, 0.7])
     import math
     return list(range(math.ceil(lo * n_layers), math.floor(hi * n_layers) + 1))
 

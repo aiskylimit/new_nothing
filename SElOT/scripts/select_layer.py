@@ -3,7 +3,7 @@
 val sets of scripts/make_val_sets.py at one alpha. Score = mean DSR over val_jailbreak and val_refused (Llama Guard);
 ties -> lower refusal rate on val_benign, then the lower layer. The val_benign refusal rate is reported, not used.
 
-    python scripts/select_layer.py --results-root results --prefix sweep_selot_wf1_L --layers 8-22 --alpha 1.0 \
+    python scripts/select_layer.py --results-root results --prefix sweep_selot_wf1_L --layers 10-22 --alpha 1.0 \
         --out results/sweep_selot_wf1
 
 Writes <out>/sweep.md, <out>/sweep.json and <out>/best_layer.txt (the layer number); exits 1 if a run is missing.
