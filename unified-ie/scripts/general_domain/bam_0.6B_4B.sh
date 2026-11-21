@@ -3,6 +3,11 @@
 # Qwen3-4B LoRA teacher per source dataset, each row distilled from the teacher of its own dataset.
 #   bash scripts/general_domain/bam_0.6B_4B.sh mt_v2   # EE + NER + RE in one student, 8 teachers
 #   bash scripts/general_domain/bam_0.6B_4B.sh ee_v1   # EE only (ee_v1 or ee_v2), 4 teachers
+#   DOMAIN=specific_domain bash scripts/general_domain/bam_0.6B_4B.sh all   # biomedical, 3 teachers
+#   DOMAIN=vietnamese bash scripts/general_domain/bam_0.6B_4B.sh all        # Vietnamese, 3 teachers
+# DOMAIN (default general_domain) picks data/<domain>, processed_data/<domain> and results/qwen3/<domain>;
+# the other domains' teachers come from scripts/domains/sft_teacher_4B.sh, their SFT student from
+# scripts/domains/sft_student_0.6B.sh.
 # Same data and hyperparameters as the SFT student of that folder (sft_student_0.6B_mt_v2.sh,
 # sft_student_0.6B_ee_v*.sh), so that student is the baseline.
 # Each part is a switch (env variable, default = BAM); the run dir is named after them:
@@ -42,22 +47,31 @@ GPUS_PER_NODE=${#GPUS[@]}
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE                   --nnodes $NNODES                   --node_rank $NODE_RANK                   --master_addr $MASTER_ADDR                   --master_port $MASTER_PORT"
 
 DATA=${1:-mt_v2}
+DOMAIN=${DOMAIN:-general_domain}
 BASE_PATH=.
-MAPS=${BASE_PATH}/data/general_domain
+MAPS=${BASE_PATH}/data/${DOMAIN}
 # per data folder: teacher runs (dataset=results dir), label maps, prompt width
-case ${DATA} in
-    ee_v1|ee_v2)
+case ${DOMAIN}:${DATA} in
+    general_domain:ee_v1|general_domain:ee_v2)
         TEACHER_RUNS="ace=sft_4B_${DATA}_ace geneva=sft_4B_${DATA}_geneva maven=sft_4B_${DATA}_maven rams=sft_4B_${DATA}_rams"
         LABEL_MAP=${MAPS}/ee_label_map.tsv
         MAX_PROMPT=460;;
-    mt_v2)
+    general_domain:mt_v2)
         TEACHER_RUNS="ace=sft_4B_ee_v2_ace geneva=sft_4B_ee_v2_geneva maven=sft_4B_ee_v2_maven rams=sft_4B_ee_v2_rams"
         TEACHER_RUNS+=" conll03=sft_4B_ner_v2_conll03 ontonotes=sft_4B_ner_v2_ontonotes"
         TEACHER_RUNS+=" tacred=sft_4B_re_tacred fewrel=sft_4B_re_fewrel"
         LABEL_MAP=${MAPS}/ee_label_map.tsv,${MAPS}/ner_label_map.tsv
         MAX_PROMPT=480;;
+    specific_domain:all)
+        TEACHER_RUNS="bc5cdr=sft_4B_ner_bc5cdr ddi=sft_4B_re_ddi phee=sft_4B_ee_phee"
+        LABEL_MAP=${MAPS}/label_map.tsv
+        MAX_PROMPT=480;;
+    vietnamese:all)
+        TEACHER_RUNS="vlsp2021=sft_4B_ner_vlsp2021 vlsp2020=sft_4B_re_vlsp2020 bkee=sft_4B_ee_bkee"
+        LABEL_MAP=${MAPS}/label_map.tsv
+        MAX_PROMPT=480;;
     *)
-        echo "unknown data folder ${DATA} (ee_v1, ee_v2, mt_v2)"
+        echo "unknown data folder ${DOMAIN}:${DATA} (general_domain: ee_v1, ee_v2, mt_v2; specific_domain, vietnamese: all)"
         exit 1;;
 esac
 # switches
@@ -85,7 +99,7 @@ fi
 TEACHERS=${TEACHERS:-}
 if [ -z "${TEACHERS}" ]; then
     for t in ${TEACHER_RUNS}; do
-        lora=$(python tools/best_lora.py ${BASE_PATH}/results/qwen3/general_domain/${t#*=}) || exit 1
+        lora=$(python tools/best_lora.py ${BASE_PATH}/results/qwen3/${DOMAIN}/${t#*=}) || exit 1
         TEACHERS+="${TEACHERS:+,}${t%%=*}=${lora}"
     done
 fi
@@ -98,8 +112,11 @@ TEACHER_CKPT_NAME="qwen3-4B"
 TEACHER_CKPT="Qwen/Qwen3-4B-Instruct-2507"
 [ -d models/Qwen3-4B-Instruct-2507 ] && TEACHER_CKPT="models/Qwen3-4B-Instruct-2507"
 # data (folders added after the first processed_data.zip, like mt_v2, come out of the zip here)
-DATA_DIR="${BASE_PATH}/processed_data/general_domain/${DATA}/qwen/"
-[ -f ${DATA_DIR}/train_0.bin ] || python tools/unpack_data.py ${DATA} || exit 1
+DATA_DIR="${BASE_PATH}/processed_data/${DOMAIN}/${DATA}/qwen/"
+if [ ! -f ${DATA_DIR}/train_0.bin ]; then
+    [ "${DOMAIN}" = general_domain ] || { echo "missing ${DATA_DIR}: unpack ${DOMAIN}.zip (run9.sh does)"; exit 1; }
+    python tools/unpack_data.py ${DATA} || exit 1
+fi
 # hp: as the SFT student (LR, epochs, effective batch 32), but micro-batch 8 x GRAD_ACC 4 instead of
 # 16 x 2: the teacher forward and the full-vocabulary KL need room on one 80GB GPU
 BATCH_SIZE=8
@@ -112,7 +129,7 @@ MAX_LENGTH=768
 # runtime
 RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")$([ "${KD_TOKEN_WEIGHT}" = teacher ] && echo "_tw")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")$([ "${W_SPAN}" != 0 ] && [ "${SPAN_SCHEDULE}" = constant ] && echo "_spanconst")$([ "${W_SPAN}" != 0 ] && [ "${SPAN_DIST}" != mse ] && echo "_${SPAN_DIST}")${SUBSET:+_subset${SUBSET}}$([ "${MTO}" != none ] && echo "_mto${MTO}")
 [ "${S_LAYERS}" != "25 28" ] || [ "${T_LAYERS}" != "33 36" ] && RUN+="_L${S_LAYERS// /-}to${T_LAYERS// /-}"
-SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}${DATASET:+_${DATASET}}/${RUN}"
+SAVE_PATH="${BASE_PATH}/results/qwen3/${DOMAIN}/bam_0.6B_4B_${DATA}${DATASET:+_${DATASET}}/${RUN}"
 # seed
 SEED=42
 

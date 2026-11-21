@@ -83,6 +83,24 @@ Every part is its own switch, so a rerun only changes a flag; the run dir `bam_0
 
 Checked on CPU with a tiny Qwen3 and random LoRAs: each row's routed logits and hidden states match its own merged LoRA to float error (relative 3e-5, while the two teachers differ by 1.22), the span loss and KL run on a real ee_v1 dev batch mixing all four datasets and on an `mt_v2` batch with one row of each of the 8 datasets (8 adapters, every row equal to its own adapter alone), and a LoRA student's layers are the same through `get_decoder()` as before.
 
+### Biomedical and Vietnamese data
+
+Two separate experiments, never mixed with `general_domain` (own data, teachers, students, results dirs). `download.txt` fetches `specific_domain.zip` and `vietnamese.zip` (`data/<domain>/label_map.tsv` + `processed_data/<domain>/{ner,re,ee,all}/qwen`); `run9.sh` unpacks them. How the data was built: `specific_domain/README.md` and `vietnamese/README.md` on HF.
+
+| domain | NER | RE | EE | `all` train rows |
+|---|---|---|---|---|
+| `specific_domain` | bc5cdr | ddi | phee | 13,270 |
+| `vietnamese` | vlsp2021 (1/3 of its train) | vlsp2020 | bkee | 16,127 |
+
+```bash
+bash run9.sh                                                         # every job below, GPUs 0-1 (SMOKE=1 for a quick check)
+bash scripts/domains/sft_teacher_4B.sh vietnamese ner vlsp2021       # one Qwen3-4B LoRA teacher: <domain> <folder> <dataset>
+bash scripts/domains/sft_student_0.6B.sh vietnamese                  # SFT student on <domain>/all
+DOMAIN=vietnamese KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh all   # EventKD, the domain's teachers
+```
+
+Same hyperparameters as the `general_domain` teachers and `mt_v2` students; prompts are the `general_domain` ones, `--max-prompt-length 480`, one identity `label_map.tsv` per domain. Results go to `results/qwen3/<domain>/` (`sft_4B_<folder>_<dataset>`, `sft_0.6B_all`, `bam_0.6B_4B_all/<run>`); `bam_0.6B_4B.sh` reads its teachers from there when `DOMAIN` is set and keeps every other switch.
+
 Student SFT baseline (Qwen3-0.6B, full fine-tuning, CE only):
 
 ```bash
