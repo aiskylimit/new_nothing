@@ -66,7 +66,39 @@ mkdir -p "${DATA_DIR}/textvqa"
 
 
 # ============================================================
-# 2. SCVA + SIC layer-range tuning jobs
+# 2. Retry the previously failed evaluation
+# ============================================================
+
+RETRY_EVAL_RUN_NAME=qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p1_lambda_sic_0p5
+RETRY_EVAL_OUTPUT_DIR="${PROJECT_DIR}/outputs/${RETRY_EVAL_RUN_NAME}"
+
+printf '\n============================================================\n'
+printf '[%s] RETRY EVAL: %s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" "${RETRY_EVAL_RUN_NAME}"
+printf 'GPU: 4\n'
+printf '============================================================\n'
+
+if CUDA_VISIBLE_DEVICES=4 bash "${EVAL_SCRIPT}" \
+    "${RETRY_EVAL_OUTPUT_DIR}" "${BASE_MODEL}"; then
+
+    printf '\n=== [%s] RETRY EVAL SUCCESS: %s (exit_code=0) ===\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" "${RETRY_EVAL_RUN_NAME}"
+
+else
+
+    exit_code=$?
+
+    printf '\n============================================================\n' >&2
+    printf '[%s] RETRY EVAL FAILED; CONTINUING TO NEW TRAINING JOBS: %s\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" "${RETRY_EVAL_RUN_NAME}" >&2
+    printf 'EXIT CODE: %s\n' "${exit_code}" >&2
+    printf 'OUTPUT DIR: %s\n' "${RETRY_EVAL_OUTPUT_DIR}" >&2
+    printf '============================================================\n' >&2
+fi
+
+
+# ============================================================
+# 3. SCVA + SIC region/intervention ablation jobs
 # ============================================================
 
 JOBS=(
@@ -87,7 +119,9 @@ JOBS=(
 #   "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p5_lambda_sic_0p3.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p5_lambda_sic_0p3"
 #   "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p3_lambda_sic_0p1.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p3_lambda_sic_0p1"
 #   "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p3_lambda_sic_0p5.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p3_lambda_sic_0p5"
-  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p1_lambda_sic_0p5.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p1_lambda_sic_0p5"
+#   "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p1_lambda_sic_0p5.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_lambda_v_0p1_lambda_sic_0p5"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_regions_2_intervention_batch_2.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_regions_2_intervention_batch_2"
+  "train_qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_regions_6_intervention_batch_6.sh|qwen2_teacher_7b_fastvlm_student_05b_scva_sic_low_dbscan_min_samples_12_regions_6_intervention_batch_6"
 )
 
 for job in "${JOBS[@]}"; do

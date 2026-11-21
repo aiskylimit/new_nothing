@@ -23,9 +23,10 @@ fi
 source "${EVAL_ENV}"
 cd "${PROJECT_DIR}"
 
-# Eval must see exactly one physical GPU. Inside the process, GPU 4 becomes
-# logical cuda:0, which is what device_map=auto will use.
-export CUDA_VISIBLE_DEVICES=0
+# Eval must see exactly one physical GPU. Preserve the caller's selection;
+# standalone evaluation defaults to physical GPU 4. Inside the process, the
+# selected GPU becomes logical cuda:0, which is what device_map=auto will use.
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-4}"
 export LMUData="${LMUData:-${PROJECT_DIR}/eval_data/LMUData}"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1
 export LITELLM_LOCAL_MODEL_COST_MAP=true
@@ -65,8 +66,8 @@ fi
   exit 2
 }
 
-printf '[%s] Evaluating checkpoint %s with physical GPU 4\n' \
-  "$(date '+%Y-%m-%d %H:%M:%S')" "${trained_checkpoint}"
+printf '[%s] Evaluating checkpoint %s with physical GPU(s) %s\n' \
+  "$(date '+%Y-%m-%d %H:%M:%S')" "${trained_checkpoint}" "${CUDA_VISIBLE_DEVICES}"
 
 SUITE_CONFIG="${PROJECT_DIR}/configs/eval/requested_benchmarks.json" \
   bash "${PROJECT_DIR}/scripts/eval/prepare_eval_assets.sh" --offline
