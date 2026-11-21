@@ -14,6 +14,8 @@
 #                         EventKD search (first span usually in the input sentence, the rest in the answer)
 #   SPAN_SCHEDULE=kd      with W_SPAN > 0: the span loss is part of the KD term (fades with annealing);
 #                         constant = added on its own with weight W_SPAN all through training
+#   SPAN_DIST=mse         with W_SPAN > 0: span similarities compared by squared difference (EventKD code);
+#                         l1 = absolute difference, as the EventKD paper writes it (adds _l1 to the run dir)
 #   KD_TOKEN_WEIGHT=none  teacher = each label token's KD weight times the teacher's probability of the gold
 #                         token, its CE gets the rest (learn the gold label where the teacher is wrong or unsure)
 #   MTO=none              one token mean over the batch; equal = mean of the EE, NER, RE losses; famo = FAMO
@@ -65,6 +67,7 @@ KD_TYPE=${KD_TYPE:-fkl}
 W_SPAN=${W_SPAN:-0}
 SPAN_LOCATE=${SPAN_LOCATE:-response}
 SPAN_SCHEDULE=${SPAN_SCHEDULE:-kd}
+SPAN_DIST=${SPAN_DIST:-mse}
 KD_TOKEN_WEIGHT=${KD_TOKEN_WEIGHT:-none}
 MTO=${MTO:-none}
 SUBSET=${SUBSET:-}
@@ -107,7 +110,7 @@ EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")$([ "${KD_TOKEN_WEIGHT}" = teacher ] && echo "_tw")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")$([ "${W_SPAN}" != 0 ] && [ "${SPAN_SCHEDULE}" = constant ] && echo "_spanconst")${SUBSET:+_subset${SUBSET}}$([ "${MTO}" != none ] && echo "_mto${MTO}")
+RUN=${KD_TYPE}_${KD_SCHEDULE}$([ "${KD_SCHEDULE}" = constant ] && echo "_kd${KD_RATIO}")$([ "${KD_TOKEN_WEIGHT}" = teacher ] && echo "_tw")_span${W_SPAN}$([ "${W_SPAN}" != 0 ] && echo "_${SPAN_LOCATE}")$([ "${W_SPAN}" != 0 ] && [ "${SPAN_SCHEDULE}" = constant ] && echo "_spanconst")$([ "${W_SPAN}" != 0 ] && [ "${SPAN_DIST}" != mse ] && echo "_${SPAN_DIST}")${SUBSET:+_subset${SUBSET}}$([ "${MTO}" != none ] && echo "_mto${MTO}")
 [ "${S_LAYERS}" != "25 28" ] || [ "${T_LAYERS}" != "33 36" ] && RUN+="_L${S_LAYERS// /-}to${T_LAYERS// /-}"
 SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/bam_0.6B_4B_${DATA}${DATASET:+_${DATASET}}/${RUN}"
 # seed
@@ -174,6 +177,7 @@ OPTS+=" --type ${KD_TYPE}"
 OPTS+=" --w-span-loss ${W_SPAN}"
 OPTS+=" --span-locate ${SPAN_LOCATE}"
 OPTS+=" --span-schedule ${SPAN_SCHEDULE}"
+OPTS+=" --span-dist ${SPAN_DIST}"
 OPTS+=" --teacher_layer_mapping ${T_LAYERS}"
 OPTS+=" --student_layer_mapping ${S_LAYERS}"
 # gen: greedy (no --do-sample)
