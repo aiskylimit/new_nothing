@@ -191,6 +191,9 @@ def add_hp_args(parser: argparse.ArgumentParser):
     group.add_argument("--span-schedule", type=str, default="kd", choices=["kd", "constant"],
                        help="kd: the span loss is part of the KD term and gets its weight (with --kd-schedule "
                             "anneal it fades out with the KD loss); constant: added on its own, w_span_loss all along")
+    group.add_argument("--span-dist", type=str, default="mse", choices=["mse", "l1"],
+                       help="how the span loss compares the student's and the teacher's span cosine similarities: "
+                            "mse = squared difference (the EventKD code); l1 = absolute difference (the EventKD paper)")
 
     return parser
 

@@ -403,8 +403,8 @@ def prepare_span_indices_and_weights(t_layer_weights, s_layer_weights,
 
     return All_Indices, T_Token_Weights_all, S_Token_Weights_all, Span_IDs, Max_Spans, Batch_ID_for_Spans
 
-def get_span_loss(attention_mask, s_hidden_states, t_hidden_states, 
-                  offsets_mapping, spans_offsets, teacher_layer_mapping, student_layer_mapping):
+def get_span_loss(attention_mask, s_hidden_states, t_hidden_states,
+                  offsets_mapping, spans_offsets, teacher_layer_mapping, student_layer_mapping, dist="mse"):
     
     t_layer_weights = []
     s_layer_weights = []
@@ -430,7 +430,7 @@ def get_span_loss(attention_mask, s_hidden_states, t_hidden_states,
         t_hidden = t_hidden_states[t_idx]
         span_loss = compute_hidden_span_loss(s_hidden, t_hidden, All_Indices,
                                              S_Token_Weights_all[i], T_Token_Weights_all[i], 
-                                             Span_IDs, Max_Spans, Batch_ID_for_Spans)
+                                             Span_IDs, Max_Spans, Batch_ID_for_Spans, dist)
         final_loss += span_loss
 
     return final_loss
@@ -441,13 +441,14 @@ def compute_overall_span_loss(attention_mask, s_hidden_states, t_hidden_states,
     s_span_mapping = args.student_layer_mapping
     t_span_mapping = args.teacher_layer_mapping
     span_loss = get_span_loss(attention_mask, s_hidden_states, t_hidden_states, 
-                              offsets_mapping, spans_offsets, t_span_mapping, s_span_mapping)
-    
+                              offsets_mapping, spans_offsets, t_span_mapping, s_span_mapping, args.span_dist)
+
     overall_loss = span_loss / len(args.student_layer_mapping)
     return overall_loss
 
 def compute_hidden_span_loss(s_hidden_state, t_hidden_state, All_Indices, 
-                             S_Token_Weights_all, T_Token_Weights_all, Span_IDs, Max_Spans, Batch_ID_for_Spans):
+                             S_Token_Weights_all, T_Token_Weights_all, Span_IDs, Max_Spans, Batch_ID_for_Spans,
+                             dist="mse"):
     D_hidden_s = s_hidden_state.size(-1)
     D_hidden_t = t_hidden_state.size(-1)
     device = t_hidden_state.device
@@ -502,7 +503,10 @@ def compute_hidden_span_loss(s_hidden_state, t_hidden_state, All_Indices,
     Pair_Weights_Matrix = T_Weight_sum_1d.unsqueeze(1) * T_Weight_sum_1d.unsqueeze(0)
     Valid_Pair_Weights = torch.masked_select(Pair_Weights_Matrix, Final_Mask)
 
-    span_loss = F.mse_loss(S_intra_batch_similarities_flat, T_intra_batch_similarities_flat, reduction='none')
+    if dist == "l1":  # |d_T - d_S| as written in the EventKD paper; cosine distance = 1 - similarity
+        span_loss = (S_intra_batch_similarities_flat - T_intra_batch_similarities_flat).abs()
+    else:
+        span_loss = F.mse_loss(S_intra_batch_similarities_flat, T_intra_batch_similarities_flat, reduction='none')
     span_loss = (span_loss * Valid_Pair_Weights).sum() / Valid_Pair_Weights.sum().clamp(min=1e-5)
 
     return span_loss
@@ -570,7 +574,8 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
 
     step, global_step = 1, 1
     total_loss, total_distil_loss, total_time = 0.0, 0.0, 0.0
-    
+    total_span_loss = 0.0  # w_span x span loss of this rank (not with --mto), logged next to ds_loss
+
     adaptive_threshold = args.init_threshold if "adaptive" in args.type else -1.0
     # prev_avg_loss = evaluate(args, tokenizer, model, dataset["dev"], "dev", 0, device, adaptive_threshold)
     prev_avg_loss = 0.0
@@ -729,6 +734,7 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                                                               student_captured_hidden, teacher_hidden,
                                                               offset_mapping, spans_offsets, args)
                         span_loss = args.w_span_loss * span_loss
+                        total_span_loss += float(span_loss)
                         if args.span_schedule == "constant":
                             span_term = span_loss
                         else:
@@ -810,7 +816,13 @@ def finetune(args, tokenizer: AutoTokenizer, model: deepspeed.DeepSpeedEngine, o
                 print_rank(args.save)
                 print_rank("*" * 100)
                 save_rank(log_str, os.path.join(args.save, "log.txt"))
+                if mto is None and teacher_model is not None and args.w_span_loss > 0:
+                    span_str = "train | span (w_span x span loss, {}): {:.6f}".format(
+                        args.span_dist, total_span_loss / (args.log_interval * args.gradient_accumulation_steps))
+                    print_rank(span_str)
+                    save_rank(span_str, os.path.join(args.save, "log.txt"))
                 total_loss, total_distil_loss, total_time = 0.0, 0.0, 0.0
+                total_span_loss = 0.0
                 if mto is not None:
                     mto_line = mto.log_line()
                     print_rank(mto_line)
