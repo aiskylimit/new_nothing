@@ -1,5 +1,5 @@
-#2 -0-5
-#vlm_check
+#1 +10
+#check
 #v1
 
 
@@ -37,8 +37,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 
-cd VLM_Distillation-main
+# cd VLM_Distillation-main
 # bash ./project_commands_eval_qwen25vl_7b_gpu7.sh
 # bash ./project_commands.sh
-bash ./project_commands_collect_eval_summary.sh
+# bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
