@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#2 -0-5
 #vlm_check
 #v1
 
