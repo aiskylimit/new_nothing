@@ -1,5 +1,5 @@
-#1 +100
-#check
+#1 +120
+#unified
 #v1
 
 
@@ -8,8 +8,6 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
-kill -9 309549 308268
-sleep 90
 nvidia-smi
 
 
@@ -34,8 +32,8 @@ export NCCL_DEBUG=WARN
 # cd ./VLM_Embed_Gvendi
 # bash ./project_commands.sh
 
-# cd ./unified-ie
-# bash ./project_commands.sh
+cd ./unified-ie
+bash ./project_commands.sh
 
 
 # cd VLM_Distillation-main
