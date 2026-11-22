@@ -1,4 +1,13 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#d
+#datasets
+--url https://huggingface.co/datasets/datht/unified-ie/resolve/main/processed_data.zip /mnt/local/@PROJECT@/unified-ie
+--url https://huggingface.co/datasets/datht/unified-ie/resolve/main/mt_v2.zip /mnt/local/@PROJECT@/unified-ie
+--url https://huggingface.co/datasets/datht/unified-ie/resolve/main/specific_domain.zip /mnt/local/@PROJECT@/unified-ie
+--url https://huggingface.co/datasets/datht/unified-ie/resolve/main/vietnamese.zip /mnt/local/@PROJECT@/unified-ie
+#models
+--hf Qwen/Qwen3-0.6B /mnt/local/@PROJECT@/unified-ie/models/Qwen3-0.6B
+--hf Qwen/Qwen3-4B-Instruct-2507 /mnt/local/@PROJECT@/unified-ie/models/Qwen3-4B-Instruct-2507
+
 #vlm_sic
 #v1
 
