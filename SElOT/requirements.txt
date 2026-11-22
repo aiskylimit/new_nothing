@@ -1,0 +1,35 @@
+# SElOT on Linux + one CUDA GPU (suggested: A100 80GB or larger). Reference environment: Python 3.13, CUDA 13.
+# Every package the code imports is pinned: the launcher (run_stages.sh) refuses to run with other versions
+# (ALLOW_VERSION_MISMATCH=1 to override). Every run also writes `pip freeze` to results_<RUN_ID>/logs/env_*.txt;
+# requirements.lock.txt (when present) pins every package of the reference run and is then checked instead.
+# The pins below are mutually compatible with vllm 0.34.0's own requirements (checked against PyPI metadata).
+
+# ---------------------------------------------------------------- core: model, activations, steering
+torch==2.14.0                     # fixed by vllm 0.34.0
+transformers==5.22.1              # vllm 0.34.0 needs >=5.16.1,<5.23
+tokenizers==0.23.3                # vllm >=0.23.3, transformers <0.24
+huggingface_hub==2.4.0
+accelerate==1.16.0
+safetensors==0.8.0
+sentencepiece==0.2.3
+protobuf==7.36.2                  # vllm excludes 6.30-6.33.4; wandb needs <8
+numpy==2.4.6                      # numba 0.65.0 (pulled in by vllm) needs <2.5
+scipy==1.18.1
+
+# ---------------------------------------------------------------- behaviour labelling (stage label) and judges
+# Every judge is a local model (transformers): Llama Guard 3, HarmBench, StrongREJECT, Skywork-Reward-V2. No API.
+vllm==0.34.0                      # label responses, Llama Guard + HarmBench judges; fixes torch's build
+peft==0.21.3                      # StrongREJECT judge (LoRA on gemma-2b)
+setuptools==80.10.2               # vllm needs <81
+
+# ---------------------------------------------------------------- data building (fetch_data, build_fit_sets, prepare_eval)
+pandas==3.1.1
+pyarrow==26.0.1
+scikit-learn==1.9.1               # topic classifier; length-controlled win rate (selot/reward.py)
+sentence-transformers==6.3.0      # dedup / topics / behaviour groups
+sacrebleu==2.6.0                  # dedup
+
+# ---------------------------------------------------------------- utilities and logging
+pyyaml==6.0.3
+tqdm==4.70.1
+wandb==0.31.0                     # stage `wandb` and tuning runs

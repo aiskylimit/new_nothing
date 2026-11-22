@@ -1,0 +1,16 @@
+# AlphaSteer (Sheng et al.) fitted on our fit sets (selot/baselines.py, fit_alphasteer_layer): the 10 layers and
+# null-space ratios of its src/utils/const.py for llama3.1 (AlphaSteer_CALCULATION_CONFIG; the paper says p = 0.6
+# "typically", the code uses 0.4 at layer 12 and 0.5 at layer 13), lambda_reg 10 and strength lambda = 0.5 of the
+# paper (applied as h + strength h Delta with strength -0.5, as in its configs). H_h = D_r + D_j train (unweighted),
+# r = mean(D_b) - mean(D_r) from our activations. Steering: displacement from the last prompt token, added to every
+# prompt position, prefill only (steer.positions alphasteer). Run with model.layers = the keys below and alphas [0, 1].
+method:
+  name: alphasteer
+  layers_ratio: {8: 0.6, 9: 0.6, 10: 0.6, 11: 0.6, 12: 0.4, 13: 0.5, 14: 0.6, 16: 0.6, 18: 0.6, 19: 0.6}
+  lambda_reg: 10.0
+  strength: -0.5
+model:
+  layers: [8, 9, 10, 11, 12, 13, 14, 16, 18, 19]
+steer:
+  positions: alphasteer
+  alphas: [0.0, 1.0]

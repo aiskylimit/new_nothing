@@ -1,0 +1,12 @@
+# SELOT, soft benign cost (Eq. 9-10). Grid of Sec. 4.3: k {1,2,5,10}, m {64,256,1024}, beta {10,1e2,1e3}, beta_r {0,1,10}.
+method:
+  name: selot
+  variant: soft              # soft | hard
+  target: ot                 # ot (delta*) | constant (RQ2 ablation)
+  selector: topm             # topm | y ([y; 1]) | full (h)
+  k: 5
+  m: 256
+  beta: 100.0
+  beta_r: 1.0
+  gamma: 1.0e-3
+  eps: 1.0e-4

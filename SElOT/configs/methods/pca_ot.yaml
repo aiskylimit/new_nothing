@@ -1,0 +1,5 @@
+# PCA-Gaussian OT (Nanfack et al., 2026), re-targeted jailbreak -> refused, applied to every input (Prop. 1a).
+method:
+  name: pca_ot
+  k: 5
+  eps: 1.0e-4

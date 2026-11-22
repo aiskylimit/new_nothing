@@ -1,0 +1,6 @@
+# SELOT, hard null-space variant: M = M~ N_b, N_b = projector on small-eigenvalue directions of Psi_b Psi_b^T.
+inherit: [selot.yaml]
+method:
+  variant: hard
+  null_rel_tol: 1.0e-3       # eigenvalue < tol * largest eigenvalue counts as null
+  min_null_ratio: 0.0        # keep at least this fraction of the m+1 directions (0 = threshold only)

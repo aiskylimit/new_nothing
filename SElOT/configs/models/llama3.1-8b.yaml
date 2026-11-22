@@ -1,0 +1,5 @@
+# meta-llama/Llama-3.1-8B-Instruct (32 decoder layers). Path: models/<folder> (README "Models"); layers default to 30-70% of depth.
+model:
+  path: models/Llama-3.1-8B-Instruct
+  tag: llama3.1-8b
+  dtype: bfloat16

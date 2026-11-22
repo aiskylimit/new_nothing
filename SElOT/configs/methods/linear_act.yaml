@@ -1,0 +1,4 @@
+# Linear-AcT (Rodriguez et al., 2025): per-neuron 1-D affine transport, jailbreak -> refused.
+method:
+  name: linear_act
+  n_quantiles: 0             # 0 = min(n_j, n_r)

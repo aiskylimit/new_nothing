@@ -1,0 +1,74 @@
+{
+ "data/eval/advbench_test.jsonl": {
+  "lines": 100,
+  "sha256": "d3b7bd28a696c303928f87cda2763d06ac9f68b368ea4cf6516d7558d8235100"
+ },
+ "data/eval/alpaca_eval.jsonl": {
+  "lines": 805,
+  "sha256": "0f6e7616d55091edbe5d493f52febc7eac5eb9923aaf2542859eaac657b60531"
+ },
+ "data/eval/attack_aim.jsonl": {
+  "lines": 100,
+  "sha256": "7c34351eeb6bdb6e01b4149e7d0c4222419e6f7d6b3ec61420c456283a48d54d"
+ },
+ "data/eval/attack_autodan.jsonl": {
+  "lines": 100,
+  "sha256": "21681cbad98a33758b2726b6578518a338dee3b5321a6c2460a74db0c44e02e0"
+ },
+ "data/eval/attack_cipher.jsonl": {
+  "lines": 100,
+  "sha256": "64c146a494c395749fe4f8f3f9862d19e19684e399e3b9075f1d6c410352705b"
+ },
+ "data/eval/attack_gcg.jsonl": {
+  "lines": 100,
+  "sha256": "e9199a41e104a8270c63d55803c213302d3ffb0331608f5f820056435be15ecf"
+ },
+ "data/eval/attack_jailbroken.jsonl": {
+  "lines": 500,
+  "sha256": "0ec1e611d17d288546158d249990beb773306a11baefdefe5eb033bd6adf9305"
+ },
+ "data/eval/attack_pair.jsonl": {
+  "lines": 100,
+  "sha256": "e8e225dbd05432ed3052d3548da7cc94c7b7c7ee45fba29eb8eb20e0a73be84a"
+ },
+ "data/eval/attack_renellm.jsonl": {
+  "lines": 100,
+  "sha256": "d429ba68ad5d5451615be74a4fe0f90e2321459a915d4f5a6fac18cb482e18cf"
+ },
+ "data/eval/gsm8k.jsonl": {
+  "lines": 1319,
+  "sha256": "b1dcf92fbd048e7204012854aa92acd2c95b543e3d13ca7b9d9989d65915f401"
+ },
+ "data/eval/mmlu.jsonl": {
+  "lines": 14042,
+  "sha256": "c0228b0e9e215c3d9379ff80c2150ff6cc918812b9c22deb910e4b45f1ab5944"
+ },
+ "data/eval/oktest.jsonl": {
+  "lines": 350,
+  "sha256": "7e21c9aea4a8a072cbb3dc7dec9d8b0fb04b3b577de81c3a2284adb8ff8515e0"
+ },
+ "data/eval/orbench_hard.jsonl": {
+  "lines": 1319,
+  "sha256": "d46f5b9ef3675fda7f1bcf9e9ac1df5cd4a9f42b7b020806ddc67751925197c8"
+ },
+ "data/eval/xstest_safe.jsonl": {
+  "lines": 250,
+  "sha256": "79680ca7911eff02ba434004c42f9c7a8c66cbe99ac0f80d822aaa23fecc9536"
+ },
+ "data/eval/xstest_unsafe.jsonl": {
+  "lines": 200,
+  "sha256": "bfc498f1852dd9379a1888a28d53cffb88778ecac0a5e30cc03a9605d2da155c"
+ },
+ "data/fit/benign.jsonl": {
+  "lines": 16550,
+  "sha256": "06d2ca69b6ffedc4d648dc77ead46d6fd3ccebdee8aa497fb6a67c75243bb859"
+ },
+ "data/fit/jailbreak.jsonl": {
+  "lines": 3000,
+  "sha256": "7711056b1b13c8115d369eaf11a27175e113c59c3c1edbb040ea26372a65676c"
+ },
+ "data/fit/refusal.jsonl": {
+  "lines": 3600,
+  "sha256": "65f4cd314ed3dac83b7e3dd317ad05678e024e7b576c4339b49652ea41609558"
+ }
+}

@@ -1,0 +1,5 @@
+# Any precomputed per-layer vector (Surgical, Jailbreak Antidote, ...): A = I, b = alpha v.
+# File: torch tensor [num_layers, d] or {layer: tensor[d]}.
+method:
+  name: vector_file
+  path: null
