@@ -169,7 +169,8 @@ for line in lock.read_text().splitlines():
     try:
         have = version(name)
     except PackageNotFoundError:
-        if name in ("wandb",):          # optional: only the wandb stage needs it (absent on offline servers)
+        if name in ("wandb", "matplotlib"):   # optional: the wandb stage (absent on offline servers), the
+            # activation plots (scripts/plot_shift.py; pipeline.py skips them without matplotlib)
             continue
         have = "not installed"
     if have.split("+")[0] != want.split("+")[0]:

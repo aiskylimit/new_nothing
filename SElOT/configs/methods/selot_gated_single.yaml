@@ -1,0 +1,18 @@
+# Ablation branch 2: GMM-posterior gate (components by BIC for every set), one Gaussian OT for all of D_j.
+# Run: SELOT_METHOD=selot_gated_single.
+method:
+  name: selot_gated
+  k: 5                      # transport subspace (as SELOT)
+  eps: 1.0e-4
+  gate: gmm                 # gmm | logistic
+  mixture: false            # gmm: one OT per jailbreak component (false: one OT for all of D_j)
+  gate_m: 64                # gate features: whitened top PCs (three sets weighted 1/3 each)
+  max_components: 4         # gmm components of D_b / D_r, chosen by BIC (gate_components: fixed = always this many)
+  gate_components: bic
+  gate_reg: 1.0e-2
+  gate_fpr: 0.01            # held-out benign share with gate > 1/2
+  gate_temperature: 1.0
+  calib_frac: 0.2           # share of D_b train held out for the threshold
+  beta: 100.0               # negative prior split benign : refused
+  beta_r: 1.0
+  seed: 0

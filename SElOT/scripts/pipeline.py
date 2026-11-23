@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """The new_nothing server job (called by project_commands.sh): SElOT layer sweep -> SElOT full eval at the best layer
--> AlphaSteer full eval, all on fit-data workflow 1, every step on all GPUs of GPU_IDS. Each run goes through
+-> AlphaSteer full eval, all on fit-data workflow WF (SELOT_WF: 2 = train/val split by behaviour group, 1 = the first
+Colab run), every step on all GPUs of GPU_IDS. SELOT_UNTIL=select stops after step 5 (layer choice only). Each run goes through
 run_stages.sh (one RUN_ID each); every step resumes, so a stopped job continues where it stopped when resubmitted.
 
-  1. label     this model's fit sets (workflow 1, Llama Guard); vLLM splits the prompts over the GPUs
+  1. label     this model's fit sets (workflow WF, Llama Guard); vLLM splits the prompts over the GPUs
   2. extract   last-token activations at layers LAYERS + AlphaSteer's layers (configs/methods/alphasteer.yaml), one
                fit set group per GPU
   3. val sets  val_jailbreak / val_refused / val_benign from the val split of the fit sets (make_val_sets.py)
@@ -18,14 +19,20 @@ run_stages.sh (one RUN_ID each); every step resumes, so a stopped job continues 
   7. alphasteer full eval of AlphaSteer (configs/methods/alphasteer.yaml) on the same activations; its alpha 0
                responses (the unsteered model) and their labels are copied from step 6, not generated again;
                no activation analysis (the baseline is not tuned)
-  8. compare   results/compare_wf1.md: the two runs side by side
+  8. report    results/compare_wf<WF>.md: the final tables (safety: DSR per attack by Llama Guard and HarmBench,
+               StrongREJECT; utility: over-refusal, AlpacaEval, MMLU, GSM8K), one row per method;
+               results/tune_log_wf<WF>.md: the layer sweep + every run's summary, for tuning
 
 Settings come from the environment (project_commands.sh sets them): WORK, RESULTS_ROOT, MODELS_DIR, GPU_IDS, MODEL,
 LAYERS (sweep layers, e.g. "10-22"; empty = model.layer_range of configs/base.yaml, 30-70% of the model's decoder
-layers: 10-22 for Llama-3.1-8B), SWEEP_ALPHA, SMOKE. Steps finished are recorded in <WORK>/pipeline/<step>.done.
+layers: 10-22 for Llama-3.1-8B), SWEEP_ALPHA, SMOKE, SELOT_WF, SELOT_UNTIL (select | all), SELOT_METHOD (selot |
+selot_gated | selot_gated_logistic | selot_gated_single: the steering method of the sweep and the SElOT full eval; its
+runs and report files carry its name, e.g. sweep_selot_gated_wf2_L12, compare_wf2_selot_gated.md). Steps finished are
+recorded in <WORK>/pipeline/<step>.done for workflow 1, <WORK>/pipeline_wf<WF>/ for the others (label and extract
+build per-workflow fit sets and activations, so their markers must not be shared between workflows).
 SMOKE=1 (test run of the whole flow): SMOKE_SAMPLES prompts per eval / val set (default 16), runs and the result
-files end in _smoke, markers in <WORK>/pipeline_smoke; the label and extract steps are the real ones (their outputs
-are shared with the real run).
+files end in _smoke, markers in <WORK>/pipeline[_wf<WF>]_smoke; the label and extract steps are the real ones (their
+outputs and markers are shared with the real run).
 """
 
 import json
@@ -40,6 +47,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+from common import read_jsonl  # noqa: E402  (splits on \n only: responses may hold \u2028, \x0b, ...)
 from select_layer import parse_layers  # noqa: E402
 
 ENV = os.environ
@@ -47,7 +55,12 @@ WORK = Path(ENV["WORK"])
 RESULTS = Path(ENV["RESULTS_ROOT"])
 GPUS = [g.strip() for g in ENV.get("GPU_IDS", "0").split(",") if g.strip()]
 MODEL = ENV.get("MODEL", "llama3.1-8b")
-WF = "1"
+WF = ENV.get("SELOT_WF", "1").strip()
+if WF not in ("1", "2"):
+    raise SystemExit(f"SELOT_WF must be 1 or 2, not {WF!r}")
+UNTIL = ENV.get("SELOT_UNTIL", "all").strip()        # select: stop after the layer choice | all: full evals + report
+if UNTIL not in ("select", "all"):
+    raise SystemExit(f"SELOT_UNTIL must be select or all, not {UNTIL!r}")
 
 
 def default_layers():
@@ -68,8 +81,18 @@ SWEEP_ALPHA = float(ENV.get("SWEEP_ALPHA", "1.0"))
 SMOKE = ENV.get("SMOKE", "0") == "1"
 SFX = "_smoke" if SMOKE else ""
 DATA = ROOT / "configs" / "data" / "v1.yaml"
-MARK = WORK / ("pipeline_smoke" if SMOKE else "pipeline")
+# workflow 1 keeps the marker folder of the first runs (they resume); other workflows get their own
+MARK_BASE = WORK / ("pipeline" if WF == "1" else f"pipeline_wf{WF}")
+MARK = MARK_BASE.with_name(MARK_BASE.name + "_smoke") if SMOKE else MARK_BASE
+# label and extract run on the full data in a smoke run too: their markers are shared with the real run
+SHARED_STEPS = ("label", "extract")
 TAG = yaml.safe_load(open(ROOT / "configs" / "models" / f"{MODEL}.yaml"))["model"]["tag"]
+# the steering method of the sweep and the full eval: configs/methods/<SM>.yaml (selot, or selot_gated: a gate + one
+# Gaussian OT per jailbreak mode); its runs are named after it (sweep_<SM>_wf<WF>_L<l>, <SM>_wf<WF>_L<l>)
+SM = ENV.get("SELOT_METHOD", "selot").strip() or "selot"
+if not SM.startswith("selot") or not (ROOT / "configs" / "methods" / f"{SM}.yaml").exists():
+    raise SystemExit(f"SELOT_METHOD={SM!r}: needs configs/methods/<name>.yaml with a name starting with selot")
+RSFX = SFX if SM == "selot" else f"{SFX}_{SM}"     # report files: compare_wf<WF><RSFX>.md, tune_log_wf<WF><RSFX>.md
 AS_LAYERS = yaml.safe_load(open(ROOT / "configs" / "methods" / "alphasteer.yaml"))["model"]["layers"]
 EXTRACT_LAYERS = sorted(set(LAYERS) | set(AS_LAYERS))      # the sweep's layers and AlphaSteer's 10
 ACTS = WORK / "acts" / TAG / f"wf{WF}" / "llamaguard"
@@ -89,13 +112,17 @@ def log(msg):
     print(f"\n[pipeline {time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def mark_dir(step):
+    return MARK_BASE if step in SHARED_STEPS else MARK
+
+
 def done(step):
-    return (MARK / f"{step}.done").exists()
+    return (mark_dir(step) / f"{step}.done").exists() or (MARK / f"{step}.done").exists()
 
 
 def mark(step):
-    MARK.mkdir(parents=True, exist_ok=True)
-    (MARK / f"{step}.done").write_text(time.strftime("%Y-%m-%d %H:%M:%S\n"))
+    mark_dir(step).mkdir(parents=True, exist_ok=True)
+    (mark_dir(step) / f"{step}.done").write_text(time.strftime("%Y-%m-%d %H:%M:%S\n"))
 
 
 def stages(run_id, method, stage_list, gpus, sets=(), data=DATA, judges=FULL_JUDGES):
@@ -147,8 +174,23 @@ def step_valsets():
     return VAL / "data.yaml"
 
 
+def plot_shift(run_id, layer, alphas="1"):
+    """scripts/plot_shift.py for a fitted SElOT run: the three groups before / after steering, and the gate of a gated
+    map (PNG in results_<run>/plots); skipped without matplotlib; a failure only warns"""
+    try:
+        import matplotlib  # noqa: F401
+    except ImportError:
+        return log("plot_shift: matplotlib not installed, no activation plots")
+    code = subprocess.run([sys.executable, str(ROOT / "scripts" / "plot_shift.py"), "--acts", str(ACTS), "--map",
+                           str(WORK / "maps" / run_id / "map.pt"), "--layer", str(layer), "--alphas", alphas,
+                           "--out", str(RESULTS / f"results_{run_id}" / "plots"), "--title", f"{TAG} {run_id}"],
+                          cwd=ROOT).returncode
+    if code:
+        log(f"WARNING: plot_shift {run_id} failed (exit {code}); continuing")
+
+
 def sweep_run(layer):
-    return f"sweep_selot_wf{WF}{SFX}_L{layer}"
+    return f"sweep_{SM}_wf{WF}{SFX}_L{layer}"
 
 
 def sweep_done(layer):
@@ -168,7 +210,7 @@ def step_sweep(val_cfg):
             if g not in running and todo:
                 l = todo.pop(0)
                 alphas = f"[0.0,{SWEEP_ALPHA}]" if l == LAYERS[0] else f"[{SWEEP_ALPHA}]"   # alpha 0 once: reference
-                running[g] = (l, stages(sweep_run(l), "selot", "fit,analyze,generate,judge,summary", [g],
+                running[g] = (l, stages(sweep_run(l), SM, "fit,analyze,generate,judge,summary", [g],
                                         [f"model.layers=[{l}]", f"steer.alphas={alphas}"], val_cfg, VAL_JUDGES))
         time.sleep(10)
         for g, (l, p) in list(running.items()):
@@ -182,9 +224,9 @@ def step_sweep(val_cfg):
 
 
 def step_select():
-    out = RESULTS / f"sweep_selot_wf{WF}{SFX}"
+    out = RESULTS / f"sweep_{SM}_wf{WF}{SFX}"
     subprocess.run([sys.executable, str(ROOT / "scripts" / "select_layer.py"), "--results-root", str(RESULTS),
-                    "--prefix", f"sweep_selot_wf{WF}{SFX}_L", "--layers", ",".join(map(str, LAYERS)),
+                    "--prefix", f"sweep_{SM}_wf{WF}{SFX}_L", "--layers", ",".join(map(str, LAYERS)),
                     "--alpha", str(SWEEP_ALPHA), "--out", str(out)], check=True, cwd=ROOT)
     return int((out / "best_layer.txt").read_text())
 
@@ -205,7 +247,7 @@ def full_eval(run_id, method, sets=()):
     every GPU) -> summary"""
     if done(run_id):
         return log(f"{run_id}: done")
-    wait([stages(run_id, method, "fit,analyze" if method == "selot" else "fit", GPUS[:1], sets)])
+    wait([stages(run_id, method, "fit,analyze" if method.startswith("selot") else "fit", GPUS[:1], sets)])
     n = len(GPUS)
     wait([stages(run_id, method, "generate", [g], list(sets) + [f"generate.shard=[{k},{n}]"])
           for k, g in enumerate(GPUS)])
@@ -227,8 +269,8 @@ def seed_alpha0(src_run, dst_run):
                 continue
             have = set()
             if d.exists():
-                have = {(float(r["alpha"]), str(r["id"])) for r in map(json.loads, d.read_text().splitlines()) if r}
-            rows = [r for r in map(json.loads, s.read_text().splitlines())
+                have = {(float(r["alpha"]), str(r["id"])) for r in read_jsonl(d)}
+            rows = [r for r in read_jsonl(s)
                     if r and float(r["alpha"]) == 0.0 and (0.0, str(r["id"])) not in have]
             if rows:
                 with open(d, "a") as f:
@@ -240,24 +282,37 @@ def seed_alpha0(src_run, dst_run):
 def main():
     if not LAYERS:
         raise SystemExit(f"no sweep layers: set LAYERS, or put the model under MODELS_DIR ({ENV.get('MODELS_DIR')})")
-    log(f"GPUs {GPUS}, model {MODEL}, fit-data workflow {WF}, sweep layers {LAYERS[0]}-{LAYERS[-1]} at alpha "
-        f"{SWEEP_ALPHA:g}" + (f"; SMOKE run: {ENV.get('SMOKE_SAMPLES', '16')} prompts per set" if SMOKE else ""))
+    log(f"GPUs {GPUS}, model {MODEL}, method {SM}, fit-data workflow {WF}, sweep layers {LAYERS[0]}-{LAYERS[-1]} at alpha "
+        f"{SWEEP_ALPHA:g}" + ("; layer choice only (SELOT_UNTIL=select)" if UNTIL == "select" else "")
+        + (f"; SMOKE run: {ENV.get('SMOKE_SAMPLES', '16')} prompts per set" if SMOKE else ""))
     step_label()
     step_extract()
     val_cfg = step_valsets()
     step_sweep(val_cfg)
     best = step_select()
-    selot_run = f"selot_wf{WF}{SFX}_L{best}"
+    if UNTIL == "select":
+        plot_shift(sweep_run(best), best, "1,2")            # the best layer's sweep map (fitted on train)
+        return log(f"ALL DONE: best layer {best} (SELOT_UNTIL=select: no full eval); "
+                   f"{RESULTS / f'sweep_{SM}_wf{WF}{SFX}' / 'sweep.md'}")
+    selot_run = f"{SM}_wf{WF}{SFX}_L{best}"
     log(f"best layer {best} -> full eval {selot_run}")
-    full_eval(selot_run, "selot", [f"model.layers=[{best}]", "steer.alphas=[0.0,1.0]"])
+    full_eval(selot_run, SM, [f"model.layers=[{best}]", "steer.alphas=[0.0,1.0]"])
+    plot_shift(selot_run, best, "1,2")
     as_run = f"alphasteer_wf{WF}{SFX}"
     if not done(as_run):
         seed_alpha0(selot_run, as_run)
     full_eval(as_run, "alphasteer")
-    out = RESULTS / f"compare_wf{WF}{SFX}.md"
+    report([selot_run, as_run])
+
+
+def report(runs):
+    """the final tables (results/compare_wf*.md: safety, utility) and the tuning log (results/tune_log_wf*.md)"""
+    out, tune = RESULTS / f"compare_wf{WF}{RSFX}.md", RESULTS / f"tune_log_wf{WF}{RSFX}.md"
     subprocess.run([sys.executable, str(ROOT / "scripts" / "compare_runs.py"), "--results-root", str(RESULTS),
-                    "--runs", selot_run, as_run, "--alpha", "1.0", "--out", str(out)], check=True, cwd=ROOT)
-    log(f"ALL DONE: {RESULTS / f'sweep_selot_wf{WF}{SFX}' / 'sweep.md'}, {out}")
+                    "--runs", *runs, "--alpha", "1.0", "--out", str(out), "--log-out", str(tune),
+                    "--sweep-md", str(RESULTS / f"sweep_{SM}_wf{WF}{SFX}" / "sweep.md"), "--work", str(WORK)],
+                   check=True, cwd=ROOT)
+    log(f"ALL DONE: final tables {out}; tuning log {tune}")
 
 
 if __name__ == "__main__":

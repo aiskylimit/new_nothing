@@ -69,7 +69,8 @@ def extract_last_token(model, tok, prompts: List[str], layers: List[int],
     for i in tqdm(range(0, len(texts), batch_size), desc="extract", leave=False):
         batch = tokenize(tok, texts[i:i + batch_size], device)
         with capture_layer_inputs(model, layers) as store:
-            model(**batch, use_cache=False)
+            model(**batch, use_cache=False, logits_to_keep=1)   # logits are not used: skip the full-vocab
+            # lm_head over every position (Qwen: 152k vocab x batch x length, ~14 GB at batch 32)
         for l in layers:
             out[l].append(store[l][:, -1, :].float().cpu())          # left padding: last position is real
     return {l: torch.cat(v) for l, v in out.items()}
@@ -85,7 +86,8 @@ def extract_all_tokens(model, tok, prompts: List[str], layers: List[int], batch_
         batch = tokenize(tok, texts[i:i + batch_size], device)
         mask = batch["attention_mask"].bool()
         with capture_layer_inputs(model, layers) as store:
-            model(**batch, use_cache=False)
+            model(**batch, use_cache=False, logits_to_keep=1)   # logits are not used: skip the full-vocab
+            # lm_head over every position (Qwen: 152k vocab x batch x length, ~14 GB at batch 32)
         last = torch.zeros_like(mask)
         last[:, -1] = True
         is_last.append(last[mask].cpu())

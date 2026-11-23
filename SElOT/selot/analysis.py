@@ -19,8 +19,10 @@ def norm_stats(x: torch.Tensor) -> dict:
             "p95": float(torch.quantile(n, 0.95)) if n.numel() > 1 else float(n.max()), "max": float(n.max())}
 
 
-def displacement_stats(lmap: LayerMap, h: torch.Tensor, alpha: float) -> dict:
-    disp = alpha * lmap.displacement(h)
+def displacement_stats(lmap: LayerMap, h: torch.Tensor, alpha: float, gate_h=None) -> dict:
+    """gate_h: for a gated map, the activation each row's gate is computed from (at runtime the prompt's last
+    token, for every prompt position); None: each row gates itself"""
+    disp = alpha * lmap.displacement(h, gate_h=gate_h)
     stats = norm_stats(disp)
     stats["relative_mean"] = float((disp.norm(dim=-1) / h.float().norm(dim=-1).clamp_min(1e-12)).mean())
     return stats

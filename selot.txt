@@ -24,3 +24,4 @@ sentence-transformers==6.3.0
 sacrebleu==2.6.0
 pyyaml==6.0.3
 tqdm==4.70.1
+matplotlib==3.11.2

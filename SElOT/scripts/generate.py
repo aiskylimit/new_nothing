@@ -121,7 +121,7 @@ def main():
                     if metric == "mmlu":
                         letters = letters or letter_token_ids(tok)
                         with steerer.prompt(plen), torch.no_grad():
-                            logits = model(**batch, use_cache=False).logits[:, -1]
+                            logits = model(**batch, use_cache=False, logits_to_keep=1).logits[:, -1]   # last position only
                         lp = mmlu_letter_scores(logits, letters).cpu()
                         for j, s in zip(idx, lp):
                             rows.append({"mmlu_pred": LETTERS[int(s.argmax())],
