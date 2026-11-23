@@ -12,6 +12,7 @@ import torch
 from torch.nn import functional as F
 from transformers import AutoModel, AutoTokenizer
 
+from utils.model_paths import resolve_local_model
 from utils.mteb_tasks import DEFAULT_EVAL_TASKS
 from utils.mteb_results import format_score, write_result_summaries
 from utils.mteb_data import DEFAULT_EVAL_DATA_DIR, load_task, offline_evaluation, require_local_tasks
@@ -138,7 +139,7 @@ def evaluate_model(model, tokenizer, dims, output_dir, *, eval_tasks=None, epoch
     if batch_size < 1 or max_length < 1:
         raise ValueError("Evaluation batch_size and max_length must be positive.")
     dims = evaluation_dims(model.config.hidden_size, dims)
-    pooling = pooling or getattr(model, "embedding_pooling", "mean" if hasattr(model, "projector") else "cls")
+    pooling = pooling or getattr(model, "embedding_pooling", "cls")
     names = list(dict.fromkeys(eval_tasks))
     splits, languages = list(eval_splits or ["test"]), list(eval_languages or ["eng"])
     require_local_tasks(eval_data_dir, names, splits, languages, seed)
@@ -255,7 +256,7 @@ def evaluate(checkpoint_dir=None, *, method="mrl", model_name=None, model_key=No
 
         model = FlagTextModel.from_pretrained(checkpoint, local_files_only=True)
         source = str(checkpoint)
-        pooling = "mean"
+        pooling = pooling or model.embedding_pooling
         if matryoshka_dims is None:
             matryoshka_dims = model.projector.dims
     else:
@@ -265,10 +266,10 @@ def evaluate(checkpoint_dir=None, *, method="mrl", model_name=None, model_key=No
             from MRL.config import MODEL_CONFIGS
 
             model_name = MODEL_CONFIGS[model_key]["model_name"]
-        source = str(checkpoint) if checkpoint else model_name
-        model = AutoModel.from_pretrained(source, local_files_only=True)
-        pooling = pooling or configuration.get("pooling", "mean" if method in {"ese", "flag_mrl", "original"} else "cls")
-    tokenizer = AutoTokenizer.from_pretrained(source, local_files_only=True)
+        source = resolve_local_model(str(checkpoint) if checkpoint else model_name)
+        model = AutoModel.from_pretrained(source, local_files_only=True, trust_remote_code=True)
+        pooling = pooling or configuration.get("pooling", "mean" if method in {"ese", "original"} else "cls")
+    tokenizer = AutoTokenizer.from_pretrained(source, local_files_only=True, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
         if tokenizer.eos_token_id is None:
             raise ValueError("Tokenizer needs a pad token or EOS token for batching.")
@@ -291,7 +292,7 @@ def main(method="mrl", argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--checkpoint_dir")
-    source.add_argument("--model_name")
+    source.add_argument("--model_name", help="Downloaded encoder directory or supported repo ID (offline only)")
     source.add_argument("--model_key", choices=list(MODEL_CONFIGS))
     parser.add_argument("--matryoshka_dims", nargs="+", type=int, default=None)
     parser.add_argument("--device", default=None)

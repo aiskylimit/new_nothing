@@ -3,30 +3,32 @@
 Layer indices refer directly to Hugging Face hidden_states (index 0 is embeddings).
 """
 
+from utils.model_paths import downloaded_model_path
+
 MODEL_CONFIGS = {
     "tinybert": {
-        "model_name": "huawei-noah/TinyBERT_General_6L_768D",
+        "model_name": downloaded_model_path("tinybert"),
         "matryoshka_dims": [768, 512, 256, 128, 64, 32, 16],
         "align_layers": [2, 4],
         "pipeline_pairs": [(1, 16, 3, 128, 5, 768)],
         "d_full": 768,
     },
     "bert": {
-        "model_name": "google-bert/bert-base-uncased",
+        "model_name": downloaded_model_path("bert"),
         "matryoshka_dims": [768, 512, 256, 128, 64, 32, 16],
         "align_layers": [8, 10],
         "pipeline_pairs": [(3, 16, 7, 128, 11, 768)],
         "d_full": 768,
     },
     "qwen": {
-        "model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "matryoshka_dims": [1024, 512, 256, 128, 64, 32, 16],
+        "model_name": downloaded_model_path("qwen"),
+        "matryoshka_dims": [1536, 1024, 512, 256, 128, 64, 32, 16],
         "align_layers": [2, 8,14,20, 23],
-        "pipeline_pairs": [(2, 16, 8, 64,14,128, 20, 512, 23, 1024)],
-        "d_full": 1024,
+        "pipeline_pairs": [(2, 16, 8, 64,14,128, 20, 512, 23, 1536)],
+        "d_full": 1536,
     },
     "bgem3": {
-        "model_name": "BAAI/bge-m3",
+        "model_name": downloaded_model_path("bgem3"),
         "matryoshka_dims": [1024, 512, 256, 128, 64, 32, 16],
         "align_layers": [2, 8,14,20, 23],
         "pipeline_pairs": [(2, 16, 8, 64,14,128, 20, 512, 23, 1024)],

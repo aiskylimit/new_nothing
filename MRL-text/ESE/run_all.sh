@@ -48,8 +48,9 @@ fi
 mkdir -p "$SAVE_ROOT" "$LOG_ROOT"
 
 # ── Model registry ─────────────────────────────────────────────────────────
-# Format: "model_key"
-MODELS=("tinybert" "bert" "qwen" "bgem3")
+# Load the three downloaded models from models/ (override with MRL_MODELS_DIR).
+# Add tinybert after downloading TinyBERT_General_6L_768D locally.
+MODELS=("bert" "qwen" "bgem3")
 
 # ── Helper: train one model ────────────────────────────────────────────────
 train_model() {

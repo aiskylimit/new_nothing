@@ -16,6 +16,7 @@ import torch
 from tqdm import tqdm
 
 from utils.mteb_eval import add_eval_args, validate_eval_args
+from utils.model_paths import resolve_local_model
 from transformers import AutoModel, get_scheduler
 
 from FlagMRL.config import MODEL_CONFIGS
@@ -23,7 +24,7 @@ from utils.data_preparation import (
     DATASET_NAME, add_training_data_args, batch_inputs, build_train_loader, validate_training_data_args,
 )
 from FlagMRL import FLAG_OBJECTIVES, FlagMRLLoss, FlagProjector
-from FlagMRL.model import FlagTextModel, mean_pooling
+from FlagMRL.model import FlagTextModel
 
 
 def positive_ids(inputs):
@@ -111,14 +112,14 @@ def train(args):
         logger.info("GPU: %s | device=%s | precision=%s", torch.cuda.get_device_name(device), device, precision)
     else:
         logger.info("Device: CPU | precision=%s", precision)
-    model_name = args.model_name or MODEL_CONFIGS[args.model_key]["model_name"]
+    model_name = resolve_local_model(args.model_name or MODEL_CONFIGS[args.model_key]["model_name"])
     logger.info("Model: %s | flag_objective: %s | data: %s | output: %s",
                 model_name, args.flag_objective, args.data_path or DATASET_NAME, output_dir)
     loader, tokenizer = build_train_loader(
         args.data_path, model_name, args.max_length, args.batch_size, args.num_workers,
         seed=args.seed, max_train_samples=args.max_train_samples)
     logger.info("Training pairs: %s", loader.dataset.metadata)
-    encoder = AutoModel.from_pretrained(model_name).to(device)
+    encoder = AutoModel.from_pretrained(model_name, local_files_only=True, trust_remote_code=True).to(device)
     if args.gradient_checkpointing:
         encoder.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         if hasattr(encoder.config, "use_cache"):
@@ -151,8 +152,8 @@ def train(args):
     def encode(batch):
         first, second = batch_inputs(batch, 1, device), batch_inputs(batch, 2, device)
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp_enabled):
-            q = mean_pooling(encoder(**first, return_dict=True).last_hidden_state, first["attention_mask"])
-            p = mean_pooling(encoder(**second, return_dict=True).last_hidden_state, second["attention_mask"])
+            q = encoder(**first, return_dict=True).last_hidden_state[:, 0, :]
+            p = encoder(**second, return_dict=True).last_hidden_state[:, 0, :]
         ids = positive_ids(second) if args.flag_use_neg_mask else None
         return q, p, ids
 
@@ -170,6 +171,7 @@ def train(args):
                                args.flag_far_mode, args.flag_far_tau, objective=criterion.flag_objective)
 
     configuration = {**vars(args), "training_data": loader.dataset.metadata, "model_name": model_name, "matryoshka_dims": projector.dims,
+                     "pooling": model.embedding_pooling,
                      "resolved_device": str(device), "resolved_precision": precision,
                      "torch_version": str(torch.__version__)}
     (output_dir / "training_config.json").write_text(json.dumps(configuration, indent=2) + "\n")
@@ -235,7 +237,7 @@ def train(args):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--model_name", help="Hugging Face model name or local encoder path")
+    source.add_argument("--model_name", help="Downloaded encoder directory or supported repo ID (offline only)")
     source.add_argument("--model_key", choices=list(MODEL_CONFIGS))
     add_training_data_args(parser)
     parser.add_argument("--flag_objective", choices=list(FLAG_OBJECTIVES), default="trace_ratio",

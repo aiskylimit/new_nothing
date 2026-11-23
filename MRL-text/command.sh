@@ -2,9 +2,9 @@
 set -e
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Models: bert=google-bert/bert-base-uncased; tinybert=huawei-noah/TinyBERT_General_6L_768D
-#         bgem3=BAAI/bge-m3; qwen=Qwen/Qwen3-Embedding-0.6B.
-MODEL_NAME="BAAI/bge-m3"
+# Downloaded folders: bert-base-uncased, bge-m3, gte-Qwen2-1.5B-instruct.
+# Set MRL_MODELS_DIR when models are stored outside this project.
+MODEL_NAME="${MODEL_NAME:-${MRL_MODELS_DIR:-$PWD/models}/bge-m3}"
 CUDA_DEVICE=2
 EPOCHS=1
 BATCH_SIZE=128

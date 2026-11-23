@@ -16,9 +16,12 @@ def mean_pooling(hidden, attention_mask):
 
 
 class FlagTextModel(nn.Module):
-    def __init__(self, encoder, projector):
+    def __init__(self, encoder, projector, pooling="cls"):
         super().__init__()
+        if pooling not in {"cls", "mean"}:
+            raise ValueError("pooling must be cls or mean.")
         self.encoder, self.projector = encoder, projector
+        self.embedding_pooling = pooling
 
     @property
     def device(self):
@@ -31,14 +34,15 @@ class FlagTextModel(nn.Module):
     def forward(self, *args, **kwargs):
         kwargs["return_dict"] = True
         output = self.encoder(*args, **kwargs)
-        # Linear projection commutes with masked mean pooling. Existing evaluators
-        # can keep using mean_pooling(output, mask)[:, :dim] without any changes.
+        # Apply the same basis before selecting CLS or taking a masked mean.
         output.last_hidden_state = self.projector(output.last_hidden_state)
         return output
 
     def sentence_embeddings(self, input_ids, attention_mask, dim=None, normalize=True, **kwargs):
         output = self(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
-        embeddings = mean_pooling(output.last_hidden_state, attention_mask)
+        embeddings = (output.last_hidden_state[:, 0, :]
+                      if self.embedding_pooling == "cls"
+                      else mean_pooling(output.last_hidden_state, attention_mask))
         dim = embeddings.size(-1) if dim is None else dim
         if isinstance(dim, bool) or not isinstance(dim, int) or not 0 < dim <= embeddings.size(-1):
             raise ValueError("dim must be an integer in [1, hidden_size].")
@@ -52,7 +56,7 @@ class FlagTextModel(nn.Module):
         if tokenizer is not None:
             tokenizer.save_pretrained(output_dir)
         metadata = {
-            "format_version": 1, "pooling": "mean", "dims": self.projector.dims,
+            "format_version": 1, "pooling": self.embedding_pooling, "dims": self.projector.dims,
             "full_dim": self.projector.U.size(0), "flag_lr": self.projector.lr,
             "flag_eps": self.projector.eps, "flag_lambda_neg": self.projector.lambda_neg,
             "flag_retraction": self.projector.retraction,
@@ -64,8 +68,10 @@ class FlagTextModel(nn.Module):
     def from_pretrained(cls, checkpoint_dir, **encoder_kwargs):
         checkpoint_dir = Path(checkpoint_dir)
         metadata = json.loads((checkpoint_dir / "flag_config.json").read_text())
-        if metadata.get("format_version") != 1 or metadata.get("pooling") != "mean":
+        if metadata.get("format_version") != 1 or metadata.get("pooling") not in {"cls", "mean"}:
             raise ValueError("Unsupported FlagMRL checkpoint format or pooling.")
+        encoder_kwargs["local_files_only"] = True
+        encoder_kwargs.setdefault("trust_remote_code", True)
         encoder = AutoModel.from_pretrained(checkpoint_dir / "encoder", **encoder_kwargs)
         if encoder.config.hidden_size != metadata["full_dim"]:
             raise ValueError("Encoder hidden size does not match the saved flag basis.")
@@ -79,4 +85,4 @@ class FlagTextModel(nn.Module):
                 or not torch.equal(state["a_col"].float(), projector.a_col)):
             raise ValueError("Invalid flag basis or coordinate weights in checkpoint.")
         projector.load_state_dict(state, strict=True)
-        return cls(encoder, projector).eval()
+        return cls(encoder, projector, pooling=metadata["pooling"]).eval()

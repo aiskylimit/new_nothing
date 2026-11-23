@@ -16,6 +16,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
+from utils.model_paths import resolve_local_model
+
 
 DATASET_NAME = "sentence-transformers/quora-duplicates"
 DATASET_CONFIG = "pair"
@@ -111,7 +113,7 @@ def build_train_loader(data_path, model_name, max_length=256, batch_size=16, num
     if batch_size < 2 or max_length < 1 or num_workers < 0:
         raise ValueError("batch_size must be at least two, max_length positive, num_workers nonnegative.")
     dataset = load_training_pairs(data_path, seed=seed, max_train_samples=max_train_samples)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(resolve_local_model(model_name), local_files_only=True, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
         if tokenizer.eos_token_id is None:
             raise ValueError("Tokenizer needs a pad token or EOS token for batching.")

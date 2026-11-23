@@ -9,8 +9,9 @@ fi
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-# Models: bert=google-bert/bert-base-uncased; tinybert=huawei-noah/TinyBERT_General_6L_768D
-#         bgem3=BAAI/bge-m3; qwen=Qwen/Qwen3-Embedding-0.6B.
+# Models load from project models/ (override with MRL_MODELS_DIR).
+# Keys: bert, bgem3, qwen (gte-Qwen2-1.5B-instruct), tinybert.
+# tinybert requires a separate local TinyBERT_General_6L_768D download.
 
 MODEL_KEY="${MODEL_KEY:-bert}"
 # Empty DATA_PATH uses data/quora-duplicates-pair.csv from offline prepare_data.sh.

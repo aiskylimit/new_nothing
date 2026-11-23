@@ -14,6 +14,7 @@ import torch
 from tqdm import tqdm
 
 from utils.mteb_eval import add_eval_args, validate_eval_args
+from utils.model_paths import resolve_local_model
 from transformers import AutoModel
 
 from MIPIC.config import MODEL_CONFIGS, model_name_map_short_name
@@ -179,7 +180,7 @@ def train(args):
     torch.manual_seed(args.seed)
     if device.type == "cuda":
         torch.cuda.manual_seed_all(args.seed)
-    model_name = args.model_name or MODEL_CONFIGS[args.model_key]["model_name"]
+    model_name = resolve_local_model(args.model_name or MODEL_CONFIGS[args.model_key]["model_name"])
     logger.info("Model: %s | device: %s | precision: %s | output: %s", model_name, device, precision, output_dir)
     logger.info("Training data: %s | MTEB tasks: %s | eval every epoch: %s",
                 args.data_path or DATASET_NAME, args.eval_tasks, bool(args.run_eval))
@@ -190,7 +191,8 @@ def train(args):
     # AMP controls forward precision; optimizer parameters/gradients stay FP32.
     # Checkpoints (notably Qwen) may otherwise load native BF16 weights, which
     # CUDA GradScaler cannot unscale on some PyTorch versions.
-    encoder = AutoModel.from_pretrained(model_name, torch_dtype=torch.float32).to(
+    encoder = AutoModel.from_pretrained(
+        model_name, local_files_only=True, trust_remote_code=True, torch_dtype=torch.float32).to(
         device=device, dtype=torch.float32)
     if args.gradient_checkpointing:
         encoder.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -292,7 +294,7 @@ def train(args):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--model_name", help="Hugging Face model name or local encoder path")
+    source.add_argument("--model_name", help="Downloaded encoder directory or supported repo ID (offline only)")
     source.add_argument("--model_key", choices=list(MODEL_CONFIGS))
     add_training_data_args(parser)
     parser.add_argument("--output_dir", default="checkpoints/MIPIC")

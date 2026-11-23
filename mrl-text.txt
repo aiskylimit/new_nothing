@@ -1,0 +1,12 @@
+# manager: uv
+# python: 3.11
+torch
+transformers
+datasets
+numpy
+pandas
+tqdm
+scipy
+scikit-learn
+mteb==2.27.20
+sentencepiece
