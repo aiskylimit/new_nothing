@@ -1,10 +1,11 @@
-#1 +30
+#2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/logs/ +a
 #SElOT
 #v2
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/logs/ +a
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
@@ -42,5 +43,5 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
 
-cd ./SElOT
-bash ./project_commands.sh
+# cd ./SElOT
+# bash ./project_commands.sh
