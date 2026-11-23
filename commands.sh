@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#2
 #MRL
 #v2
 
@@ -46,5 +46,5 @@ export NCCL_DEBUG=WARN
 # cd ./SElOT
 # bash ./project_commands.sh
 
-cd ./MRL-text
-bash ./project_commands.sh
+# cd ./MRL-text
+# bash ./project_commands.sh
