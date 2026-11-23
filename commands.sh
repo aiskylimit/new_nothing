@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/ +a
-#SElOT
+#1 +120
+#unified
 #v2
 
 
@@ -34,8 +34,8 @@ export NCCL_DEBUG=WARN
 # cd ./VLM_Embed_Gvendi
 # bash ./project_commands.sh
 
-# cd ./unified-ie
-# bash ./project_commands.sh
+cd ./unified-ie
+bash ./project_commands.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands_eval_qwen25vl_7b_gpu7.sh
