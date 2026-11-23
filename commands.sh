@@ -1,8 +1,5 @@
-#d
-#datasets
---hf-dataset walledai/AdvBench /mnt/local/@PROJECT@/selot/raw_src/walledai__AdvBench__data
-
-#unified
+#1 +30
+#SElOT
 #v2
 
 
@@ -46,5 +43,5 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands_collect_eval_summary.sh
 # bash ./project_commands_eval_base_model_1.sh
 
-# cd ./SElOT
-# bash ./project_commands.sh
+cd ./SElOT
+bash ./project_commands.sh
