@@ -5,6 +5,8 @@
 #   bash scripts/domains/sft_student_0.6B.sh specific_domain   # NER + RE + EE, 3 datasets, 13,270 train rows
 #   bash scripts/domains/sft_student_0.6B.sh vietnamese        # NER + RE + EE, 3 datasets, 16,127 train rows
 # Dev/test are scored per task; the checkpoint is picked on the mean of the task dev scores.
+# DATASET=<name> (bc5cdr, ddi, phee, vlsp2021, vlsp2020, bkee): only that dataset's rows of <domain>/all, the
+# SFT baseline of a single-teacher KD run (bam_0.6B_4B.sh with the same DATASET); saved under sft_0.6B_all_<name>.
 # Data: processed_data/<domain>/all/qwen and data/<domain>/label_map.tsv. Saved under
 # results/qwen3/<domain>/sft_0.6B_all. Standalone: run9.sh-style GPU and PORT (defaults below).
 
@@ -42,7 +44,8 @@ EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-SAVE_PATH="${BASE_PATH}/results/qwen3/${DOMAIN}/sft_0.6B_${DATA}"
+DATASET=${DATASET:-}
+SAVE_PATH="${BASE_PATH}/results/qwen3/${DOMAIN}/sft_0.6B_${DATA}${DATASET:+_${DATASET}}"
 # seed
 SEED=42
 
@@ -58,6 +61,7 @@ OPTS+=" --n-gpu ${GPUS_PER_NODE}"
 OPTS+=" --data-dir ${DATA_DIR}"
 OPTS+=" --num-workers 0"
 OPTS+=" --dev-num -1"
+[ -n "${DATASET}" ] && OPTS+=" --datasets ${DATASET}"
 # score each source dataset in its own labels; dev answers every epoch, test answers when the mean of the
 # task scores on dev improves
 OPTS+=" --label-map ${BASE_PATH}/data/${DOMAIN}/label_map.tsv"
