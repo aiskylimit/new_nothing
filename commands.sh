@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bert-base-uncased/bs64_lr2e-5_t0.05_ep2_s42/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bge-m3/bs128_lr2e-5_t0.05_ep1_s42/mteb_epoch_1/ +a
 #unified
 #v1
 
@@ -6,7 +6,7 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/logs/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bert-base-uncased/bs64_lr2e-5_t0.05_ep2_s42/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bge-m3/bs128_lr2e-5_t0.05_ep1_s42/mteb_epoch_1/ +a
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
