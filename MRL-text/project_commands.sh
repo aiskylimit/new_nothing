@@ -1,2 +1,2 @@
-bash prepare_data.sh
+# bash prepare_data.sh
 bash command.sh

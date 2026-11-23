@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bge-m3/bs128_lr2e-5_t0.05_ep1_s42/mteb_epoch_1/ +a
-#unified
+#1 +60
+#mrl
 #v1
 
 
@@ -35,8 +35,8 @@ export NCCL_DEBUG=WARN
 # cd ./VLM_Embed_Gvendi
 # bash ./project_commands.sh
 
-cd ./unified-ie
-bash ./project_commands.sh
+# cd ./unified-ie
+# bash ./project_commands.sh
 
 # cd VLM_Distillation-main
 # bash ./project_commands_eval_qwen25vl_7b_gpu7.sh
@@ -47,5 +47,5 @@ bash ./project_commands.sh
 # cd ./SElOT
 # bash ./project_commands.sh
 
-# cd ./MRL-text
-# bash ./project_commands.sh
+cd ./MRL-text
+bash ./project_commands.sh
