@@ -1,6 +1,6 @@
 #1 +10
 #check_time
-#v1
+#v2
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
@@ -39,7 +39,7 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd VLM_Distillation-main
-bash benchmark_qwen2_teacher_7b_fastvlm_student_05b_4gpu.sh
+bash ./script_train/benchmark_qwen2_teacher_7b_fastvlm_student_05b_4gpu.sh
 # bash ./project_commands_eval_qwen25vl_7b_gpu7.sh
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
