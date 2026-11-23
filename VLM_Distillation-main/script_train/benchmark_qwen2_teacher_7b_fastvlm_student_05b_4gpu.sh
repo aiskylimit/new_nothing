@@ -6,6 +6,30 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$(cd -- "${SCRIPT_DIR}/.." && pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
 
+# Use the same training environment as project_commands.sh. Override TRAIN_ENV
+# when the venv is mounted at a different path on another machine.
+TRAIN_ENV="${TRAIN_ENV:-/mnt/local/uvenvs/vlm-distill-train-3/bin/activate}"
+if [[ ! -f "${TRAIN_ENV}" ]]; then
+  echo "Training environment activation script not found: ${TRAIN_ENV}" >&2
+  echo "Set TRAIN_ENV=/path/to/venv/bin/activate and run again." >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "${TRAIN_ENV}"
+
+if ! command -v python >/dev/null 2>&1; then
+  echo "python was not found after activating ${TRAIN_ENV}" >&2
+  exit 1
+fi
+if ! command -v torchrun >/dev/null 2>&1; then
+  echo "torchrun was not found after activating ${TRAIN_ENV}" >&2
+  exit 1
+fi
+
+echo "Training environment: ${VIRTUAL_ENV:-${CONDA_PREFIX:-unknown}}"
+echo "Python: $(command -v python)"
+echo "Torchrun: $(command -v torchrun)"
+
 # Physical GPUs are fixed as requested. torchrun sees them as logical 0,1,2,3.
 export CUDA_VISIBLE_DEVICES="${GPU_IDS:-4,5,6,7}"
 NPROC_PER_NODE=4
