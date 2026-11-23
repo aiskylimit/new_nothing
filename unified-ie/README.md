@@ -97,6 +97,7 @@ bash run9.sh                                                         # every job
 bash scripts/domains/sft_teacher_4B.sh vietnamese ner vlsp2021       # one Qwen3-4B LoRA teacher: <domain> <folder> <dataset>
 bash scripts/domains/sft_student_0.6B.sh vietnamese                  # SFT student on <domain>/all
 bash run10.sh                                                        # per dataset: SFT, single-teacher EventKD, sfkl (after run9.sh)
+bash run11.sh                                                        # per dataset: KD baselines fkl, rkl, srkl, csd, amid (after run9.sh)
 DATASET=bkee bash scripts/domains/sft_student_0.6B.sh vietnamese     # SFT student on one dataset of <domain>/all
 DOMAIN=vietnamese KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh all   # EventKD, the domain's teachers
 ```

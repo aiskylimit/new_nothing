@@ -13,6 +13,7 @@
 # Each part is a switch (env variable, default = BAM); the run dir is named after them:
 #   KD_SCHEDULE=anneal    BAM teacher annealing (KD weight 1 -> 0); constant = fixed KD_RATIO
 #   KD_TYPE=fkl           forward KL, BAM's loss; sfkl = skewed forward KL of EventKD
+#                         (also rkl, srkl, csd, amid: the KD baselines of run11.sh)
 #   W_SPAN=0              span loss off; 1.0 = EventKD span loss on teacher layers 33/36 (spans: EE trigger,
 #                         type, argument, role; NER entity, type; RE subject, relation, object)
 #   SPAN_LOCATE=response  with W_SPAN > 0: every span where the answer JSON writes it; legacy = the original
