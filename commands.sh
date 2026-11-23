@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/logs/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/ +a
 #SElOT
 #v2
 
