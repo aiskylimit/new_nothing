@@ -20,14 +20,14 @@ EVAL_TASK_GROUPS = {
         "EmotionClassification",
         "MassiveIntentClassification",
     ),
-    "Clustering": (
-        "StackExchangeClustering",
-        "ArxivClusteringS2S",
-        "TwentyNewsgroupsClustering",
-        "RedditClustering",
-        "MedrxivClusteringS2S",
-        "BiorxivClusteringS2S",
-    ),
+    # "Clustering": (
+    #     "StackExchangeClustering",
+    #     "ArxivClusteringS2S",
+    #     "TwentyNewsgroupsClustering",
+    #     "RedditClustering",
+    #     "MedrxivClusteringS2S",
+    #     "BiorxivClusteringS2S",
+    # ),
 }
 
 DEFAULT_EVAL_TASKS = tuple(name for group in EVAL_TASK_GROUPS.values() for name in group)

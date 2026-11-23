@@ -20,7 +20,7 @@ declare -A TRAIN_DIRS=(
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export CUDA_VISIBLE_DEVICES="$CUDA_DEVICE"
 
-for METHOD in mrl flag_mrl ese mipic; do
+for METHOD in flag_mrl ese mipic; do
     OUTPUT_DIR="checkpoints/$METHOD/${MODEL_NAME##*/}/bs${BATCH_SIZE}_lr${LR}_t${TEMPERATURE}_ep${EPOCHS}_s${SEED}"
     EXTRA_ARGS=()
     if [[ "$METHOD" == flag_mrl ]]; then EXTRA_ARGS=(--flag_lr 0.05); fi
