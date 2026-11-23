@@ -1,5 +1,5 @@
-#i mrl-text.txt
-#SElOT
+#1 +60
+#MRL
 #v2
 
 
@@ -45,3 +45,6 @@ export NCCL_DEBUG=WARN
 
 # cd ./SElOT
 # bash ./project_commands.sh
+
+cd ./MRL-text
+bash ./project_commands.sh
