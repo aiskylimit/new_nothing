@@ -26,6 +26,18 @@ def main():
             fmt = lambda k: f"{r[k]:.4g}" if k in r else "-"
             lines.append(f"| {layer} | {fmt('g_sq_benign')} | {fmt('g_sq_refused')} | {fmt('g_sq_jailbreak')} | "
                          f"{fmt('delta_sq_jailbreak')} | {fmt('field_mean_gap_left')} | {r.get('prop2_holds', '-')} |")
+        gated = {l: r for l, r in fit["per_layer"].items() if "gate_tau" in r}
+        if gated:
+            lines += ["", "Gate (SELOT-gated; open = gate > 1/2; benign calib = held-out D_b train that set the threshold)",
+                      "", "| layer | gate | components j / b / r | OT maps | open: jailbreak | benign fit | benign calib "
+                      "| refused | ||g||^2 benign | ||g||^2 jailbreak |", "|---|---|---|---|---|---|---|---|---|---|"]
+            for layer, r in gated.items():
+                c = r.get("components") or {}
+                pct = lambda k: f"{100 * r[k]:.1f}%" if k in r else "-"
+                lines.append(f"| {layer} | {r['gate']} | {c.get('jailbreak', '-')} / {c.get('benign', '-')} / "
+                             f"{c.get('refused', '-')} | {r['transport_components']} | {pct('gate_open_jailbreak')} | "
+                             f"{pct('gate_open_benign_fit')} | {pct('gate_open_benign_calib')} | {pct('gate_open_refused')} "
+                             f"| {r.get('g_sq_benign_fit', 0):.4g} | {r.get('g_sq_jailbreak', 0):.4g} |")
         lines += ["", f"numerical checks: {'FAILED: ' + '; '.join(fit['failures']) if fit['failures'] else 'all passed'}", ""]
 
     fs = load(res / "fit_sets.json")

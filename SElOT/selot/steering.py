@@ -6,7 +6,8 @@ architecture with a `layers` ModuleList (Llama, Qwen2, Gemma2, ...): no model su
 
 Positions (`positions`):
     prompt      default. Every prompt position t gets its own A h_t + b, at prefill only; generated tokens
-                are not steered.
+                are not steered. Gated maps (SELOT-gated): the gate is computed once per prompt from the LAST
+                prompt token (where it was fitted) and applied at every prompt position.
     alphasteer  AlphaSteer's rule (baseline only): one displacement computed from the LAST prompt token,
                 added to every prompt position, at prefill only.
     all         every position, prompt and generated (proposal Eq. 11 as written; ablation).
@@ -93,7 +94,7 @@ class Steerer:
                     return None
                 n = self.prompt_len
                 if self.positions == "prompt":
-                    shift = alpha * lmap.displacement(h[:, :n])
+                    shift = alpha * lmap.displacement(h[:, :n], gate_h=h[:, n - 1] if lmap.gated else None)
                 else:                                          # alphasteer: from the last prompt token
                     shift = (alpha * lmap.displacement(h[:, n - 1])).unsqueeze(1).expand(-1, n, -1)
                 new = h.clone()

@@ -5,13 +5,21 @@
 #
 # Every job: rebuild the data from the downloaded source files (fetch_data --src, prepare_eval, build_fit_sets; checked
 # against data_manifest.json), then scripts/pipeline.py:
-#   label (workflow 1) -> activations at layers 8-22 (sweep 10-22 + AlphaSteer's 8-19) -> SElOT layer sweep on the
-#   val split (layers 10-22 = 30-70% of depth, k 5, m 256, alpha 1)
-#   -> best layer by mean val DSR -> SElOT full eval -> AlphaSteer full eval -> results/compare_wf1.md
+#   label (fit-data workflow WF; now 1 = the first Colab run) -> activations at layers 8-22 (sweep 10-22
+#   + AlphaSteer's 8-19) -> layer sweep of METHOD on the val split (layers 10-22 = 30-70% of depth, alpha 1)
+#   -> best layer by mean val DSR (results/sweep_<METHOD>_wf<WF>/sweep.md; activation plots of the best layer's map in
+#   results/results_sweep_<METHOD>_wf<WF>_L<best>/plots when matplotlib is installed)
+#   [UNTIL=all only: -> METHOD full eval -> AlphaSteer full eval -> results/compare_wf<WF>[_<METHOD>].md (final
+#   tables: safety, utility) + results/tune_log_wf<WF>[_<METHOD>].md (sweep + every run's details)]
+# METHOD: selot_gated = SElOT-gated (configs/methods/selot_gated.yaml: a Gaussian-mixture gate decides whether to steer,
+#   one Gaussian OT per jailbreak mode where; components by BIC), selot = SElOT (ridge field).
+# Current job (defaults below): SElOT-gated, workflow 1, full pipeline (UNTIL=all): layer sweep, SElOT-gated full
+# eval at the best layer, AlphaSteer full eval (baseline), final tables.
 # No W&B. Small outputs: SElOT/results/ ; large files: /mnt/local/aiskylimit_new_nothing/selot/work/.
 # Test runs elsewhere (e.g. Colab, colab/smoke_new_nothing.ipynb) override the defaults with SELOT_* variables
 # (SELOT_BASE, SELOT_VENV=none, SELOT_MODELS_DIR, SELOT_WORK, SELOT_RESULTS_ROOT, SELOT_RAW_SRC, SELOT_GPU_IDS,
-# SELOT_LAYERS, SELOT_MIN_FREE_MB, SELOT_SMOKE=1: few prompts per set, SELOT_SKIP_DATA=1: keep data/). On the server
+# SELOT_LAYERS, SELOT_MIN_FREE_MB, SELOT_SMOKE=1: few prompts per set, SELOT_SKIP_DATA=1: keep data/, SELOT_WF,
+# SELOT_UNTIL, SELOT_METHOD). On the server
 # none is set.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -24,6 +32,9 @@ GPU_IDS="${SELOT_GPU_IDS:-2,3}"                           # the GPUs SElOT may u
 MODEL="llama3.1-8b"
 LAYERS="${SELOT_LAYERS:-}"         # SElOT sweep layers; empty = model.layer_range of configs/base.yaml (30-70%: 10-22)
 SWEEP_ALPHA="1.0"
+SELOT_WF="${SELOT_WF:-1}"                                 # fit-data workflow: 1 = first Colab run | 2 = split by behaviour group
+SELOT_UNTIL="${SELOT_UNTIL:-all}"                         # all = + full evals (METHOD, AlphaSteer) + tables | select = stop after the best layer
+SELOT_METHOD="${SELOT_METHOD:-selot_gated}"               # steering method: selot_gated (gate + per-mode OT) | selot
 MIN_FREE_MB="${SELOT_MIN_FREE_MB:-60000}"                 # per GPU, checked before every run
 SMOKE="${SELOT_SMOKE:-0}"                                 # 1 = test run: few prompts per set, *_smoke runs
 
@@ -38,7 +49,7 @@ export PYTHONPATH=.
 
 export MODELS_DIR="${SELOT_MODELS_DIR:-${BASE}/models}" WORK="${SELOT_WORK:-${BASE}/work}"
 export RESULTS_ROOT="${SELOT_RESULTS_ROOT:-${ROOT}/results}" RAW_SRC="${SELOT_RAW_SRC:-${BASE}/raw_src}"
-export GPU_IDS MODEL LAYERS SWEEP_ALPHA MIN_FREE_MB SMOKE
+export GPU_IDS MODEL LAYERS SWEEP_ALPHA MIN_FREE_MB SMOKE SELOT_WF SELOT_UNTIL SELOT_METHOD
 export HF_HOME="${BASE}/.cache/huggingface" VLLM_CACHE_ROOT="${BASE}/.cache/vllm" TMPDIR="${BASE}/tmp"
 mkdir -p "${RESULTS_ROOT}/logs" "${WORK}" "${TMPDIR}" "${VLLM_CACHE_ROOT}"
 # offline, and nothing phones home
@@ -56,9 +67,15 @@ on_exit() {
   if [ "${code}" != "0" ]; then
     echo "=== FAILED/STOPPED (exit ${code}) after $(( $(date +%s) - T0 ))s; logs: ${RESULTS_ROOT}/logs and ${RESULTS_ROOT}/results_*/logs ==="
   fi
-  for f in "${RESULTS_ROOT}"/sweep_selot_wf1*/sweep.md "${RESULTS_ROOT}"/compare_wf1*.md; do
-    [ -f "${f}" ] && { echo "--- ${f}"; cat "${f}"; }
-  done
+  # only this job's files (its workflow, _smoke or not): the final tables when they exist, else the layer sweep
+  local sfx="${SELOT_WF}$([ "${SMOKE}" = "1" ] && echo _smoke || true)"
+  local rsfx="${sfx}$([ "${SELOT_METHOD}" = "selot" ] || echo "_${SELOT_METHOD}")"
+  if [ "${code}" = "0" ] && [ "${SELOT_UNTIL}" = "all" ] && [ -f "${RESULTS_ROOT}/compare_wf${rsfx}.md" ]; then
+    echo "--- ${RESULTS_ROOT}/compare_wf${rsfx}.md"; cat "${RESULTS_ROOT}/compare_wf${rsfx}.md"
+  elif [ -f "${RESULTS_ROOT}/sweep_${SELOT_METHOD}_wf${sfx}/sweep.md" ]; then
+    echo "--- layer sweep: ${RESULTS_ROOT}/sweep_${SELOT_METHOD}_wf${sfx}/sweep.md"
+    cat "${RESULTS_ROOT}/sweep_${SELOT_METHOD}_wf${sfx}/sweep.md"
+  fi
   echo "results: ${RESULTS_ROOT}"
 }
 trap on_exit EXIT
@@ -71,6 +88,13 @@ for m in Llama-3.1-8B-Instruct Llama-Guard-3-8B HarmBench-Llama-2-13b-cls gemma-
   [ -e "${MODELS_DIR}/${m}/config.json" ] || [ -e "${MODELS_DIR}/${m}/adapter_config.json" ] || missing+=("${MODELS_DIR}/${m}")
 done
 [ -d "${RAW_SRC}" ] || missing+=("${RAW_SRC} (source data files)")
+# chat templates (tokenizer_config.json or chat_template.jinja): checked here, not only at the judge stage hours later
+for m in Llama-3.1-8B-Instruct Llama-Guard-3-8B Qwen2.5-14B-Instruct Skywork-Reward-V2-Llama-3.1-8B; do
+  d="${MODELS_DIR}/${m}"
+  [ -e "${d}/config.json" ] || continue
+  [ -e "${d}/chat_template.jinja" ] || [ -e "${d}/chat_template.json" ] || grep -q '"chat_template"' "${d}/tokenizer_config.json" 2>/dev/null \
+    || missing+=("${d}: no chat template (tokenizer_config.json / chat_template.jinja): download the whole model repo")
+done
 if [ ${#missing[@]} -gt 0 ]; then
   printf 'ERROR: missing (run the download job: header = the content of SElOT/download.txt):\n'; printf '  %s\n' "${missing[@]}"
   exit 1

@@ -54,12 +54,14 @@ def score_rows(results_root: Path, prefix: str, layers, alpha: float):
     return rows, missing
 
 
-def analysis_row(results_root: Path, prefix: str, layer: int, alpha: float):
-    """the analysis numbers of one sweep run at one alpha, or None (no analysis.json)"""
+def analysis_row(results_root: Path, prefix: str, layer: int, alpha: float, layer_key=None):
+    """the analysis numbers of one sweep run at one alpha, or None (no analysis.json). The run is
+    results_<prefix><layer>; layer_key: the steered layer when <layer> is something else (e.g. k of a k sweep)"""
     f = results_root / f"results_{prefix}{layer}" / "analysis.json"
     if not f.exists():
         return None
     a, key = json.loads(f.read_text()), str(float(alpha))
+    layer = layer if layer_key is None else layer_key
     out = {}
     for name, d in a.get("displacement", {}).items():
         e = (d["per_layer"].get(str(layer)) or {}).get(key)

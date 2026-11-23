@@ -41,9 +41,12 @@ def main():
             prompts = load_prompts(spec["path"])[: cfg.get("analysis", {}).get("max_samples") or None]
             acts, is_last = extract_all_tokens(model, tok, prompts, layers, cfg["extract"]["batch_size"])
             entry = {}
+            seq = torch.cumsum(is_last.long(), 0) - is_last.long()      # prompt index of every token row
             for l in layers:
-                entry[l] = {str(a): {"last_token": displacement_stats(amap.layers[l], acts[l][is_last], float(a)),
-                                     "all_prompt_tokens": displacement_stats(amap.layers[l], acts[l], float(a))}
+                lm = amap.layers[l]
+                gate_h = acts[l][is_last][seq] if lm.gated else None      # runtime: last-token gate at all positions
+                entry[l] = {str(a): {"last_token": displacement_stats(lm, acts[l][is_last], float(a)),
+                                     "all_prompt_tokens": displacement_stats(lm, acts[l], float(a), gate_h)}
                             for a in alphas}
             result["displacement"][spec["name"]] = {"group": spec.get("group", spec["name"]), "per_layer": entry}
             log.info("%s: layer %d alpha %s last-token mean ||disp|| = %.4g", spec["name"], layers[0], alphas[-1],

@@ -12,6 +12,8 @@
                     i.e. A = I + strength Delta^T, b = 0, with steer.positions = alphasteer
     linear_act      per-neuron 1-D affine transport (Linear-AcT), jailbreak -> refused
     selot           the proposed method (selot.selot_fit)
+    selot_gated     SELOT with a gate (Gaussian-mixture posterior or logistic probe) and per-mode Gaussian OT
+                    instead of the ridge field (selot.gated_fit); not affine: the map lives in LayerMap.extras
 """
 
 import torch
@@ -19,6 +21,7 @@ import torch
 from selot.affine_map import AffineMap, LayerMap
 from selot.gaussian_ot import check_ot_map
 from selot.linalg import DTYPE, as_f32, wmean
+from selot.gated_fit import GatedParams, fit_gated_layer
 from selot.selot_fit import SelotParams, fit_selot_layer, ot_targets, transport_subspace
 
 
@@ -123,6 +126,8 @@ def fit_map(method: dict, acts: dict, layers, device=None, weights=None) -> tupl
                       for s in ("benign", "refused", "jailbreak"))
         if name == "selot":
             lm, rep = fit_selot_layer(hb, hr, hj, SelotParams.from_dict(method), wr, wj)
+        elif name == "selot_gated":
+            lm, rep = fit_gated_layer(hb, hr, hj, GatedParams.from_dict(method), wr, wj)
         elif name == "dim":
             lm, rep = fit_dim_layer(hb, hr, hj, method.get("source", "benign"), method.get("subspace_k", 0), wr, wj)
         elif name == "pca_ot":
@@ -144,5 +149,5 @@ def fit_map(method: dict, acts: dict, layers, device=None, weights=None) -> tupl
             raise ValueError(f"unknown method {name!r}")
         layer_maps[layer] = lm.to("cpu")
         reports[layer] = rep
-        hidden = next(iter(lm.terms().values())).shape[0]
+        hidden = (next(iter(lm.terms().values())) if lm.terms() else lm.extras["P"]).shape[0]
     return AffineMap(name, hidden, layer_maps, meta={"method": method}), reports
