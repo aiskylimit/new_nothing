@@ -127,6 +127,29 @@ def write_json(path, value):
     temporary.replace(path)
 
 
+def write_eval_progress(directory, results):
+    """Persist completed scores before starting the next dimension or task."""
+    dims, epoch = results["matryoshka_dims"], results["epoch"]
+    rows = ["| Task | Metric | " + " | ".join(str(dim) for dim in dims) + " |",
+            "| --- | --- | " + " | ".join("---:" for _ in dims) + " |"]
+    for name in results["tasks"]:
+        rows.append("| " + name + " | " + results["metrics"][name] + " | " + " | ".join(
+            format_score(results["scores"].get(f"dim_{dim}", {}).get(name)) for dim in dims) + " |")
+    label = f"epoch {epoch}" if epoch is not None else "standalone evaluation"
+    progress = (f"Completed tasks: {len(results['completed_tasks'])}/{len(results['requested_tasks'])}; "
+                f"status: {results['status']}. N/A means missing or non-finite.")
+    summary = f"MTEB main_score by embedding dimension ({label})\n{progress}\n\n" + "\n".join(rows) + "\n"
+    suffixes = [""] + ([f"_epoch_{epoch}"] if epoch is not None else [])
+    for suffix in suffixes:
+        write_json(directory / f"result{suffix}.json", results)
+        path = directory / f"summary{suffix}.txt"
+        temporary = path.with_suffix(".txt.tmp")
+        temporary.write_text(summary)
+        temporary.replace(path)
+    write_result_summaries(directory)
+    return summary
+
+
 @offline_evaluation
 def evaluate_model(model, tokenizer, dims, output_dir, *, eval_tasks=None, epoch=None,
                    eval_splits=None, eval_languages=None, batch_size=64, max_length=256,
@@ -147,7 +170,8 @@ def evaluate_model(model, tokenizer, dims, output_dir, *, eval_tasks=None, epoch
     raw_dir = directory / ("mteb" if epoch is None else f"mteb_epoch_{epoch}")
     results = {"backend": "mteb", "mteb_version": version("mteb"), "epoch": epoch,
                "model_name": getattr(model.config, "_name_or_path", ""), "output_dir": str(directory),
-               "tasks": [], "eval_splits": splits, "offline": True,
+               "tasks": [], "requested_tasks": names, "completed_tasks": [], "status": "in_progress",
+               "eval_splits": splits, "offline": True,
                "eval_data_dir": str(Path(eval_data_dir).expanduser().resolve()),
                "eval_languages": languages, "matryoshka_dims": dims, "pooling": pooling,
                "max_length": max_length, "seed": seed, "metrics": {}, "scores": {}, "raw_results": {},
@@ -208,6 +232,18 @@ def evaluate_model(model, tokenizer, dims, output_dir, *, eval_tasks=None, epoch
                         # Save each finished task so a later failure does not discard its raw scores.
                         write_json(raw_path, raw_by_dim[key])
                         results["raw_results"][key] = str(raw_path.relative_to(directory))
+                        write_eval_progress(directory, results)
+                        print(f"{task_name} | dim={dim} | {results['metrics'][task_name]}="
+                              f"{format_score(results['scores'][key].get(task_name))}", flush=True)
+                    # Save the completed task and cumulative table before loading the next task.
+                    results["completed_tasks"].append(task_name)
+                    if len(results["completed_tasks"]) == len(names):
+                        results["status"] = "complete"
+                    summary = write_eval_progress(directory, results)
+                    print(f"Task complete: {task_name} "
+                          f"({len(results['completed_tasks'])}/{len(names)}). "
+                          f"Summary updated: {directory / 'summary.txt'}", flush=True)
+                    print(summary, flush=True)
                 finally:
                     adapter.clear_cache()
                     if task is not None:
@@ -219,19 +255,6 @@ def evaluate_model(model, tokenizer, dims, output_dir, *, eval_tasks=None, epoch
         model.train(was_training)
         random.setstate(python_state)
         np.random.set_state(numpy_state)
-    suffixes = [""] + ([f"_epoch_{epoch}"] if epoch is not None else [])
-    rows = ["| Task | Metric | " + " | ".join(str(dim) for dim in dims) + " |",
-            "| --- | --- | " + " | ".join("---:" for _ in dims) + " |"]
-    for name in results["tasks"]:
-        rows.append("| " + name + " | " + results["metrics"][name] + " | " + " | ".join(
-            format_score(results["scores"][f"dim_{dim}"][name]) for dim in dims) + " |")
-    label = f"epoch {epoch}" if epoch is not None else "standalone evaluation"
-    summary = f"MTEB main_score by embedding dimension ({label})\n\n" + "\n".join(rows) + "\n"
-    for suffix in suffixes:
-        write_json(directory / f"result{suffix}.json", results)
-        (directory / f"summary{suffix}.txt").write_text(summary)
-    write_result_summaries(directory)
-    print(summary)
     print(f"MTEB results: {directory / 'result.json'}")
     print(f"All epochs: {directory / 'summary_all_epochs.txt'} | CSV: {directory / 'results.csv'}")
     return json_safe(results)
