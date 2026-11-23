@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source /mnt/local/uvenvs/mrl-text/bin/activate
 cd "$(dirname -- "${BASH_SOURCE[0]}")"
 
 # Offline server: local preparation only, after copying data/raw from outside.

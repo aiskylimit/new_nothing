@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+source /mnt/local/uvenvs/mrl-text/bin/activate
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # Downloaded folders: bert-base-uncased, bge-m3, gte-Qwen2-1.5B-instruct.
