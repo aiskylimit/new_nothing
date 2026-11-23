@@ -99,6 +99,10 @@ class TrainingArguments(TrainingArguments):
     #!new kd loss weight
     kd_weight: float = field(default=0.01, metadata={"help": "weight of kd loss in total loss (used by `default` criterion)"})
     kd_loss_type: str = field(default="ce_only", metadata={"help": "kd criterion: one of {ce_only, default, default_distillation, emkd, em_kd, sre, joint, unit_aligned, scva, cgkd, scva_cgkd, scva_sic, draft, mcw_kd, dskd_v2_with_eta}"})
+    benchmark_enabled: bool = field(default=False, metadata={"help": "Measure synchronized optimizer-step time and peak CUDA memory."})
+    benchmark_method: str = field(default="", metadata={"help": "Method label written to the benchmark results file."})
+    benchmark_warmup_steps: int = field(default=2, metadata={"help": "Optimizer steps excluded from benchmark averages."})
+    benchmark_output_file: Optional[str] = field(default=None, metadata={"help": "TSV file receiving one benchmark summary row per run."})
     # dwa-kd loss weight/config
     ce_rate: float = field(default=1.0, metadata={"help": "DWA-KD supervised CE loss weight"})
     kd_rate: float = field(default=1.0, metadata={"help": "DWA-KD dual-space KD loss weight"})

@@ -9,6 +9,7 @@ from transformers import HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 
 from src.arguments import DataArguments, ModelArguments, TrainingArguments
+from src.benchmark import CudaBenchmarkCallback
 from src.criterions import build_criterion
 from src.data.dataset import make_vlm_distill_data_module
 from src.distiller import Distiller
@@ -160,11 +161,16 @@ def main():
         data_collator=data_module["data_collator"],
         **_trainer_processor_kwargs(student_processor),
     )
+    if training_args.benchmark_enabled:
+        trainer.add_callback(CudaBenchmarkCallback())
 
     resume_checkpoint = _resolve_resume_checkpoint(training_args)
     train_result = trainer.train(resume_from_checkpoint=resume_checkpoint)
-    trainer.save_model(training_args.output_dir)
-    trainer.save_state()
+    # Benchmark runs only need timing/memory logs; avoid adapter/projector I/O
+    # after each method in a comparison suite.
+    if not training_args.benchmark_enabled:
+        trainer.save_model(training_args.output_dir)
+        trainer.save_state()
 
     metrics = train_result.metrics
     metrics["train_samples"] = len(train_dataset)
