@@ -229,6 +229,12 @@ def add_distillm_args(parser: argparse.ArgumentParser):
 
     # skew kld
     group.add_argument("--skew-alpha", type=float, default=0.1)
+
+    # AMiD (alpha-mixture assistant distribution KD; aailab-kaist/AMiD defaults, as OpenED)
+    group.add_argument("--amid-alpha", type=float, default=0.5)
+    group.add_argument("--amid-lam", type=float, default=0.5)
+    group.add_argument("--amid-div-name", type=str, default="fkl", choices=["fkl", "ab"])
+    group.add_argument("--amid-div-order", type=str, default="pr", choices=["pr", "qr", "rp", "rq"])
     
     # student generation
     group.add_argument("--student-gen", action="store_true")
