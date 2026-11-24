@@ -2,6 +2,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from random import Random
 from typing import Any, Dict, List, Optional, Sequence
 
 import torch
@@ -376,7 +377,13 @@ class LazyVlmDistillDataset(Dataset):
         samples = _read_json_or_jsonl(self.data_path)
         percent_data = _get_arg(data_args, "percent_data", 1.0)
         if percent_data is not None and 0 < percent_data < 1:
-            samples = samples[: max(1, int(len(samples) * percent_data))]
+            count = max(1, int(len(samples) * percent_data))
+            subset_seed = _get_arg(data_args, "data_subset_seed", None)
+            if subset_seed is not None:
+                indices = sorted(Random(subset_seed).sample(range(len(samples)), min(count, len(samples))))
+                samples = [samples[index] for index in indices]
+            else:
+                samples = samples[:count]
 
         self.list_data_dict = []
         self.skipped_missing_images = 0
@@ -584,7 +591,7 @@ class VlmDistillDataCollator:
         # the data module.
         kd_loss_type = _get_arg(self.data_args, "kd_loss_type")
         self.use_sre_pooler = bool(
-            kd_loss_type in {"sre", "joint", "unit_aligned", "unit_aligned_distillation"}
+            kd_loss_type in {"sra", "sre", "joint", "unit_aligned", "unit_aligned_distillation"}
             and self.use_teacher
         )
 

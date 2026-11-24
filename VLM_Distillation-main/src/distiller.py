@@ -11,6 +11,9 @@ from src.model.scva_attention import resolve_layer_pairs
 from src.utils import print_master, print_rank
 
 
+BED_VLM_CRITERIA = {"bed_vlm", "scva_sic"}
+
+
 def _create_teacher_model_args(model_args: ModelArguments) -> ModelArguments:
     return ModelArguments(
         model_name=model_args.teacher_model_name,
@@ -102,7 +105,7 @@ class Distiller(nn.Module):
 
     def _should_use_sparse_scva_attention(self) -> bool:
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
-        if kd_loss_type not in {"scva", "scva_cgkd", "draft"}:
+        if kd_loss_type not in {"scva", "scva_cgkd", "draft"} and not self._uses_bed_scva():
             return False
         if not bool(getattr(self.training_args, "scva_sparse_attention", True)):
             return False
@@ -132,6 +135,7 @@ class Distiller(nn.Module):
             n_pairs=int(getattr(self.training_args, "scva_n_layer_pairs", 4)),
             low_pct=float(getattr(self.training_args, "scva_layer_low_pct", 0.4)),
             high_pct=float(getattr(self.training_args, "scva_layer_high_pct", 0.7)),
+            half_open=self._uses_bed_scva(),
         )
         if not pairs:
             raise RuntimeError("Sparse SCVA resolved no student/teacher layer pairs.")
@@ -148,6 +152,8 @@ class Distiller(nn.Module):
         if getattr(self, "use_sparse_scva_attention", False):
             return False
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
+        if kd_loss_type in BED_VLM_CRITERIA:
+            return self._uses_bed_scva()
         attention_free_kd_losses = {
             "ce_only",
             "default",
@@ -174,7 +180,11 @@ class Distiller(nn.Module):
         # SRE consumes text-decoder attention only.  Keeping the vision backend
         # on SDPA/Flash avoids eager vision attention without changing SRE.
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
-        return self._needs_attention_outputs() and kd_loss_type != "sre"
+        return self._needs_attention_outputs() and kd_loss_type not in {"sra", "sre", *BED_VLM_CRITERIA}
+
+    def _uses_bed_scva(self) -> bool:
+        criterion = getattr(self.training_args, "kd_loss_type", None)
+        return criterion in BED_VLM_CRITERIA and self.training_args.scva_sic_lambda_v > 0
 
     @staticmethod
     def _infer_text_hidden_dim(model: nn.Module, fallback: int) -> int:
@@ -256,13 +266,27 @@ class Distiller(nn.Module):
     def forward(self, criterion, batch):
         return criterion(self, batch)
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.teacher.eval()
+        return self
+
     # ------------------------------------------------------------------
     # Projector
     # ------------------------------------------------------------------
 
     def set_projector(self):
         kd_loss_type = (getattr(self.training_args, "kd_loss_type", "") or "").lower()
-        if kd_loss_type in {"dskd_v2_with_eta", "dskdv2_with_eta", "dskd_v2", "dskdv2"}:
+        if kd_loss_type in BED_VLM_CRITERIA:
+            self.projectors = nn.ModuleDict()
+            if self.training_args.scva_sic_lambda_sic > 0:
+                student_dim = self.student.encoder.get_input_embeddings().weight.shape[1]
+                teacher_dim = self.teacher.encoder.get_input_embeddings().weight.shape[1]
+                if self.training_args.sic_use_projector:
+                    self.projectors["sic"] = nn.Linear(student_dim, teacher_dim, bias=False)
+                elif student_dim != teacher_dim:
+                    raise ValueError("SIC requires a projector when student and teacher embedding widths differ.")
+        elif kd_loss_type in {"dskd_v2_with_eta", "dskdv2_with_eta", "dskd_v2", "dskdv2"}:
             # DSKDv2 owns a fixed pair of dual-space mappings.  Their shapes
             # follow directly from the two LM hidden dimensions, and
             # init_dskd_projectors_if_needed() initializes/caches the mappings
@@ -324,7 +348,7 @@ class Distiller(nn.Module):
                 self.projectors[name] = seq
         else:
             n_projectors = len(self.training_args.teacher_layer_mapping)
-            sre_like_types = {"sre", "joint", "unit_aligned", "unit_aligned_distillation"}
+            sre_like_types = {"sra", "sre", "joint", "unit_aligned", "unit_aligned_distillation"}
             if kd_loss_type in sre_like_types and getattr(self.training_args, "sre_use_projector", True):
                 n_projectors = max(n_projectors, 1)
             projector_list = nn.ModuleList()

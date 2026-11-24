@@ -5,12 +5,14 @@ from typing import Any, Callable, Dict, Optional
 
 import torch
 import torch.distributed as dist
+from peft import PeftModel
+from peft.utils.save_and_load import load_peft_weights, set_peft_model_state_dict
 from transformers import Trainer
 from transformers.trainer import TRAINING_ARGS_NAME
 from transformers.trainer_pt_utils import LengthGroupedSampler
 
 from src.arguments import ModelArguments, TrainingArguments
-from src.distiller import Distiller
+from src.distiller import BED_VLM_CRITERIA, Distiller
 from src.model.model import VLMModel
 from src.model.processor import save_processor
 from src.utils import print_master
@@ -246,6 +248,23 @@ class DistillTrainer(Trainer):
     # ------------------------------------------------------------------
     # Checkpointing
     # ------------------------------------------------------------------
+
+    def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
+        model = self.model if model is None else model
+        raw_model = self.accelerator.unwrap_model(model)
+        if (self._is_distillation and self.args.kd_loss_type in BED_VLM_CRITERIA
+                and isinstance(raw_model.student.encoder, PeftModel)):
+            projector_state = None
+            if "sic" in raw_model.projectors:
+                path = os.path.join(resume_from_checkpoint, "projectors", "projector_sic.pt")
+                projector_state = torch.load(path, map_location="cpu", weights_only=True)
+            adapter = raw_model.student.encoder
+            state = load_peft_weights(resume_from_checkpoint, device="cpu")
+            set_peft_model_state_dict(adapter, state, adapter_name=adapter.active_adapter)
+            if projector_state is not None:
+                raw_model.projectors["sic"].load_state_dict(projector_state)
+            return
+        return super()._load_from_checkpoint(resume_from_checkpoint, model)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         os.makedirs(output_dir, exist_ok=True)

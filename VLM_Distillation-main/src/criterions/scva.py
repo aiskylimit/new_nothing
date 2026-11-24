@@ -1,40 +1,18 @@
-"""Semantic-Cluster Visual Attention (SCVA) distillation.
+"""Align response-to-vision attention over shared semantic regions.
 
-For each generation step t, instead of forcing the student to match the
-teacher's per-patch visual attention a_T^(t) — which is overly strict because
-both can attend to slightly different vision tokens while focusing on the same
-semantic region — we cluster the teacher's vision tokens into M semantic groups
-and align the *cluster-level* attention distributions r_T^(t), r_S^(t) in R^M.
+Cluster teacher vision-token hidden states using semantic and spatial distances.
+Map those clusters to student patches by normalized patch coordinates. For each
+paired decoder layer, project head-averaged response attention onto the regions
+and weight the KL divergence by the teacher's attention entropy.
 
-Loss per draft.pdf §SCVA:
-    L_SCVA = ( Σ_t u_t · KL(r_T^(t) || r_S^(t)) ) / Σ_t u_t
-    u_t    = exp( -H(a_T^(t)) / log n )       (teacher-confidence weight)
-    r_X^(t)(m) = Σ_{i ∈ C_m} a_X^(t)(i)        (cluster-level attention)
-
-The single-method criterion below mixes L_SCVA with supervised CE following the
-EM-KD / SRE convention:
-    L = α · L_CE + (1 - α) · w · L_SCVA
-This keeps the standalone-SCVA criterion compositionally similar to the others
-in this repo. The joint draft method (SCVA + CGKD) uses the draft's additive
-formula directly and calls ``SCVACriterion._scva_loss`` to access the pure KD
-component.
-
-Assumptions:
-  - Teacher vision tokens are clustered by semantic + spatial distance, then
-    each teacher cluster is projected onto the student patch grid by normalized
-    patch coordinates. This allows teacher/student vision-token counts to differ.
-  - Qwen2.5-VL/Qwen3-VL capture only response-to-vision attention on selected
-    layers while the regular decoder forward stays on SDPA. Other backbones
-    retain the full-attention eager fallback.
-  - Instead of a single attention layer, SCVA selects N_LAYER_PAIRS evenly-spaced
-    student layers in [LAYER_LOW_PCT, LAYER_HIGH_PCT] of the stack and maps each
-    to its teacher counterpart by the layer-count ratio. The per-layer losses are
-    averaged into the final SCVA term.
+The standalone criterion mixes supervised CE with the SCVA loss. The joint
+criteria reuse the same region and attention code with their own loss weights.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -67,6 +45,8 @@ def _resolve_layer_pairs(
     n_pairs: int = _DEFAULT_N_LAYER_PAIRS,
     low_pct: float = _DEFAULT_LAYER_LOW_PCT,
     high_pct: float = _DEFAULT_LAYER_HIGH_PCT,
+    *,
+    half_open: bool = False,
 ) -> list[tuple[int, int]]:
     """
     Select n_pairs evenly-spaced student layers in [low_pct, high_pct] of the
@@ -91,7 +71,7 @@ def _resolve_layer_pairs(
         sorted by student index.  May be shorter than n_pairs if the index
         range collapses (e.g. very shallow models).
     """
-    return resolve_layer_pairs(len(s_attns), len(t_attns), n_pairs, low_pct, high_pct)
+    return resolve_layer_pairs(len(s_attns), len(t_attns), n_pairs, low_pct, high_pct, half_open=half_open)
 
 
 def _factor_grid(n_tokens: int, aspect: float = 1.0) -> tuple[int, int]:
@@ -179,8 +159,7 @@ def _cluster_vision_tokens_dbscan(
     if upper.size == 0:
         labels = np.zeros(hidden_states.size(0), dtype=np.int64)
     else:
-        eps = float(np.percentile(upper, eps_percentile))
-        min_samples = max(1, min(int(min_samples), hidden_states.size(0)))
+        eps = max(float(np.percentile(upper, eps_percentile)), np.finfo(np.float64).eps)
         labels = DBSCAN(eps=eps, min_samples=min_samples, metric="precomputed").fit_predict(distance_matrix)
 
         if np.all(labels == -1):
@@ -224,17 +203,19 @@ def _map_teacher_clusters_to_student_onehot(
 ) -> torch.Tensor:
     """Map teacher cluster labels onto student patch indices by normalized coordinates."""
     device = teacher_labels.device
-    student_onehot = torch.zeros(n_student_tokens, n_clusters, device=device)
-    valid_teacher = teacher_labels.ge(0)
-    if n_clusters == 0 or not valid_teacher.any() or n_student_tokens == 0:
-        return student_onehot
-
     teacher_coords = _patch_centers(teacher_labels.numel(), teacher_grid[0], teacher_grid[1], device)
     student_coords = _patch_centers(n_student_tokens, student_grid[0], student_grid[1], device)
-    nearest_student = torch.cdist(teacher_coords, student_coords).argmin(dim=-1)
-    for teacher_idx in valid_teacher.nonzero(as_tuple=True)[0]:
-        student_onehot[nearest_student[teacher_idx], teacher_labels[teacher_idx]] = 1.0
-    return student_onehot
+    nearest_teacher = torch.cdist(student_coords, teacher_coords).argmin(dim=-1)
+    return F.one_hot(teacher_labels[nearest_teacher], num_classes=n_clusters).float()
+
+
+@dataclass
+class SemanticRegions:
+    teacher_positions: torch.Tensor
+    student_positions: torch.Tensor
+    teacher_assignment: torch.Tensor
+    student_assignment: torch.Tensor
+    teacher_grid: tuple[int, int]
 
 
 class SCVACriterion(nn.Module):
@@ -245,8 +226,7 @@ class SCVACriterion(nn.Module):
         self.args = args
         self.alpha = float(getattr(args, "scva_alpha", 0.5))
         self.weight = float(getattr(args, "scva_weight", 1.0))
-        # Kept for CLI/backward compatibility. SCVA now follows span_propose_attn
-        # and uses density clusters instead of fixed-k Lloyd k-means.
+        # Public legacy settings retained for callers inspecting old recipes.
         self.n_clusters = max(int(getattr(args, "scva_n_clusters", 16)), 1)
         self.kmeans_iters = max(int(getattr(args, "scva_kmeans_iters", 10)), 1)
         self.attention_layer = int(getattr(args, "scva_attention_layer", -1))
@@ -305,6 +285,35 @@ class SCVACriterion(nn.Module):
         counts = getattr(self, "_last_scva_counts", None) or {}
         return {f"scva_{k}": like.new_tensor(float(v)) for k, v in counts.items()}
 
+    @torch.no_grad()
+    def build_regions(self, student_outputs, teacher_outputs, student_inputs, teacher_inputs):
+        teacher_hidden = _last_hidden(teacher_outputs)
+        t_mask = getattr(teacher_outputs, "vision_feature_mask", None)
+        s_mask = getattr(student_outputs, "vision_feature_mask", None)
+        if t_mask is None or s_mask is None:
+            return {}
+
+        regions = {}
+        for b in range(teacher_hidden.shape[0]):
+            t_idx = t_mask[b].nonzero(as_tuple=True)[0]
+            s_idx = s_mask[b].nonzero(as_tuple=True)[0]
+            if min(t_idx.numel(), s_idx.numel()) < self.min_vision_tokens:
+                continue
+            # Qwen grids are packed across the batch, without rows for text-only samples.
+            image_idx = len(t_mask[:b].any(dim=-1).nonzero())
+            teacher_grid = _grid_from_inputs(teacher_inputs, image_idx, t_idx.numel())
+            student_grid = _grid_from_inputs(student_inputs, image_idx, s_idx.numel())
+            labels = _cluster_vision_tokens_dbscan(
+                teacher_hidden[b, t_idx], *teacher_grid, self.spatial_weight,
+                self.dbscan_min_samples, self.dbscan_eps_percentile,
+            )
+            teacher_assignment, remapped = _cluster_onehot_from_labels(labels)
+            student_assignment = _map_teacher_clusters_to_student_onehot(
+                remapped, teacher_grid, student_grid, s_idx.numel(), teacher_assignment.shape[-1],
+            )
+            regions[b] = SemanticRegions(t_idx, s_idx, teacher_assignment, student_assignment, teacher_grid)
+        return regions
+
     def _scva_loss(
         self,
         student_outputs,
@@ -312,12 +321,13 @@ class SCVACriterion(nn.Module):
         student_inputs: Dict[str, Any],
         teacher_inputs: Dict[str, Any],
         layer_pairs: Optional[list[tuple[int, int]]] = None,
+        regions: Optional[dict[int, SemanticRegions]] = None,
+        smoothing: Optional[float] = None,
     ) -> torch.Tensor:
         counts: Dict[str, int] = {
             "valid": 0,
             "skipped_mask": 0,
             "skipped_attention": 0,
-            "skipped_no_clusters": 0,
             "skipped_no_teacher_labels": 0,
             "skipped_no_student_labels": 0,
             "skipped_empty_teacher_response": 0,
@@ -326,10 +336,10 @@ class SCVACriterion(nn.Module):
         self._last_scva_counts = counts
 
         teacher_hidden = _last_hidden(teacher_outputs)        # [B, L_t, D]
-        teacher_vision_mask = getattr(teacher_outputs, "vision_feature_mask", None)
-        student_vision_mask = getattr(student_outputs, "vision_feature_mask", None)
-        if teacher_vision_mask is None or student_vision_mask is None:
-            counts["skipped_mask"] = int(teacher_hidden.shape[0])
+        if regions is None:
+            regions = self.build_regions(student_outputs, teacher_outputs, student_inputs, teacher_inputs)
+        counts["skipped_mask"] = teacher_hidden.shape[0] - len(regions)
+        if not regions:
             return teacher_hidden.new_zeros(())
 
         t_sparse = getattr(teacher_outputs, "scva_attentions", None)
@@ -349,6 +359,7 @@ class SCVACriterion(nn.Module):
                 n_pairs=self.n_layer_pairs,
                 low_pct=self.layer_low_pct,
                 high_pct=self.layer_high_pct,
+                half_open=smoothing is not None,
             )
         else:
             layer_pairs = []
@@ -360,17 +371,11 @@ class SCVACriterion(nn.Module):
         s_labels = student_inputs.get("labels")
 
         sample_losses = []
-        for b in range(teacher_hidden.shape[0]):
-            t_v_mask = teacher_vision_mask[b].to(device=teacher_hidden.device, dtype=torch.bool)
-            s_v_mask = student_vision_mask[b].to(device=teacher_hidden.device, dtype=torch.bool)
-            if t_v_mask.sum().item() < self.min_vision_tokens or s_v_mask.sum().item() < self.min_vision_tokens:
-                counts["skipped_mask"] += 1
-                continue
-
-            t_v_idx = t_v_mask.nonzero(as_tuple=True)[0]
-            s_v_idx = s_v_mask.nonzero(as_tuple=True)[0]
-            n_t_v = int(t_v_idx.numel())
-            n_s_v = int(s_v_idx.numel())
+        for b, region in regions.items():
+            t_v_idx = region.teacher_positions
+            s_v_idx = region.student_positions
+            n_t_v = t_v_idx.numel()
+            n_s_v = s_v_idx.numel()
 
             if t_labels is None:
                 counts["skipped_no_teacher_labels"] += 1
@@ -385,33 +390,6 @@ class SCVACriterion(nn.Module):
                 continue
             if s_r_idx.numel() == 0:
                 counts["skipped_empty_student_response"] += 1
-                continue
-
-            # Cluster teacher vision-token hidden states using the same
-            # semantic + spatial distance idea as span_propose_attn.py, then
-            # map teacher cluster membership onto the student patch grid.
-            # Clustering is done once per sample and shared across all layer pairs.
-            with torch.no_grad():
-                teacher_grid = _grid_from_inputs(teacher_inputs, b, n_t_v)
-                student_grid = _grid_from_inputs(student_inputs, b, n_s_v)
-                cluster_labels = _cluster_vision_tokens_dbscan(
-                    teacher_hidden[b, t_v_idx].float(),
-                    teacher_grid[0],
-                    teacher_grid[1],
-                    self.spatial_weight,
-                    self.dbscan_min_samples,
-                    self.dbscan_eps_percentile,
-                )
-                teacher_cluster_onehot, remapped_labels = _cluster_onehot_from_labels(cluster_labels)
-                student_cluster_onehot = _map_teacher_clusters_to_student_onehot(
-                    remapped_labels,
-                    teacher_grid,
-                    student_grid,
-                    n_s_v,
-                    teacher_cluster_onehot.shape[-1],
-                )
-            if teacher_cluster_onehot.shape[-1] == 0 or student_cluster_onehot.sum().item() == 0:
-                counts["skipped_no_clusters"] += 1
                 continue
 
             # Compute SCVA loss for each (student_layer, teacher_layer) pair and
@@ -431,15 +409,11 @@ class SCVACriterion(nn.Module):
                     if t_resp_to_vis.shape[-1] != n_t_v or s_resp_to_vis.shape[-1] != n_s_v:
                         continue
                 else:
-                    t_attn_b = t_attns[t_layer].float().mean(dim=1)[b]
-                    s_attn_b = s_attns[s_layer].float().mean(dim=1)[b]
+                    t_resp_to_vis = t_attns[t_layer][b][:, t_r_idx[:, None], t_v_idx].float().mean(dim=0)
+                    s_resp_to_vis = s_attns[s_layer][b][:, s_r_idx[:, None], s_v_idx].float().mean(dim=0)
 
                 # Normalize both paths before cluster aggregation.
-                if not use_sparse:
-                    t_resp_to_vis = t_attn_b[t_r_idx][:, t_v_idx]
                 t_resp_to_vis = t_resp_to_vis / t_resp_to_vis.sum(dim=-1, keepdim=True).clamp_min(1e-8)
-                if not use_sparse:
-                    s_resp_to_vis = s_attn_b[s_r_idx][:, s_v_idx]
                 s_resp_to_vis = s_resp_to_vis / s_resp_to_vis.sum(dim=-1, keepdim=True).clamp_min(1e-8)
 
                 # Crop to the shorter response length defensively.
@@ -448,8 +422,9 @@ class SCVACriterion(nn.Module):
                 s_resp_to_vis = s_resp_to_vis[:T_aligned]
 
                 # Cluster-level distributions (T_aligned × M).
-                r_T = (t_resp_to_vis @ teacher_cluster_onehot).clamp_min(1e-12)
-                r_S = (s_resp_to_vis @ student_cluster_onehot).clamp_min(1e-12)
+                alpha = 1e-12 if smoothing is None else smoothing
+                r_T = (t_resp_to_vis @ region.teacher_assignment) + alpha
+                r_S = (s_resp_to_vis @ region.student_assignment) + alpha
                 r_T = r_T / r_T.sum(dim=-1, keepdim=True)
                 r_S = r_S / r_S.sum(dim=-1, keepdim=True)
 

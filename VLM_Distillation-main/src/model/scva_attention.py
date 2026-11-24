@@ -14,6 +14,8 @@ def resolve_layer_pairs(
     n_pairs: int = 4,
     low_pct: float = 0.4,
     high_pct: float = 0.7,
+    *,
+    half_open: bool = False,
 ) -> list[tuple[int, int]]:
     """Resolve decoder-layer pairs once, before training starts."""
     n_s = int(n_student_layers)
@@ -26,8 +28,15 @@ def resolve_layer_pairs(
             f"got low_pct={low_pct}, high_pct={high_pct}."
         )
 
-    lo = max(0, min(int(math.floor(low_pct * n_s)), n_s - 1))
-    hi = max(lo, min(int(math.floor(high_pct * n_s)), n_s - 1))
+    def layer_range(length):
+        if half_open:
+            return math.ceil(low_pct * length), math.ceil(high_pct * length) - 1
+        return min(math.floor(low_pct * length), length - 1), min(math.floor(high_pct * length), length - 1)
+
+    lo, hi = layer_range(n_s)
+    t_lo, t_hi = layer_range(n_t)
+    if lo > hi or t_lo > t_hi:
+        return []
     n_pairs = max(int(n_pairs), 1)
     if n_pairs == 1 or lo == hi:
         student_indices = [lo]
@@ -36,7 +45,9 @@ def resolve_layer_pairs(
         student_indices = sorted({min(int(round(lo + i * step)), hi) for i in range(n_pairs)})
 
     ratio = n_t / n_s
-    return [(s_idx, min(int(round(s_idx * ratio)), n_t - 1)) for s_idx in student_indices]
+    if not half_open:
+        t_lo, t_hi = 0, n_t - 1
+    return [(s_idx, max(t_lo, min(round(s_idx * ratio), t_hi))) for s_idx in student_indices]
 
 
 def _repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:

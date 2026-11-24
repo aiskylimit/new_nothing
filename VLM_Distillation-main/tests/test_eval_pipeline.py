@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import sys
 import tempfile
@@ -11,7 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts/eval"))
 from eval_utils import (EvalError, classify_checkpoint, detect_architecture, output_dir,
                         git_commit, parse_overrides, resolve_base, select_checkpoint, suite_config)
 from eval_utils import update_summary
-from collect_eval_summaries import read_summary
+from collect_eval_summaries import read_summary, write_paper_table
 from prepare_eval_assets import resolve_registry_classes
 import prepare_eval_assets as prepare
 from run_all_methods import discover_runs, is_completed_summary, is_mode_complete
@@ -231,6 +232,26 @@ class EvalPipelineTests(unittest.TestCase):
         summary = read_summary(summary_path)
 
         self.assertEqual(summary["benchmarks"][0]["primary_metric_value"], 55.4)
+
+    def test_bed_vlm_paper_table_requires_all_six_scores_to_average(self):
+        main = suite_config(ROOT / "configs/eval/bed_vlm.json")["datasets"]
+        ablations = suite_config(ROOT / "configs/eval/bed_vlm_ablation.json")["datasets"]
+        self.assertEqual(main, [CANONICAL[index] for index in (0, 2, 3, 4, 5, 6)])
+        self.assertEqual(ablations, main[3:])
+        rows = [{"dataset": dataset, "scoring_status": "complete", "primary_metric_value": 50 + index}
+                for index, dataset in enumerate(main)]
+        target = self.root / "paper_table.csv"
+        write_paper_table(target, [
+            {"suite": "bed_vlm", "benchmarks": rows},
+            {"suite": "bed_vlm", "benchmarks": rows[:-1]},
+            {"suite": "bed_vlm_ablation", "benchmarks": rows[3:]},
+        ])
+        with target.open(newline="", encoding="utf-8") as handle:
+            complete, partial, ablation = csv.DictReader(handle)
+        self.assertEqual(float(complete["Avg"]), 52.5)
+        self.assertEqual(partial["Avg"], "")
+        self.assertEqual(ablation["Avg"], "")
+        self.assertEqual(float(ablation["MMStar"]), 55)
 
     def test_generated_configs_all_architectures(self):
         expected = {"qwen2_vl": "ProjectQwen2VLChat", "qwen2_5_vl": "ProjectQwen2VLChat",

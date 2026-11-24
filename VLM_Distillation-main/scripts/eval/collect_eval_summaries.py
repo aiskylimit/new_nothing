@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import fmean
 from typing import Any
 
 
@@ -37,6 +39,15 @@ CSV_FIELDS = (
     "native_result_path",
 )
 
+PAPER_BENCHMARKS = {
+    "GQA_TestDev_Balanced": "GQA",
+    "RealWorldQA": "RWQA",
+    "ScienceQA_TEST": "ScienceQA",
+    "AI2D_TEST_NO_MASK": "AI2D",
+    "MMMU_DEV_VAL": "MMMU",
+    "MMStar": "MMStar",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -55,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--csv", type=Path, help="Combined long-form CSV output path.")
     parser.add_argument("--json", type=Path, help="Combined JSON output path.")
+    parser.add_argument("--paper-table", type=Path, help="Write one row per BeD-VLM checkpoint.")
     parser.add_argument("--no-write", action="store_true", help="Only print the report to stdout.")
     parser.add_argument(
         "--fail-on-incomplete",
@@ -117,7 +129,7 @@ def reporter_primary_metric(dataset: str, metrics: dict[str, Any]) -> dict[str, 
     return resolved if isinstance(resolved, dict) else {}
 
 
-def known_display_metric(name: Any, metrics: dict[str, Any]) -> Any:
+def known_display_metric(dataset: str, name: Any, metrics: dict[str, Any]) -> Any:
     """Resolve stable label/key conversions used by the requested MCQ datasets."""
     source_keys = {
         "Overall Acc": ("split=none|Overall",),
@@ -127,7 +139,7 @@ def known_display_metric(name: Any, metrics: dict[str, Any]) -> Any:
     for key in source_keys.get(name, ()):
         value = metrics.get(key)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return value * 100
+            return value if dataset == "GQA_TestDev_Balanced" else value * 100
     return None
 
 
@@ -148,13 +160,9 @@ def metric_from_status(dataset: str, benchmark: dict[str, Any], status: dict[str
     elif name in metrics:
         return name, metrics[name]
 
-    known_value = known_display_metric(name, metrics)
-    if not is_missing_metric(known_value):
-        return name, known_value
-
     resolved = reporter_primary_metric(dataset, metrics)
     if not resolved:
-        return name, None
+        return name, known_display_metric(dataset, name, metrics)
     if isinstance(name, list):
         selected = {key: resolved.get(key) for key in name}
         if not is_missing_metric(selected):
@@ -282,6 +290,34 @@ def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+def write_paper_table(path: Path, summaries: list[dict[str, Any]]) -> None:
+    suites = {"bed_vlm": tuple(PAPER_BENCHMARKS),
+              "bed_vlm_ablation": ("AI2D_TEST_NO_MASK", "MMMU_DEV_VAL", "MMStar")}
+    rows = []
+    for summary in summaries:
+        suite = summary.get("suite")
+        if suite not in suites:
+            continue
+        row = {key: summary.get(key) for key in ("run_name", "checkpoint", "suite", "overall_status")}
+        metrics = {item["dataset"]: item for item in summary["benchmarks"]}
+        for dataset in suites[suite]:
+            item = metrics.get(dataset, {})
+            value = item.get("primary_metric_value")
+            if (item.get("scoring_status") == "complete" and isinstance(value, (int, float))
+                    and not isinstance(value, bool) and math.isfinite(value)):
+                row[PAPER_BENCHMARKS[dataset]] = value
+        if suite == "bed_vlm" and all(column in row for column in PAPER_BENCHMARKS.values()):
+            row["Avg"] = fmean(row[column] for column in PAPER_BENCHMARKS.values())
+        rows.append(row)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = ("run_name", "checkpoint", "suite", "overall_status", *PAPER_BENCHMARKS.values(), "Avg")
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def write_json(path: Path, root: Path, summaries: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     status_counts = Counter(str(item.get("overall_status", "unknown")) for item in summaries)
@@ -328,6 +364,9 @@ def main() -> int:
         write_json(json_path, root, summaries)
         print(f"\nCSV:  {csv_path}")
         print(f"JSON: {json_path}")
+        if args.paper_table:
+            write_paper_table(args.paper_table, summaries)
+            print(f"Paper table: {args.paper_table}")
 
     incomplete = [item for item in summaries if item.get("overall_status") != "complete"]
     return 1 if args.fail_on_incomplete and incomplete else 0

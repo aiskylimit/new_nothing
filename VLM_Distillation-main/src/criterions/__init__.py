@@ -11,6 +11,7 @@ from src.criterions.mcw_kd import MCWKDCriterion
 from src.criterions.em_kd import EMKDCriterion
 from src.criterions.scva import SCVACriterion
 from src.criterions.scva_cgkd import SCVACGKDCriterion
+from src.criterions.scva_sic import SCVASICCriterion
 from src.criterions.sre import SRECriterion
 from src.criterions.unit_aligned import UnitAlignedDistillationCriterion
 
@@ -22,6 +23,7 @@ criterion_list = {
     "emkd": EMKDCriterion,
     "em_kd": EMKDCriterion,
     "sre": SRECriterion,
+    "sra": SRECriterion,
     "dwa_kd": DWAKDCriterion,
     "dwakd": DWAKDCriterion,
     "dskd_v2": DSKDv2Criterion,
@@ -35,6 +37,8 @@ criterion_list = {
     "cgkd": CGKDCriterion,
     "scva_cgkd": SCVACGKDCriterion,
     "draft": SCVACGKDCriterion,
+    "scva_sic": SCVASICCriterion,
+    "bed_vlm": SCVASICCriterion,
 }
 
 
@@ -59,6 +63,7 @@ __all__ = [
     "SCVACriterion",
     "CGKDCriterion",
     "SCVACGKDCriterion",
+    "SCVASICCriterion",
     "SRECriterion",
     "UnitAlignedDistillationCriterion",
     "build_criterion",

@@ -1,144 +1,169 @@
-# VLM Distillation
+# BeD-VLM
 
-This repository is used to fine-tune and distill Vision-Language Models (VLMs) with a teacher-student setup. The main entry point is `train.py`: it parses CLI arguments, loads the student and optional teacher, builds the dataset/collator, selects the distillation criterion, and runs `DistillTrainer`.
+BeD-VLM distills a frozen vision-language teacher into a smaller student using supervised
+cross-entropy, Semantic Cluster-based Visual Alignment (SCVA), and Semantic Intervention
+Consistency (SIC). SCVA matches text-to-vision attention over teacher-derived semantic
+regions. SIC reuses the encoded image, zeros matched visual-token embeddings, and aligns
+the resulting vocabulary-wide log-probability shifts in embedding space.
 
-## Main Training Flow
+## Experimental setup
 
-1. Pick a script from `script_train/<method>/`.
-2. The script launches `train.py` through `torchrun`.
-3. `train.py` parses `ModelArguments`, `DataArguments`, and `TrainingArguments`.
-4. If `--teacher_model_name` is set, training runs in distillation mode through `src/distiller.py`; otherwise it runs student-only SFT.
-5. Data is loaded by `src/data/dataset.py`, while processors and models are loaded from `src/model/`.
-6. The loss is selected with `--kd_loss_type` from `src/criterions/`.
-7. Checkpoints and projectors are written to `outputs/`.
+| Launcher pair | Teacher | Student |
+| --- | --- | --- |
+| `fastvlm` | Qwen2-VL-7B-Instruct | FastVLM-0.5B |
+| `qwen2` | Qwen2.5-VL-7B-Instruct | Qwen2-VL-2B-Instruct |
 
-## Repository Structure
+Train on the LLaVA-1.5 665K instruction-tuning mix. All student runs use the
+repository's PEFT LoRA implementation. The paper compares BeD-VLM with SFT,
+SRA, MCW-KD, EM-KD, DWA-KD, and DSKD-v2 on both pairs.
+
+From the repository root on a Linux CUDA machine, create the training environment
+and prepare the LLaVA annotations and image folders.
+
+```bash
+uv sync
+source .venv/bin/activate
+bash download_datatrain.sh
+```
+
+The launcher expects `train_data/llava_v1_5_mix665k.json` and resolves relative
+image paths against `train_data/`. Set `DATA_PATH` and `IMAGE_DIR` for an
+existing copy. Set `STUDENT_MODEL` and `TEACHER_MODEL` to local Hugging Face
+snapshots for offline training.
+
+## Main results
+
+```bash
+bash script_train/run_bed_vlm.sh fastvlm bed_vlm
+bash script_train/run_bed_vlm.sh qwen2 bed_vlm
+
+for pair in fastvlm qwen2; do
+  for method in sft sra mcw_kd em_kd dwa_kd dskd_v2; do
+    bash script_train/run_bed_vlm.sh "$pair" "$method"
+  done
+done
+```
+
+The launcher uses student-only training for SFT. The `sra` recipe uses the
+repository's SRE criterion implementation. The paper's teacher row is evaluated
+directly from the teacher snapshot.
+
+Checkpoints go to `outputs/bed_vlm/<pair>/<method>/seed-<seed>/`. The launcher
+defaults to one epoch, BF16, LoRA rank 128, learning rate `1e-5`, one example per
+GPU per microbatch, eight gradient accumulation steps, and seed 1337.
+`NPROC_PER_NODE` defaults to the number of visible GPUs. Set `SEED`,
+`PER_DEVICE_BS`, `GRAD_ACCUM`, or `OUTPUT_DIR` to override those settings.
+BeD-VLM uses four SCVA layer pairs, `min_samples=12`, SCVA and SIC weights of
+0.3 each, and a budget of up to 16 matched region interventions per image.
+These are the launcher defaults. Use `--dry-run` to inspect the command, and
+pass extra training arguments after `--`.
+
+```bash
+bash script_train/run_bed_vlm.sh fastvlm bed_vlm --dry-run
+NPROC_PER_NODE=1 bash script_train/run_bed_vlm.sh fastvlm bed_vlm -- --max_steps 1
+```
+
+## Ablation studies
+
+All ablations use the FastVLM pair and a shared 30% subset of the input annotation
+file, sampled with a fixed `SUBSET_SEED` (default 1337). The three evaluation
+benchmarks are AI2D, MMMU, and MMStar.
+
+| Study | Launcher methods | Configuration |
+| --- | --- | --- |
+| Supervision depth | `low`, `middle`, `high` | 0–40%, 40–70%, and 70–100% of decoder depth. SCVA uses the selected layers and SIC uses decoder output probabilities. |
+| Loss components | `scva_only`, `sic_only`, `low` | Cross-entropy with SCVA only, SIC only, or both. The joint reference uses low-layer SCVA. |
+| DBSCAN sensitivity | `dbscan_4`, `dbscan_8`, `dbscan_12`, `dbscan_16` | Vary `min_samples` with low-layer SCVA and SIC. |
+
+```bash
+for method in low middle high scva_only sic_only dbscan_4 dbscan_8 dbscan_16; do
+  bash script_train/run_bed_vlm.sh fastvlm "$method"
+done
+```
+
+`dbscan_12` and `low` use the same settings. Reuse the `low` checkpoint for the
+component study and the `min_samples=12` row.
+
+## VLMEvalKit evaluation
+
+The main suite matches the column order in the paper. All six scores contribute
+equally to `Avg`.
+
+| Paper column | VLMEvalKit dataset |
+| --- | --- |
+| GQA | `GQA_TestDev_Balanced` |
+| RWQA | `RealWorldQA` |
+| ScienceQA | `ScienceQA_TEST` |
+| AI2D | `AI2D_TEST_NO_MASK` |
+| MMMU | `MMMU_DEV_VAL` |
+| MMStar | `MMStar` |
+
+Create the isolated evaluation environment and extract the pinned VLMEvalKit
+source once. Run the asset commands with network access or prepopulate
+`LMUData` with the corresponding TSVs and pass `--offline`.
+
+```bash
+env -u PYTHONPATH uv sync --project envs/eval
+source envs/eval/.venv/bin/activate
+unzip -q VLMEvalKit.zip 'VLMEvalKit/*'
+export LMUData="$PWD/eval_data/LMUData"
+SUITE_CONFIG="$PWD/configs/eval/bed_vlm.json" bash scripts/eval/prepare_eval_assets.sh
+SUITE_CONFIG="$PWD/configs/eval/bed_vlm_ablation.json" bash scripts/eval/prepare_eval_assets.sh
+```
+
+Evaluate a trained checkpoint or a full teacher snapshot. For every student
+checkpoint, set `STUDENT_BASE` to the matching local base snapshot so the
+launcher can merge the LoRA weights. Evaluation uses exact matching by default.
+
+```bash
+STUDENT_BASE=/path/to/FastVLM-0.5B
+TEACHER_BASE=/path/to/Qwen2-VL-7B-Instruct
+
+bash scripts/eval/run_eval.sh --suite bed_vlm \
+  --checkpoint outputs/bed_vlm/fastvlm/bed_vlm/seed-1337 --base-model "$STUDENT_BASE"
+bash scripts/eval/run_eval.sh --suite bed_vlm --checkpoint "$TEACHER_BASE"
+bash scripts/eval/run_eval.sh --suite bed_vlm_ablation \
+  --checkpoint outputs/bed_vlm/fastvlm/low/seed-1337 --base-model "$STUDENT_BASE"
+```
+
+Collect the benchmark scores and main-table averages from completed evaluations.
+
+```bash
+for suite in bed_vlm bed_vlm_ablation; do
+  python scripts/eval/collect_eval_summaries.py --root "outputs/eval/$suite" \
+    --paper-table "outputs/eval/$suite/paper_table.csv" --fail-on-incomplete
+done
+```
+
+## Qualitative analysis
+
+Use the training environment. Prepare a JSONL file with one GQA example per
+line, with `image`, `question`, and `answer` fields. Image paths are relative
+to the JSONL file. The script generates predictions and low-layer attention
+overlays for the teacher, base student, and distilled student. It also writes
+the base student's mean adjacent-layer cosine similarity and across-example
+standard deviation at each normalized depth using ground-truth answers.
+
+```bash
+python -m scripts.analyze_bed_vlm_attention --examples /path/to/gqa_examples.jsonl \
+  --student /path/to/FastVLM-0.5B --teacher /path/to/Qwen2-VL-7B-Instruct \
+  --checkpoint outputs/bed_vlm/fastvlm/bed_vlm/seed-1337
+```
+
+Outputs go to `outputs/bed_vlm_attention/`.
+
+## Repository map
 
 | Path | Purpose |
 | --- | --- |
-| `train.py` | Main training entry point. Initializes model, processor, criterion, dataset, trainer, and resume checkpoint handling. |
-| `requirements.txt` | Python dependencies for the repository. |
-| `config/` | Projector configs for methods that need explicit structures, such as DWA-KD and MCW-KD. DSKDv2 creates its dual-space mappings automatically from LM-head pseudo-inverses. |
-| `configs/` | Runtime configs, including DeepSpeed ZeRO-2 and evaluation configs. |
-| `docs/` | Technical notes and plans, for example the unit-aligned distillation training plan. |
-| `experiments/` | Experiment tracking files, such as `experiment_tracker.xlsx`. |
-| `outputs/` | Runtime-generated training/evaluation artifacts: checkpoints, projectors, logs, and results. This is not core source code. |
-| `script_train/` | Shell training recipes grouped by method and model pair. This is the easiest place to start when running experiments. |
-| `scripts/` | Utility scripts outside the main training path, such as tracker generation, UMI computation, evaluation, and LoRA merge. |
-| `src/` | Main source code: arguments, trainer, distiller, model wrapper, data pipeline, and distillation losses. |
-| `test_loadmodel/` | Smoke tests for loading VLM backbones such as FastVLM, Qwen2-VL, Qwen2.5-VL, and Qwen3-VL. |
-| `tests/` | Small unit tests for KD criterion and collator plumbing. |
-| `train_data/` | Training datasets and data preparation helpers. Includes the placeholder `put_train_data_here`. |
-
-## Main Modules In `src/`
-
-| File/folder | Purpose |
-| --- | --- |
-| `src/arguments.py` | Defines dataclass arguments for model, data, and training. Most `train.py` CLI flags live here. |
-| `src/utils.py` | Shared logging, rank-aware printing, and utility helpers. |
-| `src/trainer.py` | `DistillTrainer`, a Hugging Face `Trainer` subclass. Handles both SFT and distillation modes, logs loss components, and saves checkpoints/projectors. |
-| `src/distiller.py` | Teacher-student wrapper. Loads student/teacher, freezes the teacher, creates/loads/initializes projectors, and forwards batches to the selected criterion. |
-| `src/data/dataset.py` | Lazy dataset for LLaVA-style VLM chat JSON/JSONL data. Loads images, resizes/pads images, splits multi-turn samples, builds assistant-only labels, and collates student/teacher inputs. |
-| `src/model/model.py` | `VLMModel` wrapper around generation backbones. Loads models, enables hidden states/attentions, supports LoRA/PEFT, and saves checkpoints. |
-| `src/model/processor.py` | Loads processors/tokenizers by backbone, normalizes image/video tokens, and applies resize config. |
-| `src/model/vlm_backbone/` | Custom backbone/modeling/processing code for `fast_vlm`, `qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`, `llava_next`, and `llava_onevision`. |
-| `src/criterions/` | Distillation losses. `__init__.py` maps `--kd_loss_type` to the corresponding criterion class. |
-
-## Criteria In `src/criterions/`
-
-| File | Purpose |
-| --- | --- |
-| `ce_only.py` | Uses only the student's supervised cross-entropy loss. Useful for baselines, SFT, or disabled KD. |
-| `default_distillation.py` | Default KD: combines CE with hidden-state matching through projectors/layer mappings. |
-| `em_kd.py` | EM-KD: distills response logits and vision-language affinity. |
-| `sre.py` | SRE: span, geometry, and logit distillation; uses the collator's pooler tensors. |
-| `unit_aligned.py` | Joint SRE + EM-KD criterion for unit-aligned distillation. |
-| `scva.py` | SCVA: semantic-cluster visual attention loss for vision tokens. |
-| `cgkd.py` | CGKD: confidence-gated generative KD. |
-| `scva_cgkd.py` | Joint SCVA + CGKD criterion. Also available through the `draft` alias. |
-| `dwa_kd.py` | DWA-KD with KL, hidden/logit losses, SoftDTW, and projectors. |
-| `dskd_v2.py` | DSKD v2 with automatically created teacher-to-student/student-to-teacher mappings initialized from LM-head pseudo-inverses. |
-| `mcw_kd.py` | MCW-KD with OT/Sinkhorn losses for logits and hidden context. |
-| `cross_entropy_loss.py`, `various_divergence.py`, `soft_dtw_cuda.py`, `etp.py` | Shared loss helpers used by multiple criteria. |
-
-Mapped `--kd_loss_type` values include: `ce_only`, `default`, `default_distillation`, `emkd`, `em_kd`, `sre`, `dwa_kd`, `dwakd`, `dskd_v2`, `dskdv2`, `mcw_kd`, `mcwkd`, `joint`, `unit_aligned`, `unit_aligned_distillation`, `scva`, `cgkd`, `scva_cgkd`, and `draft`.
-
-## Training Scripts
-
-`script_train/` is grouped by method:
-
-| Folder | Contents |
-| --- | --- |
-| `script_train/sft/` | Student-only fine-tuning recipes. |
-| `script_train/ce_only/` | CE-only baselines inside the teacher-student pipeline. |
-| `script_train/em_kd/` | EM-KD recipes. |
-| `script_train/sre/` | SRE recipes. |
-| `script_train/unit_aligned/` | Joint/unit-aligned recipes. |
-| `script_train/scva/` | SCVA recipes. |
-| `script_train/cgkd/` | CGKD recipes. |
-| `script_train/scva_cgkd/` | SCVA + CGKD recipes. |
-| `script_train/dwa_kd/` | DWA-KD recipes. |
-| `script_train/dskd_v2/` | DSKD v2 recipes. The FastVLM recipe, `train_qwen2_teacher_7b_fastvlm_student_05b_dskd_v2_with_eta.sh`, lives here. |
-| `script_train/mcw_kd/` | MCW-KD recipes. |
-
-
-For example, `script_train/dskd_v2/train_qwen2_teacher_7b_fastvlm_student_05b_dskd_v2_with_eta.sh` uses `FastVLM-0.5B` as the student and `Qwen2-VL-7B-Instruct` as the teacher. DSKDv2 derives its projector shapes and pseudo-inverse initialization without a JSON projector config, trains on `train_data/llava_v1_5_mix665k.json`, and writes outputs to `outputs/qwen2_teacher_7b_fastvlm_student_05b_dskd_v2_with_eta`.
-
-## Training Data
-
-The main training pipeline receives `--data_path` pointing to JSON or JSONL data. A typical sample looks like:
-
-```json
-{
-  "id": "sample_id",
-  "image": "relative/or/absolute/image/path.jpg",
-  "conversations": [
-    {"from": "human", "value": "<image>\nQuestion"},
-    {"from": "gpt", "value": "Answer"}
-  ]
-}
-```
-
-`src/data/dataset.py` will:
-
-- resolve images from `--image_dir` or the directory containing the JSON file;
-- skip samples that declare an image path but point to a missing file;
-- normalize roles: `human/user`, `gpt/assistant`, and `system`;
-- split multi-turn multimodal samples into independent Q&A pairs;
-- create `-100` labels for system/user/padding tokens so only assistant responses contribute to CE loss;
-- create separate student and teacher inputs when running distillation.
-
-## Evaluation And Tests
-
-| File/folder | Purpose |
-| --- | --- |
-| `scripts/eval/run_eval.sh` | Runs a VLMEvalKit suite for one checkpoint. It can auto-merge LoRA adapters before evaluation. |
-| `scripts/eval/merge_lora.py` | Merges a PEFT/LoRA adapter into the base model to produce a full Hugging Face checkpoint. |
-| `scripts/eval/run_all_methods.sh` | Runs evaluation across multiple methods/checkpoints. |
-| `configs/eval/*.json` | Dataset/judge definitions for evaluation suites: `fast_signal`, `main_table`, and `full`. |
-| `test_load_dataset.py` | Smoke test for dataset + collator with real processors. |
-| `test_loadmodel/*.py` | Load tests for individual backbone/model processors. |
-| `tests/test_kd_plumbing.py` | Small unit tests for criterion mapping and selected argument/collator behavior. |
-
-Run the quick unit test:
+| `script_train/run_bed_vlm.sh` | Training launcher for the paper experiments. |
+| `train.py`, `src/distiller.py` | Model setup, training, and checkpoint handling. |
+| `src/criterions/scva.py`, `src/criterions/scva_sic.py` | Shared region construction, SCVA, and SIC. |
+| `configs/eval/bed_vlm*.json` | Main and ablation benchmark suites. |
+| `scripts/eval/` | Evaluation, adapter merging, and score reporting. |
+| `script_train/` | Additional model-pair and legacy method recipes. |
+| `tests/` | Unit tests for training and evaluation plumbing. |
 
 ```bash
-python -m unittest tests/test_kd_plumbing.py
+python -m unittest tests.test_kd_plumbing tests.test_eval_pipeline
 ```
-
-Smoke-test the dataset pipeline:
-
-```bash
-python test_load_dataset.py \
-  --data_path train_data/llava_v1_5_mix665k.json \
-  --image_dir train_data \
-  --student_model Qwen/Qwen2-VL-2B-Instruct \
-  --batch_size 2 \
-  --percent_data 0.01
-```
-
-## Quick Notes
-
-- Several training scripts hard-code `PROJECT_DIR=/workspace/ComfyUI/models/instantid/VLM_Distillation`; update that path or export the matching variable if the repo is moved.
-- `outputs/`, `.venv/`, large datasets, and checkpoints are runtime artifacts, not core source code.
-- The teacher is frozen in `Distiller`; trainable parameters are mainly the student LoRA adapter and projectors when enabled.

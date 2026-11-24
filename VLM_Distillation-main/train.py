@@ -11,7 +11,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from src.arguments import DataArguments, ModelArguments, TrainingArguments
 from src.criterions import build_criterion
 from src.data.dataset import make_vlm_distill_data_module
-from src.distiller import Distiller
+from src.distiller import BED_VLM_CRITERIA, Distiller
 from src.model.model import VLMModel
 from src.model.processor import load_processor
 from src.trainer import DistillTrainer
@@ -84,11 +84,13 @@ def _trainer_processor_kwargs(processor: Any) -> Dict[str, Any]:
 
 
 def build_model_and_processors(model_args: ModelArguments, data_args: DataArguments, training_args: TrainingArguments):
+    if training_args.kd_loss_type in BED_VLM_CRITERIA and not _has_teacher(model_args):
+        raise ValueError("BeD-VLM requires --teacher_model_name.")
     if _has_teacher(model_args):
+        criterion = build_criterion(training_args)
         model = Distiller(model_args, training_args)
         student_processor = model.get_student_processor()
         teacher_processor = model.get_teacher_processor()
-        criterion = build_criterion(training_args)
         print_master("Training mode: teacher distillation")
     else:
         model = VLMModel.build(model_args)

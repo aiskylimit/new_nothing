@@ -1,0 +1,11 @@
+{
+  "name": "bed_vlm_ablation",
+  "description": "BeD-VLM FastVLM ablations.",
+  "datasets": [
+    "AI2D_TEST_NO_MASK",
+    "MMMU_DEV_VAL",
+    "MMStar"
+  ],
+  "judge_model": null,
+  "judge_kwargs": {}
+}

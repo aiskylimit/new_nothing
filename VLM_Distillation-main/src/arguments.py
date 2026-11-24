@@ -80,6 +80,7 @@ class DataArguments:
     pos_only: bool = field(default=False, metadata={"help": "Only use positives"})
     # new args distillation
     percent_data: float = field(default=1.0, metadata={"help": "percentage of data used for distillation training"})
+    data_subset_seed: Optional[int] = field(default=None, metadata={"help": "Sample partial datasets uniformly with a fixed seed instead of taking their prefix."})
     # args for TALAS
     caching_dir: str = field(default=None, metadata={"help": "caching directory for TALAS"})
 
@@ -101,7 +102,7 @@ class TrainingArguments(TrainingArguments):
     gc_dynamic_limit: int = field(default=125, metadata={"help": "gc_chunk default limit - (128, 125) sized matrices works for Qwen2b. gc_dynamic_limit would be 125 and gc_p|q_chunk_size would be 128"})
     #!new kd loss weight
     kd_weight: float = field(default=0.01, metadata={"help": "weight of kd loss in total loss (used by `default` criterion)"})
-    kd_loss_type: str = field(default="ce_only", metadata={"help": "kd criterion: one of {ce_only, default, default_distillation, emkd, em_kd, sre, joint, unit_aligned, scva, cgkd, scva_cgkd, draft, mcw_kd, dskd_v2_with_eta}"})
+    kd_loss_type: str = field(default="ce_only", metadata={"help": "Criterion name, e.g. ce_only, bed_vlm, sra, mcw_kd, emkd, dwa_kd, or dskd_v2."})
     # dwa-kd loss weight/config
     ce_rate: float = field(default=1.0, metadata={"help": "DWA-KD supervised CE loss weight"})
     kd_rate: float = field(default=1.0, metadata={"help": "DWA-KD dual-space KD loss weight"})
@@ -177,6 +178,13 @@ class TrainingArguments(TrainingArguments):
     scva_spatial_weight: float = field(default=0.1, metadata={"help": "Spatial-distance weight for SCVA teacher vision clustering."})
     scva_dbscan_min_samples: int = field(default=8, metadata={"help": "DBSCAN min_samples for SCVA teacher vision clustering."})
     scva_dbscan_eps_percentile: float = field(default=3.0, metadata={"help": "Percentile of pairwise distances used as DBSCAN eps for SCVA clustering."})
+    scva_region_smoothing: float = field(default=1e-6, metadata={"help": "Additive region probability smoothing for BeD-VLM SCVA."})
+    scva_sic_ce_weight: float = field(default=1.0, metadata={"help": "Supervised generation loss weight for BeD-VLM."})
+    scva_sic_lambda_v: float = field(default=0.3, metadata={"help": "SCVA loss weight for BeD-VLM. Set to zero for the SIC-only ablation."})
+    scva_sic_lambda_sic: float = field(default=0.3, metadata={"help": "SIC loss weight for BeD-VLM. Set to zero for the SCVA-only ablation."})
+    sic_num_regions: int = field(default=16, metadata={"help": "Maximum number of active SIC interventions per image."})
+    sic_max_clusters: int = field(default=0, metadata={"help": "Legacy override of the SIC intervention budget. Zero uses sic_num_regions."})
+    sic_use_projector: bool = field(default=True, metadata={"help": "Learn a student-to-teacher SIC embedding projector."})
     # CGKD (confidence-gated generative KD) — see draft.pdf
     cgkd_alpha: float = field(default=0.5, metadata={"help": "CGKD weight for supervised CE loss inside the single-method CGKD criterion."})
     cgkd_weight: float = field(default=1.0, metadata={"help": "Multiplier for the CGKD KD term inside the single-method CGKD criterion."})

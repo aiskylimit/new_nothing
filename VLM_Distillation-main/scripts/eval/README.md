@@ -1,5 +1,9 @@
 # Offline evaluation
 
+For the BeD-VLM paper, use the six-benchmark `bed_vlm` suite and the
+three-benchmark `bed_vlm_ablation` suite described in the
+[experiment guide](../../README.md#vlmevalkit-evaluation).
+
 The final suite evaluates every selected checkpoint on all eleven benchmarks in
 one invocation:
 

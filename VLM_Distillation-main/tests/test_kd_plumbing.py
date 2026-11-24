@@ -775,6 +775,58 @@ class KDPlumbingTests(unittest.TestCase):
                 self.assertEqual(criterion.lambda_g, 0.4)
                 self.assertEqual(criterion.ce_weight, 1.0)
 
+    def test_bed_vlm_reuses_image_features_and_backpropagates_sic(self):
+        from src.arguments import TrainingArguments
+        from src.criterions import build_criterion
+
+        class Decoder(torch.nn.Module):
+            def forward(self, inputs_embeds, **kwargs):
+                return SimpleNamespace(last_hidden_state=inputs_embeds.cumsum(dim=1))
+
+        class VLM(torch.nn.Module):
+            def __init__(self, vocab, width):
+                super().__init__()
+                self.encoder = torch.nn.Module()
+                self.encoder.model = torch.nn.Module()
+                self.encoder.model.language_model = Decoder()
+                self.encoder.embedding = torch.nn.Embedding(vocab, width)
+                self.encoder.head = torch.nn.Linear(width, vocab)
+                self.encoder.get_input_embeddings = lambda: self.encoder.embedding
+                self.encoder.get_output_embeddings = lambda: self.encoder.head
+                self.vision_calls = 0
+
+            def forward(self, input_ids, labels):
+                self.vision_calls += 1
+                embeddings = self.encoder.embedding(input_ids)
+                states = self.encoder.model.language_model(inputs_embeds=embeddings).last_hidden_state
+                logits = self.encoder.head(states)
+                loss = torch.nn.functional.cross_entropy(logits[:, :-1].flatten(0, 1), labels[:, 1:].flatten())
+                attention = (states @ states.transpose(-1, -2)).softmax(dim=-1).unsqueeze(1)
+                return SimpleNamespace(
+                    logits=logits, loss=loss, hidden_states=(states,), attentions=(attention,),
+                    vision_feature_mask=input_ids.lt(4),
+                )
+
+        torch.manual_seed(12)
+        student, teacher = VLM(9, 4), VLM(11, 6).eval()
+        projector = torch.nn.Linear(4, 6, bias=False)
+        distiller = SimpleNamespace(student=student, teacher=teacher, projectors={"sic": projector},
+                                    scva_layer_pairs=None)
+        args = TrainingArguments(output_dir="unused", kd_loss_type="bed_vlm", scva_layer_low_pct=0.0)
+        criterion = build_criterion(args)
+        inputs = {"input_ids": torch.tensor([[0, 1, 2, 3, 4, 5, 6]]),
+                  "labels": torch.tensor([[-100, -100, -100, -100, -100, 5, 6]])}
+        metrics = criterion(distiller, {"student_inputs": inputs, "teacher_inputs": inputs})
+        metrics["loss"].backward()
+
+        self.assertEqual(student.vision_calls, 1)
+        self.assertEqual(teacher.vision_calls, 1)
+        self.assertEqual(metrics["scva_valid"].item(), 1)
+        self.assertEqual(metrics["sic_active_regions"].item(), 1)
+        self.assertGreater(metrics["sic_loss"].item(), 0)
+        self.assertGreater(projector.weight.grad.norm().item(), 0)
+        self.assertIsNone(teacher.encoder.embedding.weight.grad)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -123,7 +123,9 @@ class VLMModel(nn.Module):
         return model_args.checkpoint_path if model_args.checkpoint_path else model_args.model_name
 
     @staticmethod
-    def _verify_attention_backend(model, expected_backend: str, model_backbone: str):
+    def _verify_attention_backend(
+        model, expected_backend: str, model_backbone: str, *, expected_vision_backend: str | None = None
+    ):
         config = model.config
         configs = {"config": config}
         configs.update(
@@ -133,20 +135,17 @@ class VLMModel(nn.Module):
                 if (sub_config := getattr(config, name, None)) is not None
             }
         )
-        mismatches = {
-            name: getattr(candidate, "_attn_implementation", None)
-            for name, candidate in configs.items()
-            if getattr(candidate, "_attn_implementation", None) != expected_backend
-        }
+        mismatches = {}
+        for name, candidate in configs.items():
+            expected = expected_backend
+            if expected_vision_backend and name.startswith("vision_config"):
+                expected = expected_vision_backend
+            actual = getattr(candidate, "_attn_implementation", None)
+            if actual != expected:
+                mismatches[name] = f"expected {expected}, got {actual}"
         if mismatches:
-            raise RuntimeError(
-                f"Attention backend verification failed for {model_backbone}: "
-                f"expected {expected_backend}, got {mismatches}."
-            )
-        print_master(
-            f"Verified attention backend [{expected_backend}] for [{model_backbone}] "
-            f"across {', '.join(configs)}."
-        )
+            raise RuntimeError(f"Attention backend verification failed for {model_backbone}: {mismatches}.")
+        print_master(f"Verified attention backends for [{model_backbone}] across {', '.join(configs)}.")
 
     @staticmethod
     def _clean_model_inputs(model_inputs):
@@ -426,7 +425,10 @@ class VLMModel(nn.Module):
                 **load_kwargs,
             )
 
-        cls._verify_attention_backend(model, expected_attention_backend, model_backbone)
+        expected_vision_backend = "eager" if model_backbone == FAST_VLM or vision_output_attentions else "sdpa"
+        cls._verify_attention_backend(
+            model, expected_attention_backend, model_backbone, expected_vision_backend=expected_vision_backend
+        )
         return model, model_backbone
 
     @staticmethod
