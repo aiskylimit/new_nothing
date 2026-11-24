@@ -1,4 +1,4 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
+#2 -1 +a
 #check_time
 #v3
 
