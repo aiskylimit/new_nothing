@@ -1,5 +1,5 @@
-#2
-#mrl
+#1 +120
+#unified
 #v3
 
 
@@ -37,8 +37,8 @@ export NCCL_DEBUG=WARN
 # cd ./VLM_Embed_Gvendi
 # bash ./project_commands.sh
 
-# cd ./unified-ie
-# bash ./project_commands.sh
+cd ./unified-ie
+bash ./project_commands.sh
 
 # cd VLM_Distillation-main
 # bash ./script_train/benchmark_qwen2_teacher_7b_fastvlm_student_05b_4gpu.sh
