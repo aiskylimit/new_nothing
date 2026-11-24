@@ -1,5 +1,5 @@
-#2 -0
-#check_time_v3
+#1 +60
+#mrl
 #v3
 
 
@@ -40,8 +40,8 @@ export NCCL_DEBUG=WARN
 # cd ./unified-ie
 # bash ./project_commands.sh
 
-cd VLM_Distillation-main
-bash ./script_train/benchmark_qwen2_teacher_7b_fastvlm_student_05b_4gpu.sh
+# cd VLM_Distillation-main
+# bash ./script_train/benchmark_qwen2_teacher_7b_fastvlm_student_05b_4gpu.sh
 # bash ./project_commands_eval_qwen25vl_7b_gpu7.sh
 # bash ./project_commands.sh
 # bash ./project_commands_collect_eval_summary.sh
@@ -50,5 +50,5 @@ bash ./script_train/benchmark_qwen2_teacher_7b_fastvlm_student_05b_4gpu.sh
 # cd ./SElOT
 # bash ./project_commands.sh
 
-# cd ./MRL-text
-# bash ./project_commands.sh
+cd ./MRL-text
+bash ./project_commands.sh
