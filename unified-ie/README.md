@@ -62,6 +62,7 @@ One student on all three tasks (`mt_v2`), the SFT baseline and multi-teacher KD 
 bash run4.sh                                                              # all six runs below, GPUs 4-7 (SMOKE=1 for a quick check)
 bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh                 # CE only, every row once per epoch, 5 epochs
 SUBSET=0.5 bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh      # fixed square-root subset, 5 epochs
+DATASET=ace bash scripts/general_domain/mt/sft_student_0.6B_mt_v2.sh     # one dataset only (run12.sh: every dataset x SFT and the KD baselines)
 bash scripts/general_domain/bam_0.6B_4B.sh mt_v2                          # BAM, 8 teachers
 KD_SCHEDULE=constant KD_TYPE=sfkl W_SPAN=1.0 bash scripts/general_domain/bam_0.6B_4B.sh mt_v2   # EventKD losses, same teachers
 bash scripts/general_domain/bam_0.6B_4B.sh ee_v1                          # EE only, 4 teachers

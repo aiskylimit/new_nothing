@@ -10,6 +10,8 @@
 # no row is seen more often than in full-data training.
 # MTO=equal|famo: weight the EE, NER and RE losses (mto.py): equal = their mean, famo = FAMO weights; default
 # none = one token mean over the batch. Saved under sft_0.6B_mt_v2[_subset0.5]_mto<MTO>.
+# DATASET=<name> (ace, geneva, maven, rams, conll03, ontonotes, tacred, fewrel): only that dataset's rows, the SFT
+# baseline of a single-teacher KD run (bam_0.6B_4B.sh with the same DATASET); saved under sft_0.6B_mt_v2_<name>.
 # Standalone: run.sh-style GPU and PORT (defaults below).
 
 GPUS=(${GPU:-7})
@@ -27,6 +29,7 @@ DATA=mt_v2
 BASE_PATH=.
 SUBSET=${SUBSET:-}
 MTO=${MTO:-none}
+DATASET=${DATASET:-}
 # model
 CKPT_NAME="qwen3-0.6B"
 CKPT="Qwen/Qwen3-0.6B"
@@ -43,7 +46,7 @@ EPOCHS=5
 # length
 MAX_LENGTH=768
 # runtime
-SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_0.6B_${DATA}${SUBSET:+_subset${SUBSET}}$([ "${MTO}" != none ] && echo "_mto${MTO}")"
+SAVE_PATH="${BASE_PATH}/results/qwen3/general_domain/sft_0.6B_${DATA}${DATASET:+_${DATASET}}${SUBSET:+_subset${SUBSET}}$([ "${MTO}" != none ] && echo "_mto${MTO}")"
 # seed
 SEED=42
 
@@ -60,6 +63,7 @@ OPTS+=" --data-dir ${DATA_DIR}"
 OPTS+=" --num-workers 0"
 OPTS+=" --dev-num -1"
 [ -n "${SUBSET}" ] && OPTS+=" --subset-alpha ${SUBSET}"
+[ -n "${DATASET}" ] && OPTS+=" --datasets ${DATASET}"
 # score each source dataset in its own labels (EE and NER maps); dev answers every epoch, test answers when
 # the mean of the three task scores on dev improves
 OPTS+=" --label-map ${BASE_PATH}/data/general_domain/ee_label_map.tsv,${BASE_PATH}/data/general_domain/ner_label_map.tsv"
