@@ -1,5 +1,5 @@
-#1 +10
-#mrl-c
+#1 +60
+#mrl
 #v3
 
 
@@ -12,6 +12,7 @@
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
+kill -9 681967
 nvidia-smi
 
 
@@ -50,5 +51,5 @@ export NCCL_DEBUG=WARN
 # cd ./SElOT
 # bash ./project_commands.sh
 
-# cd ./MRL-text
-# bash ./project_commands.sh
+cd ./MRL-text
+bash ./project_commands.sh
