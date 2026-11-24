@@ -6,29 +6,19 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$(cd -- "${SCRIPT_DIR}/.." && pwd)}"
 TRAIN_PY="${PROJECT_DIR}/train.py"
 
-# Use the same training environment as project_commands.sh. Override TRAIN_ENV
-# when the venv is mounted at a different path on another machine.
-TRAIN_ENV="${TRAIN_ENV:-/mnt/local/uvenvs/vlm-distill-train-3/bin/activate}"
-if [[ ! -f "${TRAIN_ENV}" ]]; then
-  echo "Training environment activation script not found: ${TRAIN_ENV}" >&2
-  echo "Set TRAIN_ENV=/path/to/venv/bin/activate and run again." >&2
-  exit 1
-fi
-# shellcheck disable=SC1090
-source "${TRAIN_ENV}"
+# Environment split used by the existing training setup: all baselines run in
+# train-2; only the joint SCVA-SIC method runs in train-3. Each method is
+# launched from a subshell below so activating one venv cannot leak into another.
+BASELINE_TRAIN_ENV="${BASELINE_TRAIN_ENV:-/mnt/local/uvenvs/vlm-distill-train-2/bin/activate}"
+SCVA_SIC_TRAIN_ENV="${SCVA_SIC_TRAIN_ENV:-/mnt/local/uvenvs/vlm-distill-train-3/bin/activate}"
 
-if ! command -v python >/dev/null 2>&1; then
-  echo "python was not found after activating ${TRAIN_ENV}" >&2
-  exit 1
-fi
-if ! command -v torchrun >/dev/null 2>&1; then
-  echo "torchrun was not found after activating ${TRAIN_ENV}" >&2
-  exit 1
-fi
-
-echo "Training environment: ${VIRTUAL_ENV:-${CONDA_PREFIX:-unknown}}"
-echo "Python: $(command -v python)"
-echo "Torchrun: $(command -v torchrun)"
+for required_env in "${BASELINE_TRAIN_ENV}" "${SCVA_SIC_TRAIN_ENV}"; do
+  if [[ ! -f "${required_env}" ]]; then
+    echo "Training environment activation script not found: ${required_env}" >&2
+    echo "Override BASELINE_TRAIN_ENV or SCVA_SIC_TRAIN_ENV and run again." >&2
+    exit 1
+  fi
+done
 
 # Physical GPUs are fixed as requested. torchrun sees them as logical 0,1,2,3.
 export CUDA_VISIBLE_DEVICES="${GPU_IDS:-4,5,6,7}"
@@ -220,16 +210,38 @@ for method in ${METHODS}; do
       ;;
   esac
 
-  echo "[$(date --iso-8601=seconds)] Benchmarking ${method} on physical GPUs ${CUDA_VISIBLE_DEVICES}"
-  torchrun \
-    --nproc_per_node "${NPROC_PER_NODE}" \
-    --master_port "${MASTER_PORT}" \
-    "${TRAIN_PY}" \
-    "${common_args[@]}" \
-    --output_dir "${output_dir}" \
-    --benchmark_method "${method}" \
-    "${method_args[@]}" \
-    2>&1 | tee "${log_file}"
+  if [[ "${method}" == "scva_sic_low" ]]; then
+    method_train_env="${SCVA_SIC_TRAIN_ENV}"
+  else
+    method_train_env="${BASELINE_TRAIN_ENV}"
+  fi
+
+  (
+    # shellcheck disable=SC1090
+    source "${method_train_env}"
+    if ! command -v python >/dev/null 2>&1; then
+      echo "python was not found after activating ${method_train_env}" >&2
+      exit 1
+    fi
+    if ! command -v torchrun >/dev/null 2>&1; then
+      echo "torchrun was not found after activating ${method_train_env}" >&2
+      exit 1
+    fi
+
+    echo "[$(date --iso-8601=seconds)] Benchmarking ${method} on physical GPUs ${CUDA_VISIBLE_DEVICES}"
+    echo "Training environment: ${VIRTUAL_ENV:-${CONDA_PREFIX:-unknown}}"
+    echo "Python: $(command -v python)"
+    echo "Torchrun: $(command -v torchrun)"
+
+    torchrun \
+      --nproc_per_node "${NPROC_PER_NODE}" \
+      --master_port "${MASTER_PORT}" \
+      "${TRAIN_PY}" \
+      "${common_args[@]}" \
+      --output_dir "${output_dir}" \
+      --benchmark_method "${method}" \
+      "${method_args[@]}"
+  ) 2>&1 | tee "${log_file}"
 
   echo
   echo "Result for ${method}:"
