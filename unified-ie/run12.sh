@@ -9,9 +9,9 @@
 #   rkl      reverse KL; srkl = skewed reverse KL, skew 0.1 (DistiLLM's loss); csd = CSD
 # eventkd and sfkl of ace, conll03, fewrel are in run6.sh (same setting), so not run again. 58 runs.
 # Datasets: EE ace, geneva, maven, rams; NER conll03, ontonotes; RE tacred, fewrel.
-# Order: sft, fkl, amid, eventkd first (~20 h), then sfkl, rkl, srkl, csd. The jobs are split over GPUs 0-1
+# Order: sft, fkl, amid, eventkd first (~7-11 h), then sfkl, rkl, srkl, csd. The jobs are split over GPUs 4-7
 # by run time, estimated from run6 (sfkl: ace 0.3 h, geneva 0.25, rams 0.5, tacred 0.35, conll03 1, maven 1.9,
-# fewrel 2.3, ontonotes 4.2; SFT ~0.7x): ~38 h per GPU, +-30%.
+# fewrel 2.3, ontonotes 4.2; SFT ~0.7x): ~18-21 h per GPU, +-30%.
 # Console output: logs/general_<method>_<ds>.log; training logs: results/qwen3/general_domain/
 # {sft_0.6B_mt_v2_<ds>, bam_0.6B_4B_mt_v2_<ds>/<settings>}/log.txt
 # SMOKE=1 bash run12.sh: every job trains 2 optimizer steps on 64 rows, saves, scores 16 dev and 16 test rows,
@@ -110,15 +110,16 @@ jobs () {  # $1 = GPU, then <method>:<dataset> ..., run in that order
     start ${gpu} "${args[@]}"
 }
 
-# split by estimated run time (see the header); sft, fkl, amid, eventkd before the rest on both GPUs
-jobs 0 sft:ace sft:tacred sft:conll03 sft:fewrel fkl:ace fkl:geneva fkl:rams fkl:tacred fkl:conll03 \
-    fkl:fewrel amid:ace amid:geneva amid:rams amid:tacred amid:conll03 amid:maven amid:ontonotes \
-    eventkd:ontonotes rkl:ace rkl:geneva rkl:rams rkl:tacred rkl:conll03 rkl:maven rkl:ontonotes \
-    srkl:fewrel csd:ace csd:geneva csd:rams csd:tacred csd:conll03 csd:maven csd:ontonotes
-jobs 1 sft:geneva sft:rams sft:maven sft:ontonotes fkl:maven fkl:ontonotes amid:fewrel eventkd:geneva \
-    eventkd:rams eventkd:tacred eventkd:maven sfkl:geneva sfkl:rams sfkl:tacred sfkl:maven \
-    sfkl:ontonotes rkl:fewrel srkl:ace srkl:geneva srkl:rams srkl:tacred srkl:conll03 srkl:maven \
-    srkl:ontonotes csd:fewrel
+# split by estimated run time (see the header); sft, fkl, amid, eventkd before the rest on every GPU
+jobs 4 sft:ace sft:maven fkl:tacred fkl:maven amid:rams amid:fewrel eventkd:tacred eventkd:ontonotes \
+    rkl:fewrel srkl:fewrel csd:tacred csd:maven
+jobs 5 sft:geneva sft:conll03 fkl:ace fkl:geneva fkl:rams fkl:fewrel amid:maven eventkd:geneva eventkd:rams \
+    eventkd:maven sfkl:ontonotes srkl:tacred srkl:conll03 srkl:ontonotes
+jobs 6 sft:rams sft:ontonotes amid:ace amid:geneva amid:tacred amid:conll03 amid:ontonotes rkl:ace \
+    rkl:geneva rkl:rams rkl:maven srkl:ace srkl:geneva srkl:rams srkl:maven csd:ace csd:geneva \
+    csd:conll03 csd:ontonotes
+jobs 7 sft:tacred sft:fewrel fkl:conll03 fkl:ontonotes sfkl:geneva sfkl:rams sfkl:tacred sfkl:maven \
+    rkl:tacred rkl:conll03 rkl:ontonotes csd:rams csd:fewrel
 
 echo "follow: tail -f ${QUEUE_LOGS[*]}"
 echo "results: grep -rh 'RESULT test' results/qwen3/general_domain/{sft_0.6B_mt_v2_,bam_0.6B_4B_mt_v2_}* --include=log.txt"
