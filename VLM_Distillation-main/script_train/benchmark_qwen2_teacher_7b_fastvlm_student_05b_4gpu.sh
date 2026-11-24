@@ -42,7 +42,10 @@ RUN_ID="${RUN_ID:-$(date +%Y%m%d_%H%M%S)}"
 BENCHMARK_ROOT="${BENCHMARK_ROOT:-${PROJECT_DIR}/outputs/benchmark_qwen2_7b_fastvlm_05b_4gpu/${RUN_ID}}"
 RESULTS_FILE="${RESULTS_FILE:-${BENCHMARK_ROOT}/benchmark_results.tsv}"
 SUMMARY_FILE="${SUMMARY_FILE:-${BENCHMARK_ROOT}/benchmark_summary.tsv}"
-METHODS="${METHODS:-ce_only emkd sre dwa_kd dskd_v2 mcw_kd scva scva_cgkd scva_sic_low}"
+# DWA-KD is temporarily excluded from the default suite because its SoftDTW
+# CUDA dependency stack is being checked separately. Its case block remains
+# available and can be re-enabled explicitly through METHODS.
+METHODS="${METHODS:-ce_only emkd sre dskd_v2 mcw_kd scva scva_cgkd scva_sic_low}"
 
 mkdir -p "${BENCHMARK_ROOT}"
 # Per-method stdout/stderr is retained separately. The timestamped default root
