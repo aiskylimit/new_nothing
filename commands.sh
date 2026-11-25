@@ -1,11 +1,11 @@
-#1 +120
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
 #daved
 #v3
 
 
 
 
-#2 -f-/mnt/local/aiskylimit_new_nothing/VLM_Embed_Gvendi/MMEB-evaloutputs-json/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bge-m3/bs128_lr2e-5_t0.05_ep1_s42/mteb_epoch_1/ +a
@@ -52,9 +52,8 @@ export NCCL_DEBUG=WARN
 # cd ./MRL-text
 # bash ./project_commands.sh
 
-cd ./talas_vlm_embed
-D=gmm_training/B3_Qwen2_2B_ret_CIRR; mv $D/gmm.joblib/gmm.joblib $D/gmm.joblib.tmp && rmdir $D/gmm.joblib && mv $D/gmm.joblib.tmp $D/gmm.joblib
-bash ./project_commands.sh
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
 
 # cd ./OpenED
 # bash ./project_commands_24.sh
