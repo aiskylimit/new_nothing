@@ -1,20 +1,4 @@
-#d
-#datasets
---url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/ace_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/ace_rebuttal.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-maven/resolve/main/maven_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-rams/resolve/main/rams_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-geneva/resolve/main/geneva_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-tacred/resolve/main/tacred_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-cl-fewrel/resolve/main/fewrel_all.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-new-cl-tacred/resolve/main/tacred_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
---url https://huggingface.co/datasets/datht/processed-new-cl-fewrel/resolve/main/fewrel_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
-#models
---hf Qwen/Qwen3-0.6B /mnt/local/@PROJECT@/OpenED/models/Qwen3-0.6B
---hf Qwen/Qwen3-4B /mnt/local/@PROJECT@/OpenED/models/Qwen3-4B
---hf meta-llama/Llama-3.2-1B-Instruct /mnt/local/@PROJECT@/OpenED/models/Llama-3.2-1B-Instruct
---hf google/gemma-3-1b-it /mnt/local/@PROJECT@/OpenED/models/gemma-3-1b-it
-
+#i opened.txt
 #daved
 #v3
 
@@ -68,5 +52,5 @@ export NCCL_DEBUG=WARN
 # cd ./MRL-text
 # bash ./project_commands.sh
 
-cd ./talas_vlm_embed
-bash ./project_commands.sh
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
