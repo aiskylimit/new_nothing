@@ -23,7 +23,8 @@
 # oracle split with is_memory on every train row (a negative row there can hold old-type gold
 # only, which ced_oversample.py and the KD replay flag would otherwise take for a memory row) from
 # ace_rebuttal.tar.gz. Both come from HF datht/processed-cl-ace via download.txt, already
-# tokenised; this script only unpacks ace_rebuttal.tar.gz when its splits are missing.
+# tokenised. Before any job the script unpacks what is missing (unpack_data): ace_b10_perm* from
+# ace_all.tar.gz, then ace_rebuttal.tar.gz.
 #
 # Logs for later: the runner output of every job gets a timestamp per line (PL and training time
 # per task), logs/<Q>_<run>_mem.csv samples the GPU's used memory every 2 s, and after each job
@@ -205,17 +206,39 @@ data_ready () {  # $1 = data prefix $2 = perm: split and its tokenised tasks pre
     [ -s "data/$1$2/streams.json" ] && [ -f "processed_data/$1$2/0/qwen/train_0.idx" ] || return 1
     [ "$1" != "ace_oracle_b10_perm" ] || grep -q '"is_memory"' "data/$1$2/1/train.jsonl"
 }
-ensure_data () {  # $1 = data prefix $2 = perm: unpack ace_rebuttal.tar.gz (download.txt) when the split is missing
-    data_ready "$1" "$2" && return 0
-    [ "${DRY}" = "1" ] && { log "  would unpack ace_rebuttal.tar.gz for $1$2"; return 0; }
-    [ -e ace_rebuttal.tar.gz ] || { log "  no data/$1$2 and no ace_rebuttal.tar.gz here: fetch it with download.txt"; return 1; }
-    lock unpack_ace_rebuttal
-    if ! data_ready "$1" "$2"; then
-        log "  unpacking ace_rebuttal.tar.gz"
-        tar xzf ace_rebuttal.tar.gz >> "${LOG}" 2>&1 || log "  unpacking ace_rebuttal.tar.gz failed"
+all_ready () {  # $@ = data prefixes, perms 0-4 (joint: 0)
+    local pre p
+    for pre in "$@"; do
+        for p in 0 1 2 3 4; do
+            [ "${pre}" = ace_joint_perm ] && [ "${p}" != 0 ] && continue
+            data_ready "${pre}" "${p}" || return 1
+        done
+    done
+}
+unpack_data () {  # once, before any job: the archives download.txt puts here, under one lock
+    # (22/23/24 share this directory). ace_b10 first and only its own members: ace_all.tar.gz
+    # also holds an untagged oracle split, which must not overwrite the tagged one
+    lock unpack_ace
+    if all_ready ace_b10_perm; then log "data: ace_b10_perm0-4 already unpacked"
+    elif [ ! -e ace_all.tar.gz ]; then log "data: no ace_all.tar.gz here, fetch it with download.txt"
+    elif [ "${DRY}" = "1" ]; then log "data: would unpack ace_b10_perm* from ace_all.tar.gz"
+    else
+        log "data: unpacking ace_b10_perm* from ace_all.tar.gz"
+        tar xzf ace_all.tar.gz --wildcards 'data/ace_b10_perm*' 'processed_data/ace_b10_perm*' >> "${LOG}" 2>&1 \
+            || log "data: unpacking ace_all.tar.gz failed"
     fi
-    unlock unpack_ace_rebuttal
-    data_ready "$1" "$2"
+    if all_ready ace_b5_perm ace_b20_perm ace_oracle_b10_perm ace_joint_perm; then
+        log "data: ace_rebuttal splits already unpacked"
+    elif [ ! -e ace_rebuttal.tar.gz ]; then log "data: no ace_rebuttal.tar.gz here, fetch it with download.txt"
+    elif [ "${DRY}" = "1" ]; then log "data: would unpack ace_rebuttal.tar.gz"
+    else
+        log "data: unpacking ace_rebuttal.tar.gz"
+        tar xzf ace_rebuttal.tar.gz >> "${LOG}" 2>&1 || log "data: unpacking ace_rebuttal.tar.gz failed"
+    fi
+    unlock unpack_ace
+}
+ensure_data () {  # $1 = data prefix $2 = perm
+    [ "${DRY}" = "1" ] || data_ready "$1" "$2"
 }
 ensure_tokenized () {  # $1 = data prefix $2 = perm: base task data (normally shipped tokenised)
     local pre=$1 p=$2 n t out rc=0
@@ -263,7 +286,7 @@ run_job () {  # $1 gpu $2 port $3 job -> 0 done or skipped, 1 failed
     run=$(run_of "${kind}" "${a}" "${p}"); pre=$(prefix_of "${kind}" "${a}"); jlog="logs/${Q}_${run}.log"
     if [ -f "${R}/${run}/.complete" ]; then log "  skip ${run} (complete)"; return 0; fi
     if live "${run}"; then log "  skip ${run} (running elsewhere)"; return 0; fi
-    ensure_data "${pre}" "${p}" || { log "  FAILED ${run}: no data/${pre}${p}"; return 1; }
+    ensure_data "${pre}" "${p}" || { log "  FAILED ${run}: no data/${pre}${p} (see the data: lines at start)"; return 1; }
     if [ "${kind}" != "cl_mem" ] && [ "${kind}" != "tree_4b" ]; then
         ensure_tokenized "${pre}" "${p}" || { log "  FAILED ${run}: tokenising ${pre}${p}"; return 1; }
     fi
@@ -341,6 +364,7 @@ worker () {  # $1 = gpu: take the next unclaimed job
 
 HERE=$(pwd)
 log "=== project_commands_22: steps '${STEPS}', perms '${PERMS}', ${#JOBS[@]} jobs, gpus ${GPUS[*]}, gen ${GEN_BACKEND} (DRY=${DRY}) ==="
+unpack_data
 # finished runs of this host to count next to the new ones: Ours with SD (g1_full) and its -SD
 # ablation (a_nosd) on ACE, Ours and IncLoRA on MAVEN (highest stripping); skipped where absent
 if [ "${DRY}" != "1" ]; then
