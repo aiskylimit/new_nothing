@@ -1,5 +1,5 @@
-#1 +120
-#daved
+#1 +10
+#log
 #v3
 
 
@@ -52,5 +52,9 @@ export NCCL_DEBUG=WARN
 # cd ./MRL-text
 # bash ./project_commands.sh
 
-cd ./talas_vlm_embed
-bash ./project_commands.sh
+# cd ./talas_vlm_embed
+# bash ./project_commands.sh
+
+cd ./OpenED
+ls
+# bash ./project_commands_24.sh
