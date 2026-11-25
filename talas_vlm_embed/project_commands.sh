@@ -56,14 +56,20 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # CUDA_VISIBLE_DEVICES=2 bash ./baseline_scripts/train_distill_pga_qwen2-7B_cls.sh &
 # CUDA_VISIBLE_DEVICES=3 bash ./baseline_scripts/train_distill_pga_grounding.sh &
 # CUDA_VISIBLE_DEVICES=7 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh
-CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.1 17 5 24 29536 # ret cirr 
-CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 0 10 0.1 17 5 24 29515 # vqa loss ablation
-CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_vqa.sh 0 1 10 0.1 17 5 24 29514 # vqa loss ablation
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.1 17 5 24 29536 &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 0 10 0.1 17 5 24 29515 &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_vqa.sh 0 1 10 0.1 17 5 24 29514 &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 0.3 17 5 24 29514 &
+CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 0.5 17 5 24 29514 &
+CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 1.0 17 5 24 29514 &
 
 # ov cls đang chạy với sw=0.2, numt=29
-CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 10 0.2 29 5 24 29515 # vqa loss ablation
-CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 0 1 10 0.2 29 5 24 29514 # vqa loss ablation
-CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 0 1 10 0.5 29 5 24 29514 # vqa loss sensivity
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 10 0.1 29 5 24 29515 &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.1 29 5 24 29515 &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.2 29 5 24 29514 &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.3 29 5 24 29514 &
+CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.5 29 5 24 29514 &
+CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 5 24 29514 &
 
 # Còn InfoNCE + relational + một distribution-matching baseline đơn giản MMD, CORAL, or direct Sliced Wasserstein after PCA/random projection)
 
