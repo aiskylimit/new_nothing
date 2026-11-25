@@ -1,6 +1,7 @@
 #d
 #datasets
 --url https://huggingface.co/minhhotboy9x/VLM_embed_gmm/resolve/main/gmm_training/B3_Qwen2_2B_ret_CIRR/gmm.joblib /mnt/local/@PROJECT@/talas_vlm_embed/gmm_training/B3_Qwen2_2B_ret_CIRR/gmm.joblib
+
 #daved
 #v3
 
