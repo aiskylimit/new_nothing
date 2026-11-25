@@ -1,5 +1,5 @@
-#i talas-vlm-embed.txt
-#unified
+#1 +10
+#daved-s
 #v3
 
 
@@ -33,7 +33,6 @@ export NCCL_DEBUG=WARN
 # bash ./eval_rivad.sh
 # bash ./project_commands.sh
 
-
 # cd ./VLM_Embed_Gvendi
 # bash ./project_commands.sh
 
@@ -52,3 +51,6 @@ export NCCL_DEBUG=WARN
 
 # cd ./MRL-text
 # bash ./project_commands.sh
+
+cd ./talas_vlm_embed
+bash ./project_commands.sh
