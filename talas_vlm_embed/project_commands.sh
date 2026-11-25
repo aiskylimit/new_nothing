@@ -69,8 +69,8 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # wait
 
 
-CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.1 17 5 24 29536 &
-CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_vqa.sh 0 1 10 0.1 17 5 24 29516 &
+CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.1 17 5 24 29536 &
+# CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_vqa.sh 0 1 10 0.1 17 5 24 29516 &
 
 # Còn InfoNCE + relational + một distribution-matching baseline đơn giản MMD, CORAL, or direct Sliced Wasserstein after PCA/random projection)
 
