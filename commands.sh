@@ -1,5 +1,5 @@
-#1 +10
-#OpenED-l
+#1 +60
+#OpenED
 #v3
 
 
@@ -56,5 +56,4 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd ./OpenED
-ls
-# bash ./project_commands_24.sh
+bash ./project_commands_24.sh
