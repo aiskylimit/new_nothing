@@ -53,6 +53,7 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd ./talas_vlm_embed
+D=gmm_training/B3_Qwen2_2B_ret_CIRR; mv $D/gmm.joblib/gmm.joblib $D/gmm.joblib.tmp && rmdir $D/gmm.joblib && mv $D/gmm.joblib.tmp $D/gmm.joblib
 bash ./project_commands.sh
 
 # cd ./OpenED
