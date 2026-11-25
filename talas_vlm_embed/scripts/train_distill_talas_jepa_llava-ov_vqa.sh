@@ -94,8 +94,7 @@ echo "OUTPUT_DIR:"
 echo "  $OUTPUT_DIR"
 echo "============================================================"
 
-torchrun  \
-    --master_addr=127.0.0.1 --master_port=$PORT \
+torchrun  --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
     --model_name models/llava-onevision-qwen2-0.5b-ov-hf \
     --lora True \
