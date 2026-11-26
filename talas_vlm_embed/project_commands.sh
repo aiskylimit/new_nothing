@@ -55,21 +55,21 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 0.3 17 5 24 29517 &
 
 
-# CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.2 29 5 24 29518 &
-# CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.3 29 5 24 29519 &
-# CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.5 29 5 24 29524 &
-# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 5 24 29523 &
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.2 29 5 24 29518 &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.3 29 5 24 29519 &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.5 29 5 24 29524 &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 5 24 29523 &
 
 # wait
 
 # CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 0.5 17 5 24 29545 &
 # CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 1.0 17 5 24 29565 &
-# CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 10 0.1 29 5 24 29564 &
-# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.1 29 5 24 29585 &
+CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 10 0.1 29 5 24 29564 &
+CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.1 29 5 24 29585 &
 # wait
 
 
-CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.1 17 5 24 29536 &
+# CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.1 17 5 24 29536 &
 # CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_vqa.sh 0 1 10 0.1 17 5 24 29516 &
 
 # Còn InfoNCE + relational + một distribution-matching baseline đơn giản MMD, CORAL, or direct Sliced Wasserstein after PCA/random projection)
@@ -83,3 +83,7 @@ wait
 JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json}"
 
 python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+
+JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
+
+python json_filter.py ./MMEB-eval_outputs_v2 "${JSON_FILTER_DESTINATION}" --overwrite
