@@ -9,10 +9,10 @@ stages:
   # optional (not in `pipeline`): how much of the trace and of the loss sits on answer-containing steps
   answer_stats:
     module: sgl.diagnostics.answer_steps
-    creates: ${data_dir}/answer-steps/summary.json
+    creates: rebuttal/answer-steps/${track}/summary.json
     args:
       data-path: ${data_dir}/train-segmented.jsonl
       tokenizer: ${model.name}
       weights: ${data_dir}/train-${train_variant}.jsonl
       gains: ${data_dir}/signals/step_answer_gain.json
-      output-dir: ${data_dir}/answer-steps
+      output-dir: rebuttal/answer-steps/${track}

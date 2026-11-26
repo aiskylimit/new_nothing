@@ -7,6 +7,10 @@ defaults:
   - ../../common/train/lora-r16.yaml
   - ../../common/eval/palign-protocol.yaml
 track: qwen3-8b-s1k
+# rebuttal runs keep their scores and logs apart from results/ and logs/
+results_dir: rebuttal/results
+run:
+  log_dir: rebuttal/logs
 lora_adapter: true
 stages:
   prepare:

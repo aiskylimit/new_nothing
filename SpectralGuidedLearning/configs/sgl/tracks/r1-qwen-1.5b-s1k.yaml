@@ -7,3 +7,7 @@ defaults:
   - ../../common/train/full-ds-z2.yaml
   - ../../common/eval/palign-protocol.yaml
 track: r1-qwen-1.5b-s1k
+# rebuttal runs keep their scores and logs apart from results/ and logs/
+results_dir: rebuttal/results
+run:
+  log_dir: rebuttal/logs

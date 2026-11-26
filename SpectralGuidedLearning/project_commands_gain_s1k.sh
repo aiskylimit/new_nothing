@@ -24,6 +24,14 @@ export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1
 
 DRY_RUN=0
 [[ " $* " == *" --dry-run "* ]] && DRY_RUN=1
+# the full console output of this launch, kept across reruns (stage logs are overwritten)
+if [[ "${DRY_RUN}" == 0 ]]; then
+  mkdir -p rebuttal/logs
+  exec > >(tee -a "rebuttal/logs/driver-$(date +%Y%m%d-%H%M%S).log") 2>&1
+  echo "commit $(git rev-parse --short HEAD 2>/dev/null || echo unknown), GPUS=${GPUS}, args: $*"
+  echo "models: ${LOCAL_MODELS_ROOT}  data: ${DATASET_NAME}  benchmarks: ${BENCH_DATA_ROOT}"
+fi
+
 if [[ "${DRY_RUN}" == 0 ]]; then
   source "${PROJECT_ENV}/bin/activate"
   # all local inputs up front, so a missing one does not surface hours into the run
@@ -42,7 +50,9 @@ sgl_run() {
 
 # ============================ TRAIN ============================
 # per model: data -> capture -> answer gain -> gain signal -> weights -> answer-step statistics -> train
-# statistics and the HTML view of the answer steps: data/<model>-s1k/answer-steps/
+# Outputs under rebuttal/: results/ (scores, comparison table), logs/ (one driver-<time>.log per launch with
+# everything printed, plus <run>-<stage>.log of the latest run of each stage), answer-steps/<model>-s1k/
+# (statistics and HTML view of the answer steps). Datasets stay in data/, checkpoints in checkpoints/.
 sgl_run r1-qwen-1.5b-s1k/iwc-gain-l05   DeepSeek-R1-Distill-Qwen-1.5B "${TRAIN_STAGES}" "$@"
 sgl_run qwen25-7b-s1k/iwc-gain-l05-lora Qwen2.5-7B-Instruct           "${TRAIN_STAGES}" "$@"
 sgl_run qwen3-8b-s1k/iwc-gain-l05-lora  Qwen3-8B                      "${TRAIN_STAGES}" "$@"
@@ -53,5 +63,5 @@ sgl_run qwen25-7b-s1k/iwc-gain-l05-lora Qwen2.5-7B-Instruct           eval "$@"
 sgl_run qwen3-8b-s1k/iwc-gain-l05-lora  Qwen3-8B                      eval "$@"
 
 # =========================== COMPARE ==========================
-# writes results/comparison-table.md and results/eval-summary.json
-[[ "${DRY_RUN}" == 1 ]] || python -m sgl.eval.compare
+# writes rebuttal/results/comparison-table.md and eval-summary.json
+[[ "${DRY_RUN}" == 1 ]] || python -m sgl.eval.compare --results-dir rebuttal/results
