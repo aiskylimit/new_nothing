@@ -7,8 +7,3 @@ defaults:
   - ../../common/train/full-ds-z2.yaml
   - ../../common/eval/palign-protocol.yaml
 track: r1-qwen-1.5b-s1k
-stages:
-  prepare:
-    args:
-      # steps are cut at blank lines (every "\n\n"), not at sentence ends as in the P-ALIGN tracks
-      segmenter: paragraph

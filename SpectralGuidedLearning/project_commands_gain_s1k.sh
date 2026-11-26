@@ -2,7 +2,6 @@
 # Answer-gain experiment driver on s1K-1.1 DeepSeek-R1 traces -- TRAIN everything, then EVAL, then compare.
 # Models: r1-qwen-1.5b (full fine-tuning), qwen25-7b and qwen3-8b (LoRA r16). Configs: configs/sgl/<model>-s1k/.
 # Arm: IWC-Stable weights from answer gain, lambda 0.5, no spectral gate.
-# Steps: split at every blank line ("\n\n", segmenter paragraph).
 # Comment out any line you don't want to run.
 #   bash project_commands_gain_s1k.sh               # GPU 5
 #   GPUS=3 bash project_commands_gain_s1k.sh        # another GPU (space-separated ids for several)
