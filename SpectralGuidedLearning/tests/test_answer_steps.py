@@ -45,6 +45,13 @@ def test_shares_are_computed_over_step_tokens_and_loss_weights(tmp_path):
     assert summary["boxed"]["weight_share"] == pytest.approx(2 * lengths[3] / (total + lengths[3]))
     assert summary["boxed"]["gain_share"] == pytest.approx(4 / 8)  # negative gain left out
     assert 0 < summary["mention"]["answer_tokens"] < summary["mention"]["answer_step_tokens"]
+    mention = summary["mention"]
+    assert mention["non_answer_tokens"] == mention["answer_step_tokens"] - mention["answer_tokens"]
+    # "That gives ... here." has real words besides 42; "The answer is \\boxed{42}." has only the announcement
+    assert 0 < mention["other_tokens"] < mention["non_answer_tokens"]
+    assert summary["boxed"]["other_tokens"] == 0 and summary["boxed"]["bare_answer_step_share"] == 1.0
+    assert 0 < summary["boxed"]["answer_token_weight_share"] < summary["boxed"]["weight_share"]
+    assert "<mark>42</mark>" in (tmp_path / "out" / "answer-steps.html").read_text()
     assert (tmp_path / "out" / "position.png").exists()
     rows = (tmp_path / "out" / "answer-steps.jsonl").read_text().splitlines()
     assert [json.loads(row)["index"] for row in rows] == [1, 3]
