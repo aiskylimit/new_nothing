@@ -27,12 +27,12 @@ DRY_RUN=0
 if [[ "${DRY_RUN}" == 0 ]]; then
   source "${PROJECT_ENV}/bin/activate"
   # all local inputs up front, so a missing one does not surface hours into the run
-  for path in "${LOCAL_MODELS_ROOT}"/{DeepSeek-R1-Distill-Qwen-1.5B,Qwen2.5-7B-Instruct,Qwen3-8B} "${DATASET_NAME}"; do
+  for path in "${LOCAL_MODELS_ROOT}"/{DeepSeek-R1-Distill-Qwen-1.5B,Qwen2.5-7B-Instruct,Qwen3-8B} "${DATASET_NAME}" "${BENCH_DATA_ROOT}"/{AIME_2024,aime_2025,MATH-500,aimo-validation-amc}; do
     [[ -d "${path}" ]] || { echo "missing ${path} (see download.txt)" >&2; exit 1; }
   done
 fi
 
-TRAIN_STAGES=prepare,capture,answer_gain,gain_signal,weights,train
+TRAIN_STAGES=prepare,capture,answer_gain,gain_signal,weights,answer_stats,train
 
 # sgl_run <config> <model dir name> <stages> [extra args]
 sgl_run() {
@@ -41,7 +41,8 @@ sgl_run() {
 }
 
 # ============================ TRAIN ============================
-# per model: data -> capture -> answer gain -> gain signal -> weights -> train
+# per model: data -> capture -> answer gain -> gain signal -> weights -> answer-step statistics -> train
+# statistics and the HTML view of the answer steps: data/<model>-s1k/answer-steps/
 sgl_run r1-qwen-1.5b-s1k/iwc-gain-l05   DeepSeek-R1-Distill-Qwen-1.5B "${TRAIN_STAGES}" "$@"
 sgl_run qwen25-7b-s1k/iwc-gain-l05-lora Qwen2.5-7B-Instruct           "${TRAIN_STAGES}" "$@"
 sgl_run qwen3-8b-s1k/iwc-gain-l05-lora  Qwen3-8B                      "${TRAIN_STAGES}" "$@"
