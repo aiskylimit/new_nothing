@@ -16,6 +16,10 @@ Whether those steps are more than the answer is measured inside them:
               of what else the step says; it is not a judgement that those tokens are reasoning,
               so read answer-steps.html / .jsonl before claiming that.
 
+Every step also gets answer_token_ratio = its answer-string tokens / all of its tokens; the summary
+gives that ratio's distribution over answer steps (each step counting once, unlike the pooled
+answer_tokens_within_answer_steps).
+
 Per definition, pooled over response tokens:
   token_share        tokens of those steps / response tokens
   answer_token_share tokens of the answer string itself / response tokens
@@ -118,6 +122,7 @@ def analyze_record(record: dict, tokenizer, weights: list[float] | None, gains: 
         }
         hits = [i for i in range(first, last) if i in answer_ids]
         entry["answer_tokens"] = len(hits)
+        entry["answer_token_ratio"] = len(hits) / (last - first)
         entry["other_tokens"] = sum(
             1 for i in range(first, last)
             if i not in answer_ids and any(c in content for c in range(bounds[i], bounds[i + 1]))
@@ -137,7 +142,7 @@ def _ratio(numerator: float, denominator: float) -> float | None:
     return numerator / denominator if denominator else None
 
 
-def _distribution(values: list[int]) -> dict | None:
+def _distribution(values: list[float]) -> dict | None:
     if not values:
         return None
     ordered = sorted(values)
@@ -173,6 +178,7 @@ def summarize(samples: list[dict]) -> dict:
             "token_share": token_share,
             "answer_token_share": _ratio(answer_tokens, tokens),
             "answer_tokens_within_answer_steps": _ratio(answer_tokens, hit_tokens),
+            "answer_token_ratio_per_answer_step": _distribution([step["answer_token_ratio"] for step in hits]),
             "non_answer_tokens": hit_tokens - answer_tokens,
             "non_answer_share_within_answer_steps": _ratio(hit_tokens - answer_tokens, hit_tokens),
             "other_tokens": sum(step["other_tokens"] for step in hits),
@@ -216,7 +222,7 @@ def render_html(samples: list[dict]) -> str:
             kind = "boxed" if step["boxed"] else "mention" if step["mention"] else ""
             note, style = f"#{step['index']} · {step['tokens']} tok", ""
             if kind:
-                note += f" · answer {step['answer_tokens']} · other {step['other_tokens']}"
+                note += f" · answer {step['answer_tokens']}/{step['tokens']} ({step['answer_token_ratio']:.1%}) · other {step['other_tokens']}"
             if step["weight_mass"] is not None:
                 weight = step["weight_mass"] / step["tokens"]
                 note += f" · w={weight:.2f}"

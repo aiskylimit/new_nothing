@@ -52,6 +52,10 @@ def test_shares_are_computed_over_step_tokens_and_loss_weights(tmp_path):
     assert summary["boxed"]["other_tokens"] == 0 and summary["boxed"]["bare_answer_step_share"] == 1.0
     assert 0 < summary["boxed"]["answer_token_weight_share"] < summary["boxed"]["weight_share"]
     assert "<mark>42</mark>" in (tmp_path / "out" / "answer-steps.html").read_text()
+    rows = [json.loads(line) for line in (tmp_path / "out" / "answer-steps.jsonl").read_text().splitlines()]
+    ratios = [row["answer_tokens"] / row["tokens"] for row in rows]
+    assert [row["answer_token_ratio"] for row in rows] == pytest.approx(ratios)
+    assert mention["answer_token_ratio_per_answer_step"]["mean"] == pytest.approx(sum(ratios) / len(ratios))
     assert (tmp_path / "out" / "position.png").exists()
     rows = (tmp_path / "out" / "answer-steps.jsonl").read_text().splitlines()
     assert [json.loads(row)["index"] for row in rows] == [1, 3]
