@@ -1,4 +1,4 @@
-#2 -0-5
+#i talas-vlm-embed.txt
 #log
 #v2
 
