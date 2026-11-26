@@ -11,6 +11,8 @@ lora_adapter: true
 stages:
   prepare:
     args:
+      # steps are cut at blank lines (every "\n\n"), not at sentence ends as in the P-ALIGN tracks
+      segmenter: paragraph
       enable-thinking: false
   eval:
     args:
