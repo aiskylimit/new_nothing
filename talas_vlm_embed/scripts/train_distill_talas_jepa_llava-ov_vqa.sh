@@ -179,7 +179,7 @@ python eval_mmeb.py \
     --per_device_eval_batch_size 4 \
     --image_dir eval_images/ \
     --tgt_prefix_mod \
-    --image_resolution "tiny" \
+    --image_resolution "low" \
     --load_pretrained_lora True \
     --report_to none
 

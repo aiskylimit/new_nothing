@@ -1,5 +1,5 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
-#eval
+#1 +120
+#daved
 #v2
 
 
@@ -52,8 +52,8 @@ export NCCL_DEBUG=WARN
 # cd ./MRL-text
 # bash ./project_commands.sh
 
-# cd ./talas_vlm_embed
-# bash ./project_commands.sh
+cd ./talas_vlm_embed
+bash ./project_commands.sh
 
 # cd ./OpenED
 # bash ./project_commands_24.sh
