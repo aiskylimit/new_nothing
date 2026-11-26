@@ -17,7 +17,7 @@
 #   q4b     Qwen3-4B (models/Qwen3-4B, download.txt): Ours (f12_pl), CSD and TreeLoRA, the best
 #           baseline of each group on ACE. Same tokenizer as 0.6B, so the same tokenised data;
 #           span layers 28 32 36 of 36 (0.6B: 22 25 28 of 28); physical batch 8 (the loss stays
-#           per logical micro-batch).
+#           per logical micro-batch), TreeLoRA 8 x 4 with the loss per 8 rows (see run_job).
 #
 # Data: ace_b10_perm* from ace_all.tar.gz; ace_b5_perm*, ace_b20_perm*, ace_joint_perm0 and the
 # oracle split with is_memory on every train row (a negative row there can hold old-type gold
@@ -336,9 +336,11 @@ run_job () {  # $1 gpu $2 port $3 job -> 0 done or skipped, 1 failed
                   --epochs 5 --lr 0.0002 --seed "${SEED}" --bs 32 --acc 1 --greedy 1 --gpus "${g}" --start-task 0)
             MODEL_PATH="${Q4B}" PHYS_BS=8 MASTER_PORT="${port}" bash scripts/qwen/ced/run_ced_v2.sh "${args[@]}" \
                 2>&1 | stamp > "${jlog}" || rc=$? ;;
-        tree_4b)  # run_all_cllora.sh's TreeLoRA (32 x 1 logical) on Qwen3-4B
-            MODEL_PATH="${Q4B}" PHYS_BS=8 bash scripts/qwen/ced/run_cllora.sh --method tree --data-root "data/${pre}${p}" \
-                --num-tasks 5 --rank 16 --alpha 64 --lr 2e-4 --epochs 5 --batch-size 32 --grad-accum 1 \
+        tree_4b)  # run_all_cllora.sh's TreeLoRA on Qwen3-4B as 8 x 4 (32 per update). PHYS_BS cannot
+                  # split 32 x 1 (phys_split only merges) and the engine has no gradient checkpointing,
+                  # so 32 rows at once on 4B is the likely cause of its exit 1; the loss is a token mean per 8 rows
+            MODEL_PATH="${Q4B}" bash scripts/qwen/ced/run_cllora.sh --method tree --data-root "data/${pre}${p}" \
+                --num-tasks 5 --rank 16 --alpha 64 --lr 2e-4 --epochs 5 --batch-size 8 --grad-accum 4 \
                 --eval-batch-size 16 --protocol ace_qwen4b_v2 --seed "${SEED}" --gpu "${g}" --py "${PY}" \
                 2>&1 | stamp > "${jlog}" || rc=$? ;;
         *)        # no SD: PHYS_BS 32 + GRAD_CKPT, as project_commands_lib.sh's ours
