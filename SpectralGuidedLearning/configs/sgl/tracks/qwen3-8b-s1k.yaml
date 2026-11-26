@@ -1,0 +1,17 @@
+# qwen3-8b on the full s1K-1.1 DeepSeek-R1 traces, LoRA (adapters are evaluated on the base model).
+# The template has no thinking block to fill, so the trace is supervised with thinking off.
+defaults:
+  - ../../common/base.yaml
+  - ../../common/models/qwen3-8b.yaml
+  - ../../common/data/s1k.yaml
+  - ../../common/train/lora-r16.yaml
+  - ../../common/eval/palign-protocol.yaml
+track: qwen3-8b-s1k
+lora_adapter: true
+stages:
+  prepare:
+    args:
+      enable-thinking: false
+  eval:
+    args:
+      gpu-memory-utilization: 0.5

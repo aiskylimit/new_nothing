@@ -8,3 +8,4 @@
 #models
 --hf Qwen/Qwen2.5-7B-Instruct /mnt/local/_models/@PROJECT@/Qwen2.5-7B-Instruct
 --hf Qwen/Qwen3-8B /mnt/local/_models/@PROJECT@/Qwen3-8B
+--hf deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B /mnt/local/_models/@PROJECT@/DeepSeek-R1-Distill-Qwen-1.5B

@@ -1,0 +1,8 @@
+defaults: [../tracks/qwen3-8b-s1k.yaml, ../methods/iwc-gain.yaml]
+name: iwc-gain-l05-lora
+stages:
+  answer_gain:
+    args:
+      # s1K samples reach 32k tokens: at the default 16384 later probes are skipped and those steps
+      # silently get zero gain. 32768 is also Qwen2.5's position limit.
+      max-model-len: 32768

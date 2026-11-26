@@ -1,0 +1,9 @@
+# r1-qwen-1.5b on the full s1K-1.1 DeepSeek-R1 traces, full fine-tuning.
+# Supervised inside R1-Distill's <think> block; evaluation is the shared protocol (thinking off).
+defaults:
+  - ../../common/base.yaml
+  - ../../common/models/r1-qwen-1.5b.yaml
+  - ../../common/data/s1k.yaml
+  - ../../common/train/full-ds-z2.yaml
+  - ../../common/eval/palign-protocol.yaml
+track: r1-qwen-1.5b-s1k
