@@ -94,8 +94,7 @@ echo "OUTPUT_DIR:"
 echo "  $OUTPUT_DIR"
 echo "============================================================"
 
-torchrun  \
-    --master_addr=127.0.0.1 --master_port=$PORT \
+torchrun  --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
     --model_name models/FastVLM-0.5B \
     --lora True \
@@ -164,7 +163,7 @@ SUBSETS=(
   "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_vqa_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/FastVLM-0.5B_vqa_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \

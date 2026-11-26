@@ -94,8 +94,7 @@ echo "OUTPUT_DIR:"
 echo "  $OUTPUT_DIR"
 echo "============================================================"
 
-torchrun  \
-    --master_addr=127.0.0.1 --master_port=$PORT \
+torchrun  --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
     --model_name models/llava-onevision-qwen2-0.5b-ov-hf \
     --lora True \
@@ -180,7 +179,7 @@ python eval_mmeb.py \
     --per_device_eval_batch_size 4 \
     --image_dir eval_images/ \
     --tgt_prefix_mod \
-    --image_resolution "tiny" \
+    --image_resolution "low" \
     --load_pretrained_lora True \
     --report_to none
 

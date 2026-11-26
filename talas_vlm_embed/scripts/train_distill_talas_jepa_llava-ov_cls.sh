@@ -18,7 +18,7 @@ KD_WEIGHT=${3:-10}
 
 SIGREG_WEIGHT=${4:-0.2}
 
-NUM_T=${5:-17}
+NUM_T=${5:-29}
 
 T_MAX=${6:-5}
 
@@ -94,8 +94,7 @@ echo "OUTPUT_DIR:"
 echo "  $OUTPUT_DIR"
 echo "============================================================"
 
-torchrun  \
-    --master_addr=127.0.0.1 --master_port=$PORT \
+torchrun --standalone \
     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
     --model_name models/llava-onevision-qwen2-0.5b-ov-hf \
     --lora True \
@@ -122,7 +121,7 @@ torchrun  \
     --weight_decay 0.01 \
     --normalize True \
     --lr_scheduler_type "constant" \
-    --warmup_ratio 0.05 \
+    --warmup_ratio 0.03 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \
@@ -172,11 +171,11 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_cls_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_cls_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
-    --encode_output_path "$EVAL_OUTPUT" \
+    --encode_output_path "${EVAL_OUTPUT}" \
     --lora True --lora_r 64 --lora_alpha 64 \
     --pooling eos \
     --model_backbone llava_onevision \
@@ -185,7 +184,7 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 4 \
+    --per_device_eval_batch_size 8 \
     --image_dir eval_images/ \
     --tgt_prefix_mod \
     --image_resolution "tiny" \
