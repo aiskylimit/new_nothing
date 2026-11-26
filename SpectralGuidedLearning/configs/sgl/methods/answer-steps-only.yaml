@@ -1,0 +1,17 @@
+# Ablation: plain NLL on the answer-containing steps only (sgl.selection.answer_steps); every other
+# step is outside the loss. No capture or answer gain needed.
+answer_definition: mention      # or boxed
+train_variant: answer-steps-${answer_definition}
+pipeline: [prepare, answer_mask, train, eval]
+stages:
+  answer_mask:
+    module: sgl.selection.answer_steps
+    creates: ${data_dir}/train-${train_variant}.jsonl
+    args:
+      data-path: ${data_dir}/train-segmented.jsonl
+      tokenizer: ${model.name}
+      definition: ${answer_definition}
+      output-path: ${data_dir}/train-${train_variant}.jsonl
+  train:
+    args:
+      objective: nll
