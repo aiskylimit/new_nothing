@@ -10,7 +10,8 @@
 # Comment out any line you don't want to run.
 # Outputs under rebuttal/: results/ (scores, comparison table), logs/ (one driver-<time>.log per launch with
 # everything printed, plus <run>-<stage>.log of the latest run of each stage), answer-steps/<model>-s1k/
-# (statistics and HTML view of the answer steps). Datasets stay in data/, checkpoints in checkpoints/.
+# (statistics and HTML view of the answer steps), train-metrics/<run>.json (loss history).
+# Datasets stay in data/, checkpoints in checkpoints/.
 set -euo pipefail
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${BASE}"
