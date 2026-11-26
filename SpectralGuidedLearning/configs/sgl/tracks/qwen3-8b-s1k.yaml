@@ -13,10 +13,6 @@ run:
   log_dir: rebuttal/logs
 lora_adapter: true
 stages:
-  train:
-    args:
-      # per-step loss / grad_norm / lr history (checkpoints/ is not tracked by git)
-      metrics-log: rebuttal/train-metrics/${run_name}.json
   prepare:
     args:
       enable-thinking: false

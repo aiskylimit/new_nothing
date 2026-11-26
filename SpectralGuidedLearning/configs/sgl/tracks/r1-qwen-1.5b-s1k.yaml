@@ -11,8 +11,3 @@ track: r1-qwen-1.5b-s1k
 results_dir: rebuttal/results
 run:
   log_dir: rebuttal/logs
-stages:
-  train:
-    args:
-      # per-step loss / grad_norm / lr history (checkpoints/ is not tracked by git)
-      metrics-log: rebuttal/train-metrics/${run_name}.json
