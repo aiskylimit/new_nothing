@@ -91,3 +91,4 @@ sgl_run qwen3-8b-s1k/answer-steps-only-lora  Qwen3-8B                      eval 
 # =========================== COMPARE ==========================
 # every run under rebuttal/results, the answer-gain ones included
 [[ "${DRY_RUN}" == 1 ]] || python -m sgl.eval.compare --results-dir rebuttal/results
+[[ "${DRY_RUN}" == 1 ]] || python -m sgl.diagnostics.efficiency

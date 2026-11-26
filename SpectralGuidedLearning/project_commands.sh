@@ -10,7 +10,7 @@
 # Comment out any line you don't want to run.
 # Outputs under rebuttal/: results/ (scores, comparison table), logs/ (one driver-<time>.log per launch with
 # everything printed, plus <run>-<stage>.log of the latest run of each stage), answer-steps/<model>-s1k/
-# (statistics and HTML view of the answer steps). Datasets stay in data/, checkpoints in checkpoints/.
+# (statistics and HTML view of the answer steps), efficiency/ (time and memory per stage, table.md). Datasets stay in data/, checkpoints in checkpoints/.
 set -euo pipefail
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${BASE}"
@@ -88,14 +88,29 @@ sgl_run r1-qwen-1.5b-s1k/iwc-gain-l05   DeepSeek-R1-Distill-Qwen-1.5B "${TRAIN_S
 sgl_run qwen25-7b-s1k/iwc-gain-l05-lora Qwen2.5-7B-Instruct           "${TRAIN_STAGES}" "$@"
 sgl_run qwen3-8b-s1k/iwc-gain-l05-lora  Qwen3-8B                      "${TRAIN_STAGES}" "$@"
 
+# ========================== BASELINES ==========================
+# same data, schedule and GPU as above: plain SFT on every step (NLL); zero-shot only needs the eval below
+sgl_run r1-qwen-1.5b-s1k/sft-nll      DeepSeek-R1-Distill-Qwen-1.5B prepare,vanilla,train "$@"
+sgl_run qwen25-7b-s1k/sft-nll-lora    Qwen2.5-7B-Instruct           prepare,vanilla,train "$@"
+sgl_run qwen3-8b-s1k/sft-nll-lora     Qwen3-8B                      prepare,vanilla,train "$@"
+
 # ============================ EVAL =============================
 sgl_run r1-qwen-1.5b-s1k/iwc-gain-l05   DeepSeek-R1-Distill-Qwen-1.5B eval "$@"
 sgl_run qwen25-7b-s1k/iwc-gain-l05-lora Qwen2.5-7B-Instruct           eval "$@"
 sgl_run qwen3-8b-s1k/iwc-gain-l05-lora  Qwen3-8B                      eval "$@"
 
+sgl_run r1-qwen-1.5b-s1k/sft-nll      DeepSeek-R1-Distill-Qwen-1.5B eval "$@"
+sgl_run qwen25-7b-s1k/sft-nll-lora    Qwen2.5-7B-Instruct           eval "$@"
+sgl_run qwen3-8b-s1k/sft-nll-lora     Qwen3-8B                      eval "$@"
+sgl_run r1-qwen-1.5b-s1k/zeroshot     DeepSeek-R1-Distill-Qwen-1.5B eval "$@"
+sgl_run qwen25-7b-s1k/zeroshot        Qwen2.5-7B-Instruct           eval "$@"
+sgl_run qwen3-8b-s1k/zeroshot         Qwen3-8B                      eval "$@"
+
 # =========================== COMPARE ==========================
 # writes rebuttal/results/comparison-table.md and eval-summary.json
 [[ "${DRY_RUN}" == 1 ]] || python -m sgl.eval.compare --results-dir rebuttal/results
+# rebuttal/efficiency/table.md: pipeline and training time, memory, generated tokens, accuracy
+[[ "${DRY_RUN}" == 1 ]] || python -m sgl.diagnostics.efficiency
 
 # ======================= PREVIOUS ROUND ========================
 # qwen answer-only SFT arm, run before this one. Kept for reference, not run.

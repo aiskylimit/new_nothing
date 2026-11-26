@@ -1,0 +1,5 @@
+# The untrained student under the same eval protocol.
+defaults: [../tracks/r1-qwen-1.5b-s1k.yaml]
+name: zeroshot
+checkpoint: ${model.name}
+pipeline: [eval]

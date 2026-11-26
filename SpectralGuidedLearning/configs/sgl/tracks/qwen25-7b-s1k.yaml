@@ -11,6 +11,8 @@ track: qwen25-7b-s1k
 results_dir: rebuttal/results
 run:
   log_dir: rebuttal/logs
+  # wall time and peak GPU memory of every stage (sgl.diagnostics.efficiency)
+  efficiency_dir: rebuttal/efficiency
 lora_adapter: true
 stages:
   prepare:

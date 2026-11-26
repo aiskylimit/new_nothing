@@ -42,6 +42,7 @@ from typing import Any
 import yaml
 
 from sgl.config import ConfigError, load_config
+from sgl.efficiency import StageMeter, append_record
 
 SRC_DIR = Path(__file__).resolve().parents[1]
 REPO_DIR = SRC_DIR.parent
@@ -292,6 +293,23 @@ def describe(plan: dict) -> str:
     return f"(cd {shlex.quote(str(plan['cwd']))} && {text})" if plan["cwd"] else text
 
 
+def _measured_execute(config: dict, plan: dict, cwd: Path) -> int:
+    """execute(), recording wall time and peak GPU memory when `run.efficiency_dir` is set."""
+    directory = (config.get("run") or {}).get("efficiency_dir")
+    if not directory:
+        return execute(plan, cwd)
+    gpus = plan["env"].get("CUDA_VISIBLE_DEVICES")
+    with StageMeter(gpus) as meter:
+        code = execute(plan, cwd)
+    append_record(cwd / directory / f"{config.get('run_name') or config.get('name', 'run')}.jsonl", {
+        "stage": plan["name"], "exit_code": code, "seconds": round(meter.seconds, 1), "gpus": gpus,
+        "start_gpu_mib": meter.start_gpu_mib, "peak_gpu_mib": meter.peak_gpu_mib,
+        "track": config.get("track"), "checkpoint": config.get("checkpoint"),
+        "results_dir": config.get("results_dir"), "pipeline": config.get("pipeline"),
+    })
+    return code
+
+
 def run_pipeline(config: dict, stages: list[str], cwd: Path, force: bool, dry_run: bool, keep_going: bool) -> int:
     cache: dict = {}
     plans = [plan_stage(config, name, cache) for name in stages]  # validate everything first
@@ -304,7 +322,7 @@ def run_pipeline(config: dict, stages: list[str], cwd: Path, force: bool, dry_ru
         print(describe(plan), flush=True)
         if dry_run:
             continue
-        code = execute(plan, cwd)
+        code = _measured_execute(config, plan, cwd)
         if code:
             failures.append(plan["name"])
             print(f"stage {plan['name']} failed with exit code {code} (log: {plan['log']})", file=sys.stderr)
