@@ -44,7 +44,7 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # tar -xzf ./datasets/B3_Qwen2_2B_vqa.tar.gz -C .
 # # tar -xzf ./datasets/B3_Qwen2_2B_grounding.tar.gz -C .
 # # tar -xzf ./datasets/B3_Qwen2_7B_cls.tar.gz -C .
-tar -xzf ./datasets/B3_Qwen2_2B_ret.tar.gz -C .
+# tar -xzf ./datasets/B3_Qwen2_2B_ret.tar.gz -C .
 # # tar -xzf ./datasets/Qwen3VL_8B_cls.tar.gz -C .
 # tar -xzf gmm.tar.gz -C .
 
@@ -67,12 +67,12 @@ tar -xzf ./datasets/B3_Qwen2_2B_ret.tar.gz -C .
 
 # wait
 
-# CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_mmd_cls.sh 0.1 &
-# CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_coral_cls.sh 0.1 &
-# CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_sw_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_mmd_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_coral_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_sw_cls.sh 0.1 &
 
-CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 20 0.1 17 &
-CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.2 17 &
+# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 20 0.1 17 &
+# CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.2 17 &
 wait
 
 # =========================
@@ -82,3 +82,4 @@ wait
 JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
 
 python json_filter.py ./MMEB-eval_outputs-v2 "${JSON_FILTER_DESTINATION}" --overwrite
+python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
