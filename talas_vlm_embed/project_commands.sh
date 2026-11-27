@@ -67,9 +67,9 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 # wait
 
-CUDA_VISIBLE_DEVICES=0 bash talas_vlm_embed/scripts/train_distill_mmd_cls.sh 0.1 &
-CUDA_VISIBLE_DEVICES=1 bash talas_vlm_embed/scripts/train_distill_coral_cls.sh 0.1 &
-CUDA_VISIBLE_DEVICES=2 bash talas_vlm_embed/scripts/train_distill_sw_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_mmd_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_coral_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_sw_cls.sh 0.1 &
 
 wait
 
