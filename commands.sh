@@ -1,5 +1,5 @@
 #1 +120
-#opened
+#daved
 #v5
 
 
@@ -51,9 +51,8 @@ export NCCL_DEBUG=WARN
 # cd ./MRL-text
 # bash ./project_commands.sh
 
-# cd ./talas_vlm_embed
-# python json_filter.py ./MMEB-eval_outputs-v2 ./MMEB-evaloutputs-json-v2 --overwrite
-# bash ./project_commands.sh
+cd ./talas_vlm_embed
+bash ./project_commands.sh
 
-cd ./OpenED
-bash ./project_commands_26.sh
+# cd ./OpenED
+# bash ./project_commands_26.sh
