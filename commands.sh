@@ -1,4 +1,4 @@
-#2 -0-10
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/p25_logs.tar.gz +a
 #daved
 #v2
 
@@ -7,7 +7,7 @@
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bge-m3/bs128_lr2e-5_t0.05_ep1_s42/mteb_epoch_1/ +a
-#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/p24_logs.tar.gz +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/OpenED/logs/p25_logs.tar.gz +a
 
 # sleep 2
 # kill -9 $(nvidia-smi -i 0,1,2,3 --query-compute-apps=pid --format=csv,noheader)
