@@ -4,6 +4,7 @@
 --hf-dataset VoCuc/vlm-teacher-embedding /mnt/local/@PROJECT@/talas_vlm_embed/datasets
 --hf-dataset TIGER-Lab/MMEB-eval /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_eval/MMEB-eval
 --url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/gmm.tar.gz /mnt/local/@PROJECT@/talas_vlm_embed
+--url https://huggingface.co/minhhotboy9x/VLM_embed_gmm/resolve/main/gmm_training/B3_Qwen2_2B_ret_CIRR/gmm.joblib /mnt/local/@PROJECT@/talas_vlm_embed/gmm_training/B3_Qwen2_2B_ret_CIRR
 #models
 --hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/talas_vlm_embed/models/B3_Qwen2_2B
 --hf raghavlite/B3_Qwen2_7B /mnt/local/@PROJECT@/talas_vlm_embed/models/B3_Qwen2_7B
