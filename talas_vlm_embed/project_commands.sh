@@ -51,7 +51,7 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 
 # CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.1 17 &
 
-CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 0 1 0.1 17 &
+# CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 0 1 0.1 17 &
 # CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_vqa.sh 0 1 10 0.1 17 &
 # CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 0.3 17 &
 # CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 0.5 17 &
@@ -60,8 +60,8 @@ CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 0 1 0.1 
 # CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.1 29 &
 # CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.3 29 &
 # CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.5 29 &
-# CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 &
-# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 10 0.1 29 &
+CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 &
+CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 1 0.1 29 &
 
 # wait
 
