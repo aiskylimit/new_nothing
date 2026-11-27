@@ -94,48 +94,48 @@ echo "OUTPUT_DIR:"
 echo "  $OUTPUT_DIR"
 echo "============================================================"
 
-# torchrun  --standalone \
-#     --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
-#     --model_name models/FastVLM-0.5B \
-#     --lora True \
-#     --teacher_lora True \
-#     --lora_r 64 \
-#     --lora_alpha 64 \
-#     --model_backbone "llava_qwen2" \
-#     --pooling "eos" \
-#     --dataset_name "vlm2vec_train/MMEB-train" \
-#     --subset_name "CIRR" \
-#     --dataset_split "original" \
-#     --image_dir "vlm2vec_train/MMEB-train" \
-#     --percent_data 1.0 \
-#     --output_dir "$OUTPUT_DIR" \
-#     --per_device_train_batch_size 16 \
-#     --gradient_accumulation_steps 1 \
-#     --learning_rate 1e-4 \
-#     --num_train_epochs 1 \
-#     --bf16 \
-#     --save_total_limit 5 \
-#     --logging_steps 1 \
-#     --save_strategy "epoch" \
-#     --seed 42 \
-#     --weight_decay 0.01 \
-#     --normalize True \
-#     --lr_scheduler_type "constant" \
-#     --warmup_ratio 0.05 \
-#     --caching_dir "$CACHE_DIR" \
-#     --kd_loss_type "talas_jepa" \
-#     --image_resolution "low" \
-#     --projector_config_path "./config/projector_config_emo.json" \
-#     --projector_lr 5e-5 \
-#     --report_to None \
-#     --gmm_ckpt "gmm_training/B3_Qwen2_2B_ret_CIRR/gmm.joblib" \
-#     --use_distill_loss "$DISTILL_LOSS_BOOL" \
-#     --use_sigreg_loss "$SIGREG_BOOL" \
-#     --kd_weight "$KD_WEIGHT" \
-#     --sigreg_weight "$SIGREG_WEIGHT" \
-#     --num_t "$NUM_T" \
-#     --t_max "$T_MAX" \
-#     --num_layers "$NUM_LAYER" 
+torchrun  --standalone \
+    --nproc_per_node=$NUM_GPUS_PER_NODE $TRAIN_SCRIPT \
+    --model_name models/FastVLM-0.5B \
+    --lora True \
+    --teacher_lora True \
+    --lora_r 64 \
+    --lora_alpha 64 \
+    --model_backbone "llava_qwen2" \
+    --pooling "eos" \
+    --dataset_name "vlm2vec_train/MMEB-train" \
+    --subset_name "CIRR" \
+    --dataset_split "original" \
+    --image_dir "vlm2vec_train/MMEB-train" \
+    --percent_data 1.0 \
+    --output_dir "$OUTPUT_DIR" \
+    --per_device_train_batch_size 16 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 1e-4 \
+    --num_train_epochs 1 \
+    --bf16 \
+    --save_total_limit 5 \
+    --logging_steps 1 \
+    --save_strategy "epoch" \
+    --seed 42 \
+    --weight_decay 0.01 \
+    --normalize True \
+    --lr_scheduler_type "constant" \
+    --warmup_ratio 0.05 \
+    --caching_dir "$CACHE_DIR" \
+    --kd_loss_type "talas_jepa" \
+    --image_resolution "low" \
+    --projector_config_path "./config/projector_config_emo.json" \
+    --projector_lr 5e-5 \
+    --report_to None \
+    --gmm_ckpt "gmm_training/B3_Qwen2_2B_ret_CIRR/gmm.joblib" \
+    --use_distill_loss "$DISTILL_LOSS_BOOL" \
+    --use_sigreg_loss "$SIGREG_BOOL" \
+    --kd_weight "$KD_WEIGHT" \
+    --sigreg_weight "$SIGREG_WEIGHT" \
+    --num_t "$NUM_T" \
+    --t_max "$T_MAX" \
+    --num_layers "$NUM_LAYER" 
 
 
 # ============================================================
@@ -162,7 +162,7 @@ SUBSETS=(
     CIRR FashionIQ EDIS Wiki-SS-NQ
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/FastVLM-0.5B_ret_CIRR_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/FastVLM-0.5B_ret_CIRR_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
