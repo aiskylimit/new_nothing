@@ -1,16 +1,19 @@
 #d
 #datasets
---hf-dataset TIGER-Lab/MMEB-train /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_train/MMEB-train
---hf-dataset VoCuc/vlm-teacher-embedding /mnt/local/@PROJECT@/talas_vlm_embed/datasets
---hf-dataset TIGER-Lab/MMEB-eval /mnt/local/@PROJECT@/talas_vlm_embed/vlm2vec_eval/MMEB-eval
---url https://huggingface.co/datasets/VoCuc/vlm-teacher-embedding/resolve/main/gmm.tar.gz /mnt/local/@PROJECT@/talas_vlm_embed
+--url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/ace_all.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-cl-ace/resolve/main/ace_rebuttal.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-cl-maven/resolve/main/maven_all.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-cl-rams/resolve/main/rams_all.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-cl-geneva/resolve/main/geneva_all.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-cl-tacred/resolve/main/tacred_all.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-cl-fewrel/resolve/main/fewrel_all.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-new-cl-tacred/resolve/main/tacred_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
+--url https://huggingface.co/datasets/datht/processed-new-cl-fewrel/resolve/main/fewrel_all_new.tar.gz /mnt/local/@PROJECT@/OpenED
 #models
---hf raghavlite/B3_Qwen2_2B /mnt/local/@PROJECT@/talas_vlm_embed/models/B3_Qwen2_2B
---hf raghavlite/B3_Qwen2_7B /mnt/local/@PROJECT@/talas_vlm_embed/models/B3_Qwen2_7B
---hf apple/FastVLM-0.5B /mnt/local/@PROJECT@/talas_vlm_embed/models/FastVLM-0.5B
---hf llava-hf/llava-onevision-qwen2-0.5b-ov-hf /mnt/local/@PROJECT@/talas_vlm_embed/models/llava-onevision-qwen2-0.5b-ov-hf
---hf Qwen/Qwen2-VL-2B-Instruct /mnt/local/@PROJECT@/talas_vlm_embed/models/Qwen/Qwen2-VL-2B-Instruct
---hf Qwen/Qwen2-VL-7B-Instruct /mnt/local/@PROJECT@/talas_vlm_embed/models/Qwen/Qwen2-VL-7B-Instruct
+--hf Qwen/Qwen3-0.6B /mnt/local/@PROJECT@/OpenED/models/Qwen3-0.6B
+--hf Qwen/Qwen3-4B /mnt/local/@PROJECT@/OpenED/models/Qwen3-4B
+--hf meta-llama/Llama-3.2-1B-Instruct /mnt/local/@PROJECT@/OpenED/models/Llama-3.2-1B-Instruct
+--hf google/gemma-3-1b-it /mnt/local/@PROJECT@/OpenED/models/gemma-3-1b-it
 
 #log
 #v2
