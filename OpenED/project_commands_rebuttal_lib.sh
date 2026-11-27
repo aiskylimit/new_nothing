@@ -365,7 +365,7 @@ worker () {  # $1 = gpu: take the next unclaimed job
 }
 
 HERE=$(pwd)
-log "=== project_commands_22: steps '${STEPS}', perms '${PERMS}', ${#JOBS[@]} jobs, gpus ${GPUS[*]}, gen ${GEN_BACKEND} (DRY=${DRY}) ==="
+log "=== ${Q} (rebuttal lib, part ${PART:-all}): steps '${STEPS}', perms '${PERMS}', ${#JOBS[@]} jobs, gpus ${GPUS[*]}, gen ${GEN_BACKEND} (DRY=${DRY}) ==="
 unpack_data
 # finished runs of this host to count next to the new ones: Ours with SD (g1_full) and its -SD
 # ablation (a_nosd) on ACE, Ours and IncLoRA on MAVEN (highest stripping); skipped where absent
