@@ -109,7 +109,7 @@ torchrun  --standalone \
     --image_dir "vlm2vec_train/MMEB-train" \
     --percent_data 1.0 \
     --output_dir "$OUTPUT_DIR" \
-    --per_device_train_batch_size 16 \
+    --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 1 \
     --learning_rate 1e-4 \
     --num_train_epochs 1 \
@@ -163,7 +163,7 @@ SUBSETS=(
   "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs-v2/FastVLM-0.5B_vqa_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/FastVLM-0.5B_vqa_b8_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
