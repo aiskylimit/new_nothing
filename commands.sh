@@ -1,10 +1,9 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
+#1 +10
 #log
 #v1
 
 
-
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json/ +a
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/unified-ie/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/SElOT/results/logs/ +a
 #2 -f-/mnt/local/aiskylimit_new_nothing/MRL-text/checkpoints/mrl/bge-m3/bs128_lr2e-5_t0.05_ep1_s42/mteb_epoch_1/ +a
