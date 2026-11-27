@@ -126,7 +126,7 @@ torchrun --standalone \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \
     --projector_config_path "./config/projector_config_emo.json" \
-    --projector_lr 5e-5 \
+    --projector_lr 5e-4 \
     --report_to None \
     --gmm_ckpt "gmm_training/B3_Qwen2_2B_cls/gmm.joblib" \
     --use_distill_loss "$DISTILL_LOSS_BOOL" \
@@ -171,7 +171,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_cls_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_cls_slcosine_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -184,7 +184,7 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 8 \
+    --per_device_eval_batch_size 16 \
     --image_dir eval_images/ \
     --tgt_prefix_mod \
     --image_resolution "tiny" \
