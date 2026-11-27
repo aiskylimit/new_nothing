@@ -67,7 +67,16 @@ CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1
 # wait
 
 
+# ov cls đang chạy với sw=0.2, numt=29
+# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 10 0.2 29 5 24 29517 & # vqa loss ablation
+# CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 0 1 10 0.2 29 5 24 29518 & # vqa loss ablation
+ 
+# CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.5 29 5 24 29511 & # vqa loss sensivity lambda_cpr=0.5
+
 # Còn InfoNCE + relational + một distribution-matching baseline đơn giản MMD, CORAL, or direct Sliced Wasserstein after PCA/random projection)
+CUDA_VISIBLE_DEVICES=0 bash talas_vlm_embed/scripts/train_distill_mmd_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=1 bash talas_vlm_embed/scripts/train_distill_coral_cls.sh 0.1 &
+CUDA_VISIBLE_DEVICES=2 bash talas_vlm_embed/scripts/train_distill_sw_cls.sh 0.1 &
 
 wait
 
