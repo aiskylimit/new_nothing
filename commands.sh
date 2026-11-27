@@ -1,5 +1,5 @@
-#1 +10
-#log
+#1 +120
+#daved
 #v1
 
 
@@ -52,8 +52,8 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd ./talas_vlm_embed
-python json_filter.py ./MMEB-eval_outputs-v2 ./MMEB-evaloutputs-json-v2 --overwrite
-# bash ./project_commands.sh
+# python json_filter.py ./MMEB-eval_outputs-v2 ./MMEB-evaloutputs-json-v2 --overwrite
+bash ./project_commands.sh
 
 # cd ./OpenED
 # bash ./project_commands_25.sh
