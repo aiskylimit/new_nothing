@@ -14,7 +14,7 @@ USE_DISTILL_LOSS=${1:-True}
 
 USE_SIGREG_LOSS=${2:-True}
 
-KD_WEIGHT=${3:-10}
+KD_WEIGHT=${3:-20}
 
 SIGREG_WEIGHT=${4:-0.2}
 
@@ -121,12 +121,12 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --lr_scheduler_type "constant" \
-    --warmup_ratio 0.05 \
+    --warmup_ratio 0.03 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \
     --projector_config_path "./config/projector_config_emo.json" \
-    --projector_lr 5e-4 \
+    --projector_lr 5e-5 \
     --report_to None \
     --gmm_ckpt "gmm_training/B3_Qwen2_2B_cls/gmm.joblib" \
     --use_distill_loss "$DISTILL_LOSS_BOOL" \
@@ -171,7 +171,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_cls_lrp5e4_sl5_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_cls_lrp5e4_wr3_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -187,7 +187,7 @@ python eval_mmeb.py \
     --per_device_eval_batch_size 8 \
     --image_dir eval_images/ \
     --tgt_prefix_mod \
-    --image_resolution "low" \
+    --image_resolution "tiny" \
     --load_pretrained_lora True \
     --report_to none
 
