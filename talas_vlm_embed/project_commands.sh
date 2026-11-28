@@ -57,11 +57,11 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 0.5 17 &
 # CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_vqa.sh 1 1 10 1.0 17 &
 
-# CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.1 29 &
-# CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.3 29 &
-# CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.5 29 &
-# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 &
-# CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 1 0.1 29 &
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.1 29 &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.3 29 &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 0.5 29 &
+CUDA_VISIBLE_DEVICES=6 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 &
+CUDA_VISIBLE_DEVICES=7 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 20 0.1 29 &
 
 # wait
 
@@ -69,15 +69,15 @@ source /mnt/local/uvenvs/talas-vlm-embed/bin/activate
 # CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_coral_cls.sh 0.1 &
 # CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_sw_cls.sh 0.1 &
 
-CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_mmd_cls.sh 0.5 &
-CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_coral_cls.sh 0.5 &
-CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_sw_cls.sh 0.5 &
+# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_mmd_cls.sh 0.5 &
+# CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_coral_cls.sh 0.5 &
+# CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_sw_cls.sh 0.5 &
 
-wait
+# wait
 
-CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_mmd_cls.sh 1.0 &
-CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_coral_cls.sh 1.0 &
-CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_sw_cls.sh 1.0 &
+# CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_mmd_cls.sh 1.0 &
+# CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_coral_cls.sh 1.0 &
+# CUDA_VISIBLE_DEVICES=5 bash ./scripts/train_distill_sw_cls.sh 1.0 &
 
 # CUDA_VISIBLE_DEVICES=3 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 20 0.1 17 &
 # CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_ret_CIRR.sh 1 1 10 0.2 17 &
@@ -90,4 +90,4 @@ wait
 JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
 
 python json_filter.py ./MMEB-eval_outputs-v2 "${JSON_FILTER_DESTINATION}" --overwrite
-python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+# python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite

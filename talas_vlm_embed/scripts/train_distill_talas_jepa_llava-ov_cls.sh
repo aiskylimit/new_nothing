@@ -121,7 +121,7 @@ torchrun --standalone \
     --weight_decay 0.01 \
     --normalize True \
     --lr_scheduler_type "constant" \
-    --warmup_ratio 0.03 \
+    --warmup_ratio 0.05 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \
@@ -171,7 +171,7 @@ SUBSETS=(
     "Country211"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_cls_lrp5e4_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_cls_lrp5e4_sl5_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
@@ -184,10 +184,10 @@ python eval_mmeb.py \
     --dataset_name vlm2vec_eval/MMEB-eval \
     --subset_name "${SUBSETS[@]}" \
     --dataset_split test \
-    --per_device_eval_batch_size 16 \
+    --per_device_eval_batch_size 8 \
     --image_dir eval_images/ \
     --tgt_prefix_mod \
-    --image_resolution "tiny" \
+    --image_resolution "low" \
     --load_pretrained_lora True \
     --report_to none
 
