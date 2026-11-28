@@ -63,6 +63,13 @@ CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1
 # CUDA_VISIBLE_DEVICES=6 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 1 10 1.0 29 &
 # CUDA_VISIBLE_DEVICES=7 bash ./scripts/train_distill_talas_jepa_llava-ov_cls.sh 1 0 20 0.1 29 &
 
+CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_talas_jepa_llava-ov_vqa.sh 1 1 10 0.1 29 &
+CUDA_VISIBLE_DEVICES=1 bash ./scripts/train_distill_talas_jepa_llava-ov_vqa.sh 1 1 10 0.3 29 &
+CUDA_VISIBLE_DEVICES=2 bash ./scripts/train_distill_talas_jepa_llava-ov_vqa.sh 1 1 10 0.5 29 &
+CUDA_VISIBLE_DEVICES=6 bash ./scripts/train_distill_talas_jepa_llava-ov_vqa.sh 1 1 10 1.0 29 &
+CUDA_VISIBLE_DEVICES=7 bash ./scripts/train_distill_talas_jepa_llava-ov_vqa.sh 1 0 20 0.1 29 &
+CUDA_VISIBLE_DEVICES=4 bash ./scripts/train_distill_talas_jepa_llava-ov_vqa.sh 0 1 20 0.1 29 &
+
 # wait
 
 # CUDA_VISIBLE_DEVICES=0 bash ./scripts/train_distill_mmd_cls.sh 0.1 &
@@ -89,5 +96,5 @@ wait
 
 JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
 
-python json_filter.py ./MMEB-eval_outputs-v2 "${JSON_FILTER_DESTINATION}" --overwrite
-# python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+# python json_filter.py ./MMEB-eval_outputs-v2 "${JSON_FILTER_DESTINATION}" --overwrite
+python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
