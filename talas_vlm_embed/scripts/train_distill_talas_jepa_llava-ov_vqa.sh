@@ -126,7 +126,7 @@ torchrun  --standalone \
     --kd_loss_type "talas_jepa" \
     --image_resolution "tiny" \
     --projector_config_path "./config/projector_config_emo.json" \
-    --projector_lr 5e-5 \
+    --projector_lr 5e-4 \
     --report_to None \
     --gmm_ckpt "gmm_training/B3_Qwen2_2B_vqa/gmm.joblib" \
     --use_distill_loss "$DISTILL_LOSS_BOOL" \
@@ -163,7 +163,7 @@ SUBSETS=(
   "ScienceQA" "VizWiz" "GQA" "TextVQA"
 )
 
-EVAL_OUTPUT="./MMEB-eval_outputs/llava_ov-0.5B_vqa_${EXP_NAME}/"
+EVAL_OUTPUT="./MMEB-eval_outputs-v2/llava_ov-0.5B_vqa_${EXP_NAME}/"
 
 python eval_mmeb.py \
     --model_name "$MODEL" \
