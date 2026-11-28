@@ -96,5 +96,5 @@ wait
 
 JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
 
-python json_filter.py ./MMEB-eval_outputs-v2 "${JSON_FILTER_DESTINATION}" --overwrite
-# python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
+# python json_filter.py ./MMEB-eval_outputs-v2 "${JSON_FILTER_DESTINATION}" --overwrite
+python json_filter.py ./MMEB-eval_outputs "${JSON_FILTER_DESTINATION}" --overwrite
