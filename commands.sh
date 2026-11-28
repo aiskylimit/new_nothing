@@ -51,7 +51,7 @@ export NCCL_DEBUG=WARN
 # cd ./MRL-text
 # bash ./project_commands.sh
 
-cd ./talas_vlm_embed
+# cd ./talas_vlm_embed
 # bash ./project_commands.sh
 
 # cd ./OpenED
