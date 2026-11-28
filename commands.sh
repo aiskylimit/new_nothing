@@ -1,6 +1,6 @@
-#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
+#1 +120
 #log
-#v5
+#v2
 
 
 #2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
