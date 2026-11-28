@@ -120,8 +120,8 @@ torchrun  --standalone \
     --seed 42 \
     --weight_decay 0.01 \
     --normalize True \
-    --lr_scheduler_type "constant" \
-    --warmup_ratio 0.05 \
+    --lr_scheduler_type "cosine" \
+    --warmup_ratio 0.01 \
     --caching_dir "$CACHE_DIR" \
     --kd_loss_type "talas_jepa" \
     --image_resolution "low" \
