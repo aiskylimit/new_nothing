@@ -1,4 +1,4 @@
-#1 +30
+#2 -f-/mnt/local/aiskylimit_new_nothing/talas_vlm_embed/MMEB-evaloutputs-json-v2/ +a
 #log
 #v5
 
@@ -52,16 +52,6 @@ export NCCL_DEBUG=WARN
 # bash ./project_commands.sh
 
 cd ./talas_vlm_embed
-JSON_FILTER_DESTINATION="${JSON_FILTER_DESTINATION:-./MMEB-evaloutputs-json-v2}"
-
-python json_filter.py ./MMEB-eval_outputs-v2 ./MMEB-evaloutputs-json-v2 --overwrite
-python json_filter.py ./MMEB-eval_outputs ./MMEB-evaloutputs-json --overwrite
-
-ls MMEB-evaloutputs-json-v2
-echo "1"
-ls ./MMEB-eval_outputs-v2
-echo "2"
-ls ./MMEB-eval_outputs
 # bash ./project_commands.sh
 
 # cd ./OpenED
